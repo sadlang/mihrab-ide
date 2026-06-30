@@ -1,0 +1,32 @@
+{
+  "$schema": "vscode://schemas/vscode-extensions",
+  "name": "sad-lang",
+  "displayName": "لغة ص",
+  "description": "دعم لغة ص المدمج في محراب: إبراز الصياغة وتهيئة اللغة. النحو مولَّد من مصدر الحقيقة (language-truth).",
+  "version": "0.1.0",
+  "publisher": "sadlang",
+  "license": "MIT",
+  "engines": { "vscode": "*" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sad",
+        "aliases": ["لغة ص", "Sad", "ص"],
+        "extensions": [".ص"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sad",
+        "scopeName": "source.sad",
+        "path": "./syntaxes/sad.tmLanguage.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sadlang/mihrab-ide.git"
+  }
+}
