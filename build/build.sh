@@ -122,7 +122,38 @@ export NODE_OPTIONS="--max-old-space-size=8192"
 export VSCODE_SKIP_NODE_VERSION_CHECK=yes
 log "vs2022_install=${vs2022_install:-<افتراضيّ>} · python=${npm_config_python:-<النظام>}"
 
-# ── (ح) البناء عبر نقطة دخول VSCodium الرسميّة (بلا رُقَع محراب ⇒ بناء نظيف = م0) ──
+# ── (ز-2) هوية محراب (م1، الطبقة الثانية): ادمج product-overrides/product.json فوق
+#         product.json الخاصّ بـVSCodium. prepare_vscode.sh يدمج «../product.json»
+#         فوق إعداداته (jq .[0]*.[1]) ⇒ قيمنا تسود. idempotent (دمج نفس المفاتيح).
+#         نحذف ._comment حتى لا يتسرّب حقل غير معروف إلى product.json النهائيّ. ──
+OVERRIDES="$ROOT/product-overrides/product.json"
+if [[ -f "$OVERRIDES" ]]; then
+  log "تطبيق هوية محراب (product.json)"
+  # تحقّق أنّ هدف الدمج موجود (prepare.sh يُنتجه)؛ غيابه يعني خللًا في خطوة (ج).
+  [[ -f "$UP/product.json" ]] || { echo "❌ $UP/product.json غير موجود — فشلت خطوة (ج) تحضير المنبع؟" >&2; exit 1; }
+  # نكتب لملفّ مؤقّت ثمّ نُعيد التسمية ذرّيًّا: فشل jq (JSON تالف/خطأ قرص) يُجهض
+  # قبل mv فلا يُداس product.json الصالح بناتج ناقص. ننظّف tmp عند الفشل.
+  if ! jq -s '.[0] * .[1] | del(._comment)' "$UP/product.json" "$OVERRIDES" > "$UP/product.json.tmp"; then
+    rm -f "$UP/product.json.tmp"
+    echo "❌ فشل دمج هوية محراب عبر jq — تحقّق من صحّة $OVERRIDES و$UP/product.json." >&2
+    exit 1
+  fi
+  mv -f "$UP/product.json.tmp" "$UP/product.json"
+fi
+
+# ── (ز-3) نظّف مجلّد المخرَج السابق مبكّرًا: لو كان مقفولًا (نسخة محراب قيد التشغيل)
+#         يفشل تنظيف gulp بـEBUSY بعد ~20 د. نُجهض الآن برسالة واضحة بدل إهدار الوقت. ──
+OUTDIR="$UP/VSCode-win32-x64"
+if [[ -d "$OUTDIR" ]]; then
+  rm -rf "$OUTDIR" 2>/dev/null || true
+  if [[ -d "$OUTDIR" ]]; then
+    echo "❌ مجلّد المخرَج مقفول: $OUTDIR" >&2
+    echo "   أغلق أيّ نسخة محراب/VSCodium قيد التشغيل ثمّ أعد المحاولة." >&2
+    exit 1
+  fi
+fi
+
+# ── (ح) البناء عبر نقطة دخول VSCodium الرسميّة (هوية محراب من الطبقة 2؛ لا رُقَع نواة) ──
 cd "$UP"
 BUILD_ARGS=()
 # if لا «A && B»: في المسار الافتراضيّ (SKIP_SOURCE≠yes) تُفشِل «A && B» السكربتَ تحت set -e.
@@ -131,12 +162,12 @@ log "بدء dev/build.sh ${BUILD_ARGS[*]:-}"
 # "${BUILD_ARGS[@]:-}" يمنع خطأ unbound تحت set -u عند مصفوفة فارغة في إصدارات bash الأقدم.
 bash dev/build.sh "${BUILD_ARGS[@]:-}"
 
-# ── (ط) تحقّق المخرَج ──
-EXE="$UP/VSCode-win32-x64/VSCodium.exe"
+# ── (ط) تحقّق المخرَج (اسم الـexe = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
+EXE="$UP/VSCode-win32-x64/Mihrab.exe"
 if [[ -f "$EXE" ]]; then
-  echo "✅ م0 نجح: $EXE"
-  "$UP/VSCode-win32-x64/bin/codium.cmd" --version 2>/dev/null | head -3 || true
+  echo "✅ البناء نجح: $EXE"
+  "$UP/VSCode-win32-x64/bin/mihrab.cmd" --version 2>/dev/null | head -3 || true
 else
-  echo "❌ لم يُنتَج VSCodium.exe — راجع السجلّ أعلاه." >&2
+  echo "❌ لم يُنتَج Mihrab.exe — راجع السجلّ أعلاه." >&2
   exit 1
 fi

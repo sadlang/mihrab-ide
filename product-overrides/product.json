@@ -1,0 +1,32 @@
+{
+  "_comment": "هوية محراب (م1) — تُدمَج فوق product.json الخاصّ بـVSCodium وقت البناء عبر build/build.sh (الطبقة الثانية). nameLong عربيّ (يظهر في العنوان و«حول»)؛ nameShort لاتينيّ لأنّه يشتقّ اسم الملفّ التنفيذيّ (Mihrab.exe) — اسم عربيّ يكسر التوافق. معرّفات win32 فريدة (مولَّدة، تختلف عن VSCodium).",
+  "nameShort": "Mihrab",
+  "nameLong": "محراب",
+  "applicationName": "mihrab",
+  "dataFolderName": ".mihrab",
+  "linuxIconName": "mihrab",
+  "quality": "stable",
+  "urlProtocol": "mihrab",
+  "serverApplicationName": "mihrab-server",
+  "serverDataFolderName": ".mihrab-server",
+  "darwinBundleIdentifier": "com.sadlang.mihrab",
+  "win32AppUserModelId": "SadLang.Mihrab",
+  "win32DirName": "Mihrab",
+  "win32MutexName": "mihrab",
+  "win32NameVersion": "Mihrab",
+  "win32RegValueName": "Mihrab",
+  "win32ShellNameShort": "محراب",
+  "win32AppId": "{{3232D708-DB2A-4C33-A2EA-A8FB71865260}",
+  "win32x64AppId": "{{3B4F71B1-5B7E-4315-BE4A-675BEC575AC4}",
+  "win32arm64AppId": "{{FD4532BA-F6FD-4D86-B318-BB56A9797F4B}",
+  "win32UserAppId": "{{6421D471-2689-4085-A30F-342313254186}",
+  "win32x64UserAppId": "{{768C494B-556F-4137-9D89-41D861E77DDD}",
+  "win32arm64UserAppId": "{{66DE78C2-0E59-402F-9951-9E02F6339D79}",
+  "tunnelApplicationName": "mihrab-tunnel",
+  "win32TunnelServiceMutex": "mihrab-tunnelservice",
+  "win32TunnelMutex": "mihrab-tunnel",
+  "win32ContextMenu": {
+    "x64": { "clsid": "EE8FDE39-F7AD-4F40-AA11-084F76507279" },
+    "arm64": { "clsid": "A3C0F21B-D99A-4ECE-83C8-78FC5D75B935" }
+  }
+}
