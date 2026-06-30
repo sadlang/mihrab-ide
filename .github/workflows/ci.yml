@@ -1,0 +1,42 @@
+# CI محراب — م0: فحوص هيكليّة خفيفة. البناء الكامل (VSCodium) يأتي كوظيفة منفصلة
+# لاحقًا (يحتاج عتادًا ضخمًا و≥30GB)؛ هنا نتحقّق من سلامة الهيكل والتثبيت فقط.
+name: فحص الهيكل
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  structure:
+    name: تحقّق هيكل م0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: تحقّق صحّة upstream.json
+        run: |
+          python3 -c "import json,sys; d=json.load(open('upstream.json')); \
+            assert d['vscodium']['tag'], 'tag مفقود'; \
+            assert d['vscodium']['repo'].startswith('https://'), 'repo غير صالح'; \
+            print('✅ تثبيت المنبع صالح:', d['vscodium']['tag'])"
+
+      - name: تحقّق وجود ملفّات الأساس
+        run: |
+          for f in README.md LICENSE upstream.json build/README.md \
+                   build/prepare.sh build/prepare.ps1 \
+                   patches/README.md product-overrides/README.md \
+                   docs/architecture/three-layer-model.md docs/milestones.md; do
+            test -f "$f" || { echo "❌ مفقود: $f"; exit 1; }
+          done
+          echo "✅ كل ملفّات أساس م0 موجودة."
+
+      - name: فحص صياغة سكربت التحضير (bash)
+        run: bash -n build/prepare.sh && echo "✅ prepare.sh سليم نحويًّا."
+
+      - name: مؤشّر صحّة — عدّ رُقَع الطبقة الثالثة
+        run: |
+          count=$(find patches -name '*.patch' | wc -l)
+          echo "📊 رُقَع النواة (الطبقة الثالثة): $count"
+          echo "   (م0 يبدأ بصفر؛ ارتفاعه = ارتفاع دَيْن الدمج.)"

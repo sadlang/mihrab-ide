@@ -1,0 +1,16 @@
+{
+  "_description": "تثبيت إصدار المنبع لمحراب (نموذج VSCodium-مرقَّع). يُحدَّث في م5 عبر مزامنة دوريّة محكومة بقاعدة الطبقات الثلاث. لا تُحدِّثه يدويًّا دون تشغيل البناء + الاختبارات.",
+  "base": "vscodium",
+  "vscodium": {
+    "repo": "https://github.com/VSCodium/vscodium",
+    "tag": "1.121.03429",
+    "published": "2026-05-22",
+    "_note": "أحدث إصدار مستقرّ وقت تأسيس م0 (2026-06-30). الصيغة: <إصدار-vscode>.<بناء>."
+  },
+  "vscode": {
+    "repo": "https://github.com/microsoft/vscode",
+    "version": "1.121"
+  },
+  "pinnedAt": "2026-06-30",
+  "milestone": "م0"
+}
