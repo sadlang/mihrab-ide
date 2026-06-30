@@ -1,0 +1,7 @@
+# تطبيع نهايات الأسطر عبر المنصّات.
+* text=auto eol=lf
+
+# سكربتات الصدفة يجب أن تبقى LF دائمًا (CRLF يكسرها على لينكس/CI).
+*.sh text eol=lf
+# سكربتات PowerShell تعمل بـCRLF على ويندوز.
+*.ps1 text eol=crlf
