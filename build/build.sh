@@ -141,6 +141,24 @@ if [[ -f "$OVERRIDES" ]]; then
   mv -f "$UP/product.json.tmp" "$UP/product.json"
 fi
 
+# ── (ز-2ب) حزم إضافات محراب المدمجة (م2-أ، الطبقة 1): جهّزها في .mihrab-extensions
+#         (ينجو من git reset في وضع -s) ورقّع build.sh المنبع ليحقنها بعد cd vscode
+#         (لا قبل dev/build.sh لأنّ «git add . ; git reset --hard» يحذف غير المتعقَّب). ──
+STAGE_EXT="$UP/.mihrab-extensions"
+rm -rf "$STAGE_EXT"; mkdir -p "$STAGE_EXT"
+shopt -s nullglob
+for ext in "$ROOT"/extensions/*/; do
+  [[ -f "${ext}package.json" ]] || continue
+  cp -r "$ext" "$STAGE_EXT/$(basename "$ext")"
+  log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
+done
+shopt -u nullglob
+BSH="$UP/build.sh"
+if [[ -f "$BSH" ]] && ! grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
+  log "ترقيع build.sh (حقن الإضافات المدمجة)"
+  python "$ROOT/build/patch_bundle_extensions.py" "$BSH"
+fi
+
 # ── (ز-3) نظّف مجلّد المخرَج السابق مبكّرًا: لو كان مقفولًا (نسخة محراب قيد التشغيل)
 #         يفشل تنظيف gulp بـEBUSY بعد ~20 د. نُجهض الآن برسالة واضحة بدل إهدار الوقت. ──
 OUTDIR="$UP/VSCode-win32-x64"
