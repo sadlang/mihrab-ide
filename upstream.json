@@ -11,6 +11,14 @@
     "repo": "https://github.com/microsoft/vscode",
     "version": "1.121"
   },
+  "_builtReleaseVersion": "1.121.04352 (= RELEASE_VERSION المشتقّ من stable.json داخل وسم VSCodium المثبَّت؛ يختلف رقمه عن وسم الإصدار 1.121.03429 لكنّه محدَّد بثبات للوسم نفسه)",
+  "toolchain": {
+    "_note": "سلسلة أدوات معزولة يجهّزها build/build.sh في build/.toolchain (مُتجاهَلة). طابِق node مع vscode/.nvmrc للمنبع المثبَّت.",
+    "node": "22.22.1",
+    "jq": "1.7.1",
+    "nodeGyp": "13.0.0",
+    "python": "3.12"
+  },
   "pinnedAt": "2026-06-30",
   "milestone": "م0"
 }

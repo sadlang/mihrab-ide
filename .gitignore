@@ -1,6 +1,9 @@
 # شجرة المنبع المُحضَّرة (تُستنسَخ وقت البناء — لا تُتعقَّب)
 /.upstream/
 
+# سلسلة الأدوات المعزولة (Node محمول، jq، node-gyp) — تُنزَّل عند البناء
+/build/.toolchain/
+
 # مخرجات البناء
 /out/
 /dist/
@@ -14,3 +17,7 @@ node_modules/
 Thumbs.db
 *.log
 .vscode-test/
+
+# Python bytecode (سكربتات الترقيع)
+__pycache__/
+*.pyc
