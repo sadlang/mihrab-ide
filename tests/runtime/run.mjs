@@ -34,7 +34,16 @@ async function main() {
     if (r.status === "pass") p++; else if (r.status === "fail") f++; else s++;
   }
   console.log(`─── ${p} نجح، ${f} فشل، ${s} تخطٍّ ───`);
-  return f ? 1 : 0;
+  const strict = /^(1|true|yes)$/i.test(process.env.MIHRAB_L3_STRICT || "");
+  // التخطّي «best-effort» (مِجَسّ هشّ) لا يُحجَب حتى في الوضع الصارم؛ غيره يُحجَب صارمًا.
+  const sBlocking = results.filter(r => r.status === "skip" && !r.bestEffort).length;
+  const sBest = s - sBlocking;
+  if (s > 0) {
+    if (sBlocking > 0) console.log(`  ⚠️  ${sBlocking} تخطٍّ قد يُخفي انحدارًا — راجع يدويًّا` +
+      (strict ? " (صارم: فشل)." : "، أو MIHRAB_L3_STRICT=1 للحجب."));
+    if (sBest > 0) console.log(`  ℹ️  ${sBest} تخطٍّ best-effort (مِجَسّ هشّ، مضمون بطبقة أخرى) — لا يحجب.`);
+  }
+  return (f || (strict && sBlocking)) ? 1 : 0;
 }
 
 main().then(c => process.exit(c)).catch(e => { console.error("خطأ فادح:", e); process.exit(2); });

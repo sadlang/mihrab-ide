@@ -7,7 +7,8 @@ const GAP_TOL = 3;     // فجوة الاقتراحات المقبولة (0 مث
 // نتيجة موحّدة
 const pass = (name, detail) => ({ name, status: "pass", detail });
 const fail = (name, detail) => ({ name, status: "fail", detail });
-const skip = (name, detail) => ({ name, status: "skip", detail });
+// bestEffort: تخطٍّ لا يُحجَب حتى في الوضع الصارم (مِجَسّ هشّ بطبيعته — إدخال CDP في RTL).
+const skip = (name, detail, bestEffort = false) => ({ name, status: "skip", detail, bestEffort });
 
 // تأكيدات هندسيّة (بلا إدخال) — من قراءة تخطيط واحدة.
 export function geometryAssertions(geo) {
@@ -52,6 +53,20 @@ export function geometryAssertions(geo) {
       : fail("مسطرة النظرة يسارًا", `left=${geo.overviewRuler.l} (متوقَّع < ${Math.round(mid)})`))
     : skip("مسطرة النظرة يسارًا", "غير مرئيّة"));
 
+  // منطقة المحتوى بين الخريطة (يسارًا) والمزراب (يمينًا)
+  out.push(geo.content
+    ? ((geo.minimap ? geo.content.l >= geo.minimap.r - TOL : true) && geo.gutter && geo.content.l < geo.gutter.l
+      ? pass("المحتوى بين الخريطة والمزراب", `[${geo.content.l},${geo.content.r}]`)
+      : fail("المحتوى بين الخريطة والمزراب", `المحتوى ${geo.content.l} لا يقع بين الخريطة ${geo.minimap?.r} والمزراب ${geo.gutter?.l}`))
+    : skip("المحتوى بين الخريطة والمزراب", "لا view-lines"));
+
+  // شريط الأنشطة يمينًا (القشرة RTL)
+  out.push(geo.activityBar
+    ? (geo.activityBar.l > mid
+      ? pass("شريط الأنشطة يمينًا", `left=${geo.activityBar.l}`)
+      : fail("شريط الأنشطة يمينًا", `left=${geo.activityBar.l} (متوقَّع > ${Math.round(mid)})`))
+    : skip("شريط الأنشطة يمينًا", "غير مرئيّ"));
+
   // اتّجاه السطر RTL (م1، Monaco per-line)
   out.push(geo.firstLineDir === "rtl"
     ? pass("اتّجاه السطر RTL", "view-line direction=rtl")
@@ -66,16 +81,18 @@ export async function interactionAssertions(cdp) {
 
   // فجوة الاقتراحات = صفر (الإصلاح الحاسم rtl19)
   try {
-    const s = await suggestGap(cdp);
-    if (!s || !s.visible) out.push(skip("فجوة الاقتراحات = صفر", "لم تظهر الودجة (لا إكمالات؟)"));
-    else if (s.caretLeft == null) out.push(skip("فجوة الاقتراحات = صفر", "لا مؤشّر مرئيّ للقياس"));
+    let s = await suggestGap(cdp);
+    if (!s || !s.visible) s = await suggestGap(cdp); // إعادة محاولة واحدة (تقلّل تخطّي التذبذب)
+    if (!s || !s.visible) out.push(skip("فجوة الاقتراحات = صفر", "لم تظهر الودجة (لا إكمالات؟)", true));
+    else if (s.caretLeft == null) out.push(skip("فجوة الاقتراحات = صفر", "الودجة غير مُجاورة للمؤشّر (إدخال CDP هشّ) — مضمونة أيضًا بعلامة L2", true));
     else if (Math.abs(s.gap) <= GAP_TOL) out.push(pass("فجوة الاقتراحات = صفر", `يمين الودجة ${s.widgetRight} = المؤشّر ${s.caretLeft} (فجوة ${s.gap})`));
     else out.push(fail("فجوة الاقتراحات = صفر", `فجوة ${s.gap}px (يمين ${s.widgetRight} ≠ مؤشّر ${s.caretLeft}) — انحدار!`));
-  } catch (e) { out.push(skip("فجوة الاقتراحات = صفر", "تعذّر: " + e.message)); }
+  } catch (e) { out.push(skip("فجوة الاقتراحات = صفر", "تعذّر: " + e.message, true)); }
 
   // ودجة البحث لأعلى-اليسار (مرآة rtl20)
   try {
-    const f = await findWidget(cdp);
+    let f = await findWidget(cdp);
+    if (!f || !f.visible) f = await findWidget(cdp); // إعادة محاولة واحدة
     if (!f || !f.visible) out.push(skip("البحث أعلى-اليسار", "لم تظهر ودجة البحث"));
     else {
       // قرب الحافّة اليسرى فعلًا (المرآة تضعه عند maxRight≈2×شريط+خريطة ≈ 11% من العرض)، لا

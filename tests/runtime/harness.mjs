@@ -77,33 +77,55 @@ export async function editorGeometry(cdp) {
       dir: wb ? wb.getAttribute('dir') : null,
       editor: q('.monaco-editor'),
       minimap: q('.monaco-editor .minimap'),
+      content: q('.monaco-editor .view-lines'),
       gutter: q('.monaco-editor .margin'),
       lineNumbers: q('.monaco-editor .line-numbers'),
       scrollbarV: q('.monaco-editor .monaco-scrollable-element > .scrollbar.vertical'),
       overviewRuler: q('.monaco-editor .decorationsOverviewRuler'),
+      activityBar: q('.monaco-workbench .activitybar'),
       firstLineDir: (() => { const l = document.querySelector('.monaco-editor .view-line'); return l ? getComputedStyle(l).direction : null; })(),
     };
   })()`);
 }
 
-// يفتح الاقتراحات عند نهاية أوّل كلمة قابلة للإكمال ويقيس فجوة (يمين الودجة − يسار المؤشّر).
-export async function suggestGap(cdp, clickX = 700, clickY = 60) {
+// يفتح الاقتراحات ويقيس الفجوة (يسار الـcaret المرساة − يمين الودجة).
+// **القياس الحاسم (درس مثبَت): طابِق الودجة بالـcaret المُرسي بالتجاور** لا cs[0] (قد يكون
+// مؤشّرًا شبحيًّا/ثانويًّا ⇒ فشل زائف): الودجة تفتح أسفل مرساتها فـ`caret.bottom ≈ widget.top`
+// (أو أعلى: `caret.top ≈ widget.bottom`). النقر على سطر كود واضح (لا شريط علويّ).
+export async function suggestGap(cdp) {
   await bringToFront(cdp);
   await escape(cdp);
-  await click(cdp, clickX, clickY);           // ضع المؤشّر في المحرّر
+  // أغلق أيّ ودجة اقتراحات عالقة قبل التحفيز (وإلّا نقيس ودجةً بائتة على موضع خاطئ).
+  for (let i = 0; i < 6; i++) {
+    const n = await cdp.evaluate(`document.querySelectorAll('.suggest-widget.visible').length`);
+    if (!n) break;
+    await escape(cdp);
+  }
+  const pt = await cdp.evaluate(`(() => { const e = document.querySelector('.monaco-editor'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: Math.round(r.left + r.width * 0.5), y: Math.round(r.top + 130) }; })()`);
+  if (!pt) return { visible: false };
+  await click(cdp, pt.x, pt.y);                // ركّز على سطر كود
   await sleep(150);
-  await insertText(cdp, " التم");             // بادئة تُطابق كلمات الملفّ
+  await insertText(cdp, " التم");              // بادئة تُطابق كلمات الملفّ
   await sleep(400);
-  await key(cdp, ...KEY.SPACE, MOD.CTRL);      // Ctrl+Space
-  await sleep(1200);                           // انتظر استقرار الودجة (درس: أوّل إطار انتقاليّ)
-  return cdp.evaluate(`(() => {
-    const w = [...document.querySelectorAll('.suggest-widget')].find(x => x.classList.contains('visible') && x.getBoundingClientRect().width > 10);
-    if (!w) return { visible: false };
-    const r = w.getBoundingClientRect();
-    const cs = [...document.querySelectorAll('.monaco-editor .cursors-layer .cursor')].map(c => { const b = c.getBoundingClientRect(); return { x: Math.round(b.left), h: Math.round(b.height) }; }).filter(c => c.h > 0);
-    const caret = cs[0] || null;
-    return { visible: true, widgetRight: Math.round(r.right), widgetLeft: Math.round(r.left), caretLeft: caret ? caret.x : null, gap: caret ? (caret.x - Math.round(r.right)) : null };
+  await key(cdp, ...KEY.SPACE, MOD.CTRL);       // Ctrl+Space
+  await sleep(1200);                           // انتظر استقرار الودجة (أوّل إطار انتقاليّ خاطئ)
+  // **قياس حاسم: زاوِج كلّ ودجة مرئيّة بالـcaret المُجاور لها عموديًّا** (يتجاهل ودجةً بائتة
+  // بعيدة عن المؤشّر، ومؤشّرًا شبحيًّا). الفجوة = يسار الـcaret المُجاور − يمين الودجة المُجاورة.
+  const result = await cdp.evaluate(`(() => {
+    const ws = [...document.querySelectorAll('.suggest-widget')].filter(x => x.classList.contains('visible') && x.getBoundingClientRect().width > 10).map(x => x.getBoundingClientRect());
+    const cs = [...document.querySelectorAll('.monaco-editor .cursors-layer .cursor')].map(c => { const b = c.getBoundingClientRect(); return { x: Math.round(b.left), t: Math.round(b.top), b: Math.round(b.bottom), h: Math.round(b.height) }; }).filter(c => c.h > 0);
+    if (!ws.length) return { visible: false };
+    for (const w of ws) for (const c of cs) {
+      const below = Math.abs(c.b - Math.round(w.top)) <= 12;
+      const above = Math.abs(c.t - Math.round(w.bottom)) <= 12;
+      if (below || above) return { visible: true, widgetRight: Math.round(w.right), widgetLeft: Math.round(w.left), caretLeft: c.x, mode: below ? 'below' : 'above', gap: c.x - Math.round(w.right), cursorCount: cs.length };
+    }
+    return { visible: true, caretLeft: null, mode: 'none', cursorCount: cs.length, widgetCount: ws.length };
   })()`);
+  // نظافة: أغلق الودجة وتراجع عن النصّ المُدخَل كي لا يلوّث المخزن التأكيداتِ/التشغيلاتِ التالية.
+  await escape(cdp);
+  for (let i = 0; i < 4; i++) await key(cdp, 90, "KeyZ", MOD.CTRL);
+  return result;
 }
 
 // يفتح البحث (Ctrl+F) ويقيس موضعه.
