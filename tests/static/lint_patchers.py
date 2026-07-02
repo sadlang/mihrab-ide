@@ -148,6 +148,24 @@ def _strip_css_comments(text):
     return "".join(out)
 
 
+@check("لقطة L1 مواكِبة لوسم المنبع المثبَّت (upstream.json)")
+def _snapshot_matches_upstream():
+    # يُغلق حلقيّة L1-في-CI: لو رُقِّي المنبع دون refresh_snapshot، يصير الفحص على لقطة
+    # قديمة بلا معنى. نُلزِم أنّ وسم اللقطة = وسم upstream.json (وإلّا: حدِّث اللقطة).
+    tag_file = os.path.join(os.path.dirname(HERE), "apply", "snapshot", "SNAPSHOT_TAG.txt")
+    up_file = os.path.join(ROOT, "upstream.json")
+    if not os.path.isfile(tag_file) or not os.path.isfile(up_file):
+        return  # لا لقطة/منبع في هذا الفرع — تخطٍّ
+    up_tag = json.load(open(up_file, encoding="utf-8")).get("vscodium", {}).get("tag", "")
+    snap_tag = ""
+    for line in open(tag_file, encoding="utf-8"):
+        if "tag:" in line:
+            snap_tag = line.split("tag:", 1)[1].strip()
+            break
+    assert snap_tag == up_tag, (
+        f"لقطة L1 ({snap_tag}) ≠ وسم المنبع ({up_tag}) — شغّل refresh_snapshot.py بعد ترقية المنبع")
+
+
 @check("mihrab-rtl.css: أقواس متوازنة وكلّ قاعدة مقصورة على [dir=rtl]")
 def _css_lint():
     css_path = os.path.join(ROOT, M.CSS_PATCH)
