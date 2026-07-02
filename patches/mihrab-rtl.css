@@ -1,0 +1,171 @@
+/*---------------------------------------------------------------------------------------------
+ *  محراب — طبقة أنماط الاتّجاه من اليمين (RTL) — مرحلة RTL-0 (الأساس).
+ *
+ *  الطبقة: ط2-CSS (محزومة، تُستورَد من workbench.ts؛ يحزمها gulp).
+ *  المبدأ: نقلب القشرة لا المحتوى. `dir="rtl"` على .monaco-workbench (رُقعة النواة)
+ *  يقلب معظم التخطيطات المنطقيّة تلقائيًّا؛ هذه الورقة **تحمي** ما يجب أن يبقى LTR
+ *  (الكود، الطرفيّة) وتُصلِح كسورًا مبكّرة عالية الثقة. الإصلاحات البصريّة التفصيليّة
+ *  (RTL-1) تُضاف بعد حلقات المعاينة مع المستخدم.
+ *
+ *  ⚠️ حماية المحرّر أوّلًا: منطقة الكود ثنائيّة الاتّجاه (bidi) ويديرها Monaco لكلّ سطر.
+ *  قلبها يكسر قراءة البرامج — لذا نُجبرها LTR صراحةً.
+ *-------------------------------------------------------------------------------------------*/
+
+/* ── 1) محرّر الكود RTL (مشروع Monaco RTL م1 — إعادة تصميم صحيحة): **الحاوية تبقى LTR**.
+   درسٌ مثبَت بـCDP: بنية Monaco مبنيّة على إحداثيّات LTR فيزيائيّة؛ قلب `.monaco-editor` بـ
+   `dir=rtl` يرسي عناصرها المُطلَقة (`view-lines`، أبناء `.margin`) يمينًا خارج حاوياتها ⇒ النصّ
+   يطير خارج الشاشة. لذا نفرض LTR على الحاوية، ونحقّق RTL بطبقات أدقّ (رُقَع النواة):
+     • اتّجاه السطر: `_getTextDirection`⇒RTL (viewModelImpl) ⇒ Monaco يضبط `dir="rtl"` لكلّ سطر
+       (viewLine.ts:181) فيتدفّق النصّ العربيّ يمينًا، والمؤشّر/hit-test RTL مدمجان.
+     • المزراب يمينًا: `margin.ts` يزيح حاوية المزراب إلى `contentWidth`.
+     • المحتوى يسارًا: `editorScrollbar.ts` يضع المحتوى عند `left:0`.
+   راجع docs/rtl/monaco-rtl-map.md. القاعدة أدناه تحمي الحاوية؛ الأسطر تُقلَب فرديًّا عبر Monaco. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor {
+	direction: ltr;
+}
+
+/* ── 2) حماية الطرفيّة (xterm يفترض LTR صارمًا) ── */
+.monaco-workbench[dir="rtl"] .terminal,
+.monaco-workbench[dir="rtl"] .xterm,
+.monaco-workbench[dir="rtl"] .xterm-screen,
+.monaco-workbench[dir="rtl"] .integrated-terminal {
+	direction: ltr;
+}
+
+/* ── 3) عرض الفرق (Diff): الجزآن جنبًا لجنب يبقيان بمنطق LTR داخليًّا لاصطفاف الأسطر ── */
+.monaco-workbench[dir="rtl"] .monaco-diff-editor .editor.original,
+.monaco-workbench[dir="rtl"] .monaco-diff-editor .editor.modified {
+	direction: ltr;
+}
+
+/* ── 4) صناديق الإدخال: اتّجاه تلقائيّ من أوّل محرف قويّ (plaintext) — عربيّ→يمين،
+   لاتينيّ→يسار — دون فرض اتّجاه. نستثني .monaco-findInput (بحث/استبدال الكود يحوي
+   regex/رموزًا لاتينيّة، يبقى LTR صرفًا حمايةً للكود؛ يُراجَع بصريًّا في RTL-1). ── */
+.monaco-workbench[dir="rtl"] .monaco-inputbox input.input,
+.monaco-workbench[dir="rtl"] .monaco-inputbox textarea.input {
+	unicode-bidi: plaintext;
+}
+.monaco-workbench[dir="rtl"] .monaco-findInput .monaco-inputbox input.input {
+	direction: ltr;
+}
+
+/* ── 5) اختصارات المفاتيح تبقى LTR داخل سطر عربيّ (Ctrl+K لا تنقلب) ── */
+.monaco-workbench[dir="rtl"] .monaco-keybinding,
+.monaco-workbench[dir="rtl"] .monaco-keybinding-key {
+	direction: ltr;
+	unicode-bidi: isolate;
+}
+
+/* ── 6) عرض اختصار في قوائم الأوامر يبقى ملاصقًا للحافّة المنطقيّة الصحيحة ── */
+.monaco-workbench[dir="rtl"] .monaco-list-row .monaco-keybinding {
+	margin-inline-start: auto;
+}
+
+/* ── 7) أرقام الأسطر: نصّها LTR (أرقام لاتينيّة) لكن المزراب يضعه dir=rtl منطقيًّا ── */
+.monaco-workbench[dir="rtl"] .monaco-editor .line-numbers {
+	direction: ltr;
+}
+
+/* ── 8) أسهم التنقّل السابق/التالي في شريط العنوان (البند #51). مؤكَّد بالمصدر:
+   NavigateBackwards=arrow-left، NavigateForward=arrow-right (editorActions.ts) في مركز
+   الأوامر بشريط العنوان. في RTL يجب أن يشير «السابق» يمينًا و«التالي» يسارًا ⇒ نقلب كليهما
+   أفقيًّا بـscaleX(-1) (قلب بصريّ لا تخمين محتوى codicon). النطاق مقصور على `.command-center`
+   (صنف مؤكَّد في commandCenterControl.ts) لا كلّ شريط العنوان — إذ يستضيف أيضًا إجراءات
+   EditorTitle التي قد تحمل أسهمًا غير اتّجاهيّة من إضافات فتُقلَب خطأً. ── */
+.monaco-workbench[dir="rtl"] .part.titlebar .command-center .codicon-arrow-left::before,
+.monaco-workbench[dir="rtl"] .part.titlebar .command-center .codicon-arrow-right::before {
+	display: inline-block; /* لازم لتفعيل transform على العنصر الزائف */
+	transform: scaleX(-1);
+}
+
+/* ── 9) شريط الحالة: لا قاعدة — المصدر يضبط `flex-direction: row-reverse` عمدًا
+   (لالتفاف العناصر اليساريّة أوّلًا)، و`dir=rtl` يتكفّل بالاتّجاه. دوسُه بـ`row` كان
+   تخمينًا يكسر الالتفاف (ملاحظة Amelia) ⇒ أُزيل، نثق بالمصدر. ── */
+
+/* ── 10) صفحة الترحيب وما شابه: نصّ منطقيّ، نمنع قلب الشيفرات المضمّنة ── */
+.monaco-workbench[dir="rtl"] code,
+.monaco-workbench[dir="rtl"] .monaco-text-button .codicon,
+.monaco-workbench[dir="rtl"] pre {
+	unicode-bidi: isolate;
+}
+
+/* ── 11) القوائم المنسدلة/السياقيّة (Menu widget): قواعد اتّجاهها **ليست هنا**. القوائم
+   السياقيّة تُصيَّر في Shadow DOM فلا يخترقها CSS المستند. لذا حُقنت قواعد RTL داخل مولّد
+   `getMenuWidgetCSS` في menu.ts (عبر رُقعة `patch_menu_rtl.py`) بمحدِّد مزدوج
+   `:host-context([dir=rtl])` (ظلّ) + `.monaco-workbench[dir=rtl]` (ضوء). راجع الرُقعة. ── */
+
+/* ── 12) فاصل SplitView الأفقيّ المستقلّ في RTL: يُرسَم بـ`left:0` على العرض غير الأوّل
+   (حافّته اليسرى = الحدّ في LTR). مع قلب العروض والمقبض لليمين (رُقعتا splitview+sash) صار
+   الحدّ على اليمين ⇒ ننقل الفاصل إلى `right:0`. **يطابق منطق الرُقعتين**: `:not(.mihrab-grid-sv)`
+   يستثني splitview الشبكة (التي لا تنقلب عروضها) فلا يتنافر الفاصل معها (ملاحظة Amelia). ── */
+.monaco-workbench[dir="rtl"] .monaco-split-view2.separator-border.horizontal:not(.mihrab-grid-sv) > .monaco-scrollable-element > .split-view-container > .split-view-view:not(:first-child)::before {
+	left: auto;
+	right: 0;
+}
+
+/* ── 13) محرّر Monaco RTL م2 — مسطرة النظرة (decorationsOverviewRuler) إلى اليسار. هي ابنة
+   المنطقة القابلة للتمرير (`.monaco-scrollable-element`) بـ`right:0` (حافّتها اليمنى). مع نقل
+   الخريطة يسارًا والمزراب يمينًا (رُقعة editor م2) نريدها على الحافّة **اليسرى** للمحتوى ⇒
+   `right:auto; left:0`. الخريطة نفسها والمزراب والمحتوى تُوضَع من رُقَع النواة (JS) لا هنا.
+   نطاق دقيق: تحت `.monaco-editor` فقط (لا نلمس أشرطة تمرير القوائم/اللوحات الأخرى).
+
+   ملاحظة (طلب المستخدم، م5): **شريط التمرير العموديّ يبقى يمينًا** (لا نُدرِجه هنا). المنطقة
+   القابلة للتمرير مُوضَعة عند `[minimapWidth, minimapWidth+contentWidth]` (رُقعة editorScrollbar)،
+   والشريط العموديّ ابنُها بـ`right:0` الافتراضيّ ⇒ حافّته اليمنى = الحافّة الداخليّة للمزراب =
+   **بجانب أرقام الأسطر** يمينًا. عكسناه سابقًا لليسار في م2 ثمّ أعدناه يمينًا بطلب المستخدم. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor > .overflow-guard > .monaco-scrollable-element > .decorationsOverviewRuler {
+	right: auto;
+	left: 0;
+}
+
+/* ── 14) محرّر Monaco RTL م3 — التمرير اللاصق (sticky scroll) إلى اليمين. الودجة تُخطِّط
+   عبر **الطفو**: `.sticky-widget-line-numbers` بـ`float:left` (عرض=contentLeft) يدفع حاوية
+   السطور (`position:absolute; left:auto`) إلى موضعها الساكن `left≈contentLeft` (بعد المزراب).
+   بقلب الطفو إلى `right` ينزاح المزراب/الأرقام إلى اليمين وتنزاح حاوية السطور تلقائيًّا إلى
+   اليسار — مرآة كاملة تُطابق المحرّر (مزراب يمينًا، نصّ يسارًا). نصّ السطر RTL أصلًا (السطر
+   يُصيَّر بـtextDirection RTL من viewModel). أيقونة الطيّ تبقى `float:right` داخل رقم السطر.
+   **اتّجاه النصّ:** خلافًا لأسطر المحرّر (يضع viewLine.ts `dir="rtl"` على الحاوية)، التمرير
+   اللاصق يستعمل `renderViewLine` مباشرةً فلا تُوسَم حاوية `.sticky-line-content` باتّجاه ⇒
+   تبقى LTR (مثبَت CDP: dir=null). نفرض `direction:rtl` عليها فيتدفّق النصّ من اليمين كالمحرّر
+   (يغلب `direction:ltr` للحاوية بأعلى نوعيّة). مثبَت حيًّا: الأرقام يمينًا + النصّ من اليمين. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor .sticky-widget .sticky-widget-line-numbers {
+	float: right;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .sticky-widget .sticky-line-content {
+	direction: rtl;
+}
+
+/* ── 15) محرّر Monaco RTL م5 — ودجة الاقتراحات (IntelliSense/suggest) اتّجاه RTL. الحاوية ترث
+   LTR من قاعدة 1 (حماية المحرّر) فيظهر النصّ من اليسار وينقلب ترتيب الأعمدة. نفرض `direction:rtl`
+   على الودجة فتتدفّق تسميات الإكمال العربيّة من اليمين، وينعكس صفّ الـflex (`.main > .left` =
+   الأيقونة+التسمية إلى اليمين، `.right` = التفاصيل إلى اليسار) — مرآة RTL صحيحة. الموضع الأفقيّ
+   للودجة (محاذاتها بالمؤشّر) محسوب في JS (contentWidgets.ts) ويُعالَج برُقعة نواة منفصلة. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor .suggest-widget {
+	direction: rtl;
+}
+
+/* ── 16) مرآة الودجات العائمة المُثبَّتة بـ`right` فيزيائيّ (لا منطقيّ) فلا يقلبها `dir=rtl`
+   تلقائيًّا. الإشعارات (نخب + مركز) مرساها الافتراضيّ `right:3px/7px` أسفل-اليمين — نعكسها
+   أسفل-اليسار (يطابق صنف VSCode الشحنيّ `.bottom-left{right:auto;left:Npx}`).
+
+   **قصر مقصود على الموضع الافتراضيّ عبر `:not(.bottom-left):not(.top-right)`** (ملاحظة Amelia):
+   محدّدنا يفوق أصناف الموضع الصريحة في الأولويّة فيدوسها؛ ولو عكسنا مرسى `.top-right` لانكسرت
+   حركة انزلاقه الأفقيّة (`translate3d(100%,0,0)` تدخل من الحافّة اليمنى — تصير خطأً بعد نقل المرسى
+   يسارًا). فنترك الأصناف الصريحة كما هي (النظام قد يبدّلها ديناميكيًّا)، ونمرئي الحالة الشائعة فقط.
+   النخب الافتراضيّ (أسفل) ينزلق عموديًّا `translate3d(0,100%,0)` فلا يمسّه عكس المحور الأفقيّ.
+
+   وزرّ النقر العائم (`.floating-click-widget` = «أضِف تهيئة»/«انقر للتحرير») مرساه `right:20px` ⇒
+   يسارًا (لا أصناف موضع له). **مثبَت CDP بحقن عقدة اختبار:** الثلاثة تنتقل لليسار (3/7/20px) تحت
+   `[dir=rtl]`. لا نلمس شارات الأيقونات (badge) ولا ودجات دفتر الملاحظات — مرآتها دقيقة/غير ذات صلة. ── */
+.monaco-workbench[dir="rtl"] .notifications-toasts:not(.bottom-left):not(.top-right) {
+	right: auto;
+	left: 3px;
+}
+.monaco-workbench[dir="rtl"] .notifications-center:not(.bottom-left):not(.top-right) {
+	right: auto;
+	left: 7px;
+}
+.monaco-workbench[dir="rtl"] .floating-click-widget {
+	right: auto;
+	left: 20px;
+}
