@@ -173,8 +173,14 @@ def _css_lint():
         # تخطَّ القواعد الشرطيّة (@media/@supports…) — محدّداتها الداخليّة تُفحَص بذاتها.
         if sel.lstrip().startswith("@"):
             continue
-        assert '[dir="rtl"]' in sel, (
-            f"قاعدة CSS غير مقصورة على RTL (خطر تسرّب عالميّ): «{sel[:70]}»")
+        # افحص **كلّ جزء بفاصلة** لا السلسلة كاملةً: «.foo, [dir=rtl] .bar» يحوي [dir=rtl]
+        # لكنّ .foo عالميّ متسرّب — الفحص على المجموع يمرّره خطأً (نجاح كاذب).
+        for part in sel.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            assert '[dir="rtl"]' in part, (
+                f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…»")
 
 
 # ───────────────────────── المشغّل ─────────────────────────
