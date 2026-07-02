@@ -1,0 +1,26 @@
+{
+  "contents": {
+    "dist/extension": {
+      "searchResult.title": "نتائج البحث",
+      "searchResult.openFile": "فتح الملف",
+      "searchResult.openInEditor": "فتح في المحرر",
+      "searchResult.dismiss": "إزالة",
+      "searchResult.replaceAll": "استبدال الكل",
+      "searchResult.replace": "استبدال",
+      "searchResult.copyPath": "نسخ المسار",
+      "searchResult.copyMatch": "نسخ التطابق",
+      "searchResult.collapseAll": "طي الكل",
+      "searchResult.expandAll": "توسيع الكل",
+      "searchResult.clearResults": "مسح نتائج البحث",
+      "searchResult.showMatch": "إظهار التطابق",
+      "searchResult.refresh": "تحديث نتائج البحث",
+      "searchResult.toggleCaseSensitive": "تطابق حالة الأحرف",
+      "searchResult.toggleWholeWord": "كلمة كاملة",
+      "searchResult.toggleRegex": "استخدام التعبيرات النمطية",
+      "searchResult.includeFiles": "الملفات المشمولة",
+      "searchResult.excludeFiles": "الملفات المستبعدة",
+      "searchResult.matchCount": "{0} تطابقات في {1} ملفات",
+      "searchResult.noResults": "لا توجد نتائج"
+    }
+  }
+}

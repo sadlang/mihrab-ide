@@ -1,0 +1,18 @@
+{
+  "contents": {
+    "dist/extension": {
+      "microsoft.authentication.signin": "تسجيل الدخول بحساب Microsoft",
+      "microsoft.authentication.signout": "تسجيل الخروج من حساب Microsoft",
+      "microsoft.authentication.account": "حساب Microsoft",
+      "microsoft.authentication.signIn.title": "تسجيل الدخول",
+      "microsoft.authentication.signIn.description": "سجل دخولك بحساب Microsoft للوصول إلى الإعدادات والمزامنة",
+      "microsoft.authentication.usePersonal": "حساب شخصي",
+      "microsoft.authentication.useWork": "حساب عمل أو مدرسة",
+      "microsoft.authentication.switchAccount": "تبديل الحساب",
+      "microsoft.authentication.manageAccount": "إدارة الحساب",
+      "microsoft.authentication.tokenExpired": "انتهت صلاحية الرمز",
+      "microsoft.authentication.refreshToken": "تحديث الرمز",
+      "microsoft.authentication.scopes": "أذونات التطبيق"
+    }
+  }
+}

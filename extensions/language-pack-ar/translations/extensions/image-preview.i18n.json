@@ -1,0 +1,21 @@
+{
+  "contents": {
+    "dist/extension": {
+      "imagePreview.title": "معاينة الصورة",
+      "imagePreview.zoomIn": "تكبير",
+      "imagePreview.zoomOut": "تصغير",
+      "imagePreview.fitToWindow": "ملاءمة النافذة",
+      "imagePreview.originalSize": "الحجم الأصلي",
+      "imagePreview.showImageInfo": "إظهار معلومات الصورة",
+      "imagePreview.copyImage": "نسخ الصورة",
+      "imagePreview.flipHorizontal": "قلب أفقي",
+      "imagePreview.flipVertical": "قلب عمودي",
+      "imagePreview.rotateClockwise": "تدوير مع عقارب الساعة",
+      "imagePreview.rotateCounterClockwise": "تدوير عكس عقارب الساعة",
+      "imagePreview.background.checkerboard": "خلفية رقعة الشطرنج",
+      "imagePreview.background.transparent": "خلفية شفافة",
+      "imagePreview.background.white": "خلفية بيضاء",
+      "imagePreview.background.black": "خلفية سوداء"
+    }
+  }
+}

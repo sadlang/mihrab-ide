@@ -1,0 +1,12 @@
+{
+  "contents": {
+    "dist/browser/phpClient": {
+      "php.validate.enable": "تفعيل التحقق من PHP",
+      "php.validate.executablePath": "مسار تنفيذ PHP",
+      "php.validate.run": "وقت التشغيل",
+      "php.suggest.basic": "اقتراحات PHP الأساسية",
+      "php.completion.triggerPropertyValueCompletion": "إكمال القيمة تلقائياً",
+      "php.problems.exclude": "استبعاد مشاكل PHP"
+    }
+  }
+}

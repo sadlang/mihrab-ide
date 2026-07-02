@@ -1,0 +1,25 @@
+{
+  "contents": {
+    "dist/npmMain": {
+      "npm.runScript": "NPM: تشغيل سكريبت",
+      "npm.runScriptFromFolder": "NPM: تشغيل سكريبت من مجلد...",
+      "npm.debugScript": "NPM: تصحيح سكريبت",
+      "npm.openScript": "NPM: فتح سكريبت",
+      "npm.runInstall": "NPM: تثبيت الحزم",
+      "npm.runSelectedScript": "NPM: تشغيل السكريبت المحدد",
+      "npm.runBuild": "NPM: تشغيل البناء",
+      "npm.runTest": "NPM: تشغيل الاختبار",
+      "npm.runStart": "NPM: تشغيل البدء",
+      "npm.runWatch": "NPM: تشغيل المراقبة",
+      "npm.packageManager": "مدير الحزم",
+      "npm.showOutput": "NPM: إظهار المخرجات",
+      "npm.refresh": "NPM: تحديث قائمة السكريبتات",
+      "npm.explorerExcludeFolder": "استبعاد مجلد من مستكشف NPM",
+      "npm.validate": "NPM: التحقق من صحة package.json",
+      "npm.outdated": "عرض الحزم القديمة",
+      "npm.update": "تحديث الحزم",
+      "npm.audit": "فحص أمان الحزم",
+      "npm.init": "NPM: تهيئة مشروع جديد"
+    }
+  }
+}

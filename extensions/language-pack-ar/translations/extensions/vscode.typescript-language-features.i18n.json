@@ -1,0 +1,35 @@
+{
+  "contents": {
+    "dist/extension": {
+      "typescript.title": "TypeScript",
+      "javascript.title": "JavaScript",
+      "typescript.restartTsServer": "إعادة تشغيل خادم TS",
+      "typescript.selectVersion": "اختيار إصدار TypeScript",
+      "typescript.openTsServerLog": "فتح سجل خادم TS",
+      "typescript.goToProjectConfig": "الانتقال إلى إعدادات المشروع",
+      "typescript.organizeImports": "ترتيب الاستيرادات",
+      "typescript.removeUnusedImports": "إزالة الاستيرادات غير المستخدمة",
+      "typescript.sortImports": "ترتيب الاستيرادات أبجدياً",
+      "typescript.addMissingImports": "إضافة الاستيرادات المفقودة",
+      "typescript.findAllFileReferences": "البحث عن جميع مراجع الملف",
+      "typescript.renameFile": "إعادة تسمية الملف",
+      "typescript.refactor": "إعادة هيكلة...",
+      "typescript.quickFix": "إصلاح سريع...",
+      "typescript.implementInterface": "تنفيذ الواجهة",
+      "typescript.generateGettersSetters": "إنشاء الحاصلات والمُعيِّنات",
+      "typescript.extractFunction": "استخراج كدالة",
+      "typescript.extractConstant": "استخراج كثابت",
+      "typescript.moveToNewFile": "نقل إلى ملف جديد",
+      "typescript.goToSourceDefinition": "الانتقال إلى تعريف المصدر",
+      "typescript.autoImport": "استيراد تلقائي",
+      "typescript.inlayHints.parameterNames": "تلميحات أسماء المعاملات",
+      "typescript.inlayHints.variableTypes": "تلميحات أنواع المتغيرات",
+      "typescript.inlayHints.returnTypes": "تلميحات أنواع القيم المُعادة",
+      "typescript.enablePromptUseWorkspaceTsdk": "استخدام TypeScript من مساحة العمل",
+      "typescript.tsserver.watchOptions": "خيارات مراقبة خادم TS",
+      "typescript.preferences.importModuleSpecifier": "نمط محدد الاستيراد",
+      "typescript.referencesCodeLens": "عدسة الكود للمراجع",
+      "typescript.implementationsCodeLens": "عدسة الكود للتنفيذات"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "contents": {
+    "dist/emmetNodeMain": {
+      "emmet.expandAbbreviation": "Emmet: توسيع الاختصار",
+      "emmet.wrapWithAbbreviation": "Emmet: التفاف بالاختصار",
+      "emmet.removeTag": "Emmet: إزالة الوسم",
+      "emmet.updateTag": "Emmet: تحديث الوسم",
+      "emmet.matchTag": "Emmet: الانتقال إلى الوسم المقابل",
+      "emmet.balanceInward": "Emmet: توازن داخلي",
+      "emmet.balanceOutward": "Emmet: توازن خارجي",
+      "emmet.prevEditPoint": "Emmet: نقطة التحرير السابقة",
+      "emmet.nextEditPoint": "Emmet: نقطة التحرير التالية",
+      "emmet.mergeLines": "Emmet: دمج الأسطر",
+      "emmet.toggleComment": "Emmet: تبديل التعليق",
+      "emmet.splitJoinTag": "Emmet: تقسيم/دمج الوسم",
+      "emmet.incrementByOne": "Emmet: زيادة بمقدار 1",
+      "emmet.decrementByOne": "Emmet: إنقاص بمقدار 1",
+      "emmet.evaluateMath": "Emmet: حساب التعبير الرياضي",
+      "emmet.reflectCSSValue": "Emmet: انعكاس قيمة CSS",
+      "emmet.incrementByTen": "Emmet: زيادة بمقدار 10",
+      "emmet.decrementByTen": "Emmet: إنقاص بمقدار 10",
+      "emmet.incrementByPointOne": "Emmet: زيادة بمقدار 0.1",
+      "emmet.decrementByPointOne": "Emmet: إنقاص بمقدار 0.1",
+      "emmet.selectPrevItem": "Emmet: تحديد العنصر السابق",
+      "emmet.selectNextItem": "Emmet: تحديد العنصر التالي",
+      "emmet.showAbbreviationSuggestions": "إظهار اقتراحات اختصارات Emmet",
+      "emmet.showExpandedAbbreviation": "إظهار الاختصار الموسّع",
+      "emmet.updateImageSize": "Emmet: تحديث حجم الصورة",
+      "emmet.wrapIndividualLines": "Emmet: التفاف الأسطر بشكل فردي"
+    }
+  }
+}

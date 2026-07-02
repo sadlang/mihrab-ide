@@ -1,0 +1,28 @@
+{
+  "contents": {
+    "dist/markdownMain": {
+      "markdown.preview.title": "معاينة Markdown",
+      "markdown.previewSide.title": "فتح المعاينة بجانب",
+      "markdown.showSource.title": "إظهار المصدر",
+      "markdown.showPreviewSecuritySelector.title": "إعدادات أمان المعاينة",
+      "markdown.preview.refresh": "تحديث المعاينة",
+      "markdown.preview.toggleLock": "قفل/فتح المعاينة",
+      "markdown.insertLink": "إدراج رابط",
+      "markdown.insertImage": "إدراج صورة",
+      "markdown.toggleBold": "تبديل الخط العريض",
+      "markdown.toggleItalic": "تبديل الخط المائل",
+      "markdown.toggleStrikethrough": "تبديل خط يتوسطه",
+      "markdown.toggleCodeBlock": "تبديل كتلة الكود",
+      "markdown.toggleCodeSpan": "تبديل الكود المضمّن",
+      "markdown.toggleHeading": "تبديل العنوان",
+      "markdown.toggleList": "تبديل القائمة",
+      "markdown.toggleOrderedList": "تبديل القائمة المرقّمة",
+      "markdown.toggleCheckbox": "تبديل مربع الاختيار",
+      "markdown.openDocumentLink": "فتح رابط المستند",
+      "markdown.findAllReferences": "البحث عن جميع مراجع Markdown",
+      "markdown.renameSymbol": "إعادة تسمية رمز Markdown",
+      "markdown.editor.formatDocument": "تنسيق مستند Markdown",
+      "markdown.validate": "التحقق من صحة روابط Markdown"
+    }
+  }
+}

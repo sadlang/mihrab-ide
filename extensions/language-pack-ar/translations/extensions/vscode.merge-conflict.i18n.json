@@ -1,0 +1,25 @@
+{
+  "contents": {
+    "dist/mergeConflictMain": {
+      "mergeConflict.accept.current": "قبول التغيير الحالي",
+      "mergeConflict.accept.incoming": "قبول التغيير الوارد",
+      "mergeConflict.accept.both": "قبول كلا التغييرين",
+      "mergeConflict.accept.selection": "قبول ما تم تحديده",
+      "mergeConflict.compare": "مقارنة التغييرات الحالية",
+      "mergeConflict.next": "تعارض الدمج التالي",
+      "mergeConflict.previous": "تعارض الدمج السابق",
+      "mergeConflict.accept.all.current": "قبول جميع التغييرات الحالية",
+      "mergeConflict.accept.all.incoming": "قبول جميع التغييرات الواردة",
+      "mergeConflict.accept.all.both": "قبول جميع التغييرات",
+      "mergeConflict.title": "تعارضات الدمج",
+      "mergeConflict.count": "{0} تعارضات دمج متبقية",
+      "mergeConflict.resolved": "تم حل التعارض",
+      "mergeConflict.codelens.current": "قبول الحالي",
+      "mergeConflict.codelens.incoming": "قبول الوارد",
+      "mergeConflict.codelens.both": "قبول الاثنين",
+      "mergeConflict.codelens.compare": "مقارنة",
+      "mergeConflict.diffEditor": "محرر الفروقات للتعارضات",
+      "mergeConflict.openMergeEditor": "فتح محرر الدمج"
+    }
+  }
+}

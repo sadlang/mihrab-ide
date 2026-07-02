@@ -1,0 +1,15 @@
+{
+  "contents": {
+    "dist/extension": {
+      "livePreview.title": "معاينة حية",
+      "livePreview.start": "بدء المعاينة الحية",
+      "livePreview.stop": "إيقاف المعاينة الحية",
+      "livePreview.openInBrowser": "فتح في المتصفح",
+      "livePreview.showPreview": "إظهار المعاينة الحية",
+      "livePreview.autoRefresh": "تحديث تلقائي",
+      "livePreview.portNumber": "رقم المنفذ",
+      "livePreview.serverRoot": "جذر الخادم",
+      "livePreview.customExternalBrowser": "متصفح خارجي مخصص"
+    }
+  }
+}
