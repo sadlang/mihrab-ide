@@ -1,0 +1,19 @@
+{
+  "contents": {
+    "dist/browser/jsonClient": {
+      "json.format.enable": "تفعيل التنسيق التلقائي لملفات JSON",
+      "json.validate.enable": "تفعيل التحقق من صحة JSON",
+      "json.schemaDownload.enable": "تفعيل تنزيل مخططات JSON",
+      "json.maxItemsComputed": "أقصى عدد عناصر محسوبة",
+      "json.trace.server": "تتبع خادم JSON",
+      "json.colorDecorators.enable": "تفعيل مزينات الألوان في JSON",
+      "json.sortKeys": "ترتيب المفاتيح",
+      "json.resultLimit": "حد النتائج",
+      "json.schemas": "مخططات JSON",
+      "json.schemas.url": "رابط المخطط",
+      "json.schemas.fileMatch": "مطابقة الملفات",
+      "json.schemas.schema": "المخطط المضمن",
+      "json.format.keepLines": "الحفاظ على الأسطر"
+    }
+  }
+}

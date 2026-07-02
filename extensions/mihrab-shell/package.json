@@ -1,0 +1,20 @@
+{
+  "$schema": "vscode://schemas/vscode-extensions",
+  "name": "mihrab-shell",
+  "displayName": "قشرة محراب",
+  "description": "إعدادات قشرة محراب الافتراضيّة (اتّجاه RTL): الشريط الجانبي يمينًا وما يلزم لتجربة عربيّة-أوّلًا. الطبقة 1 (إضافة محزومة) — لا رُقعة نواة.",
+  "version": "0.1.0",
+  "publisher": "sadlang",
+  "license": "MIT",
+  "engines": { "vscode": "*" },
+  "categories": ["Other"],
+  "contributes": {
+    "configurationDefaults": {
+      "workbench.sideBar.location": "right"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sadlang/mihrab-ide.git"
+  }
+}

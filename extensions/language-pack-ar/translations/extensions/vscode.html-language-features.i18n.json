@@ -1,0 +1,24 @@
+{
+  "contents": {
+    "dist/browser/htmlClient": {
+      "html.format.enable": "تفعيل تنسيق HTML",
+      "html.format.wrapLineLength": "الحد الأقصى لطول السطر",
+      "html.format.unformatted": "عناصر غير منسقة",
+      "html.format.contentUnformatted": "محتوى غير منسق",
+      "html.format.indentInnerHtml": "مسافة بادئة للعناصر الداخلية",
+      "html.format.preserveNewLines": "الحفاظ على الأسطر الجديدة",
+      "html.format.maxPreserveNewLines": "أقصى عدد أسطر جديدة محفوظة",
+      "html.format.wrapAttributes": "تغليف السمات",
+      "html.validate.scripts": "التحقق من البرامج النصية",
+      "html.validate.styles": "التحقق من الأنماط",
+      "html.autoClosingTags": "إغلاق الوسوم تلقائياً",
+      "html.autoCreateQuotes": "إنشاء علامات الاقتباس تلقائياً",
+      "html.mirrorCursorOnMatchingTag": "انعكاس المؤشر على الوسم المطابق",
+      "html.hover.documentation": "إظهار التوثيق عند التمرير",
+      "html.hover.references": "إظهار المراجع عند التمرير",
+      "html.suggest.html5": "اقتراحات HTML5",
+      "html.trace.server": "تتبع خادم HTML",
+      "html.completion.attributeDefaultValue": "القيمة الافتراضية للسمة"
+    }
+  }
+}

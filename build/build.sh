@@ -141,9 +141,10 @@ if [[ -f "$OVERRIDES" ]]; then
   mv -f "$UP/product.json.tmp" "$UP/product.json"
 fi
 
-# ── (ز-2ب) حزم إضافات محراب المدمجة (م2-أ، الطبقة 1): جهّزها في .mihrab-extensions
-#         (ينجو من git reset في وضع -s) ورقّع build.sh المنبع ليحقنها بعد cd vscode
-#         (لا قبل dev/build.sh لأنّ «git add . ; git reset --hard» يحذف غير المتعقَّب). ──
+# ── (ز-2ب) حزم إضافات محراب المدمجة (م2-أ، الطبقة 1) + رُقَع نواة محراب (الطبقة 3):
+#         جهّزها في .mihrab-* (تنجو من git reset في وضع -s) ورقّع build.sh المنبع
+#         ليحقنها بعد cd vscode (لا قبل dev/build.sh لأنّ «git add . ; git reset
+#         --hard» يحذف غير المتعقَّب). يشمل التعريب (إضافة لغة عربيّة + لغة افتراضيّة). ──
 STAGE_EXT="$UP/.mihrab-extensions"
 rm -rf "$STAGE_EXT"; mkdir -p "$STAGE_EXT"
 shopt -s nullglob
@@ -153,9 +154,30 @@ for ext in "$ROOT"/extensions/*/; do
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 shopt -u nullglob
+# جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).
+[[ -f "$ROOT/build/patch_main_locale.py" ]] && cp -f "$ROOT/build/patch_main_locale.py" "$UP/.mihrab-patch-main-locale.py"
+[[ -f "$ROOT/build/patch_workbench_rtl.py" ]] && cp -f "$ROOT/build/patch_workbench_rtl.py" "$UP/.mihrab-patch-workbench-rtl.py"
+[[ -f "$ROOT/build/patch_menubar_rtl.py" ]] && cp -f "$ROOT/build/patch_menubar_rtl.py" "$UP/.mihrab-patch-menubar-rtl.py"
+[[ -f "$ROOT/build/patch_menu_rtl.py" ]] && cp -f "$ROOT/build/patch_menu_rtl.py" "$UP/.mihrab-patch-menu-rtl.py"
+[[ -f "$ROOT/build/patch_splitview_rtl.py" ]] && cp -f "$ROOT/build/patch_splitview_rtl.py" "$UP/.mihrab-patch-splitview-rtl.py"
+[[ -f "$ROOT/build/patch_sash_rtl.py" ]] && cp -f "$ROOT/build/patch_sash_rtl.py" "$UP/.mihrab-patch-sash-rtl.py"
+[[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
+[[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
+[[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
 BSH="$UP/build.sh"
-if [[ -f "$BSH" ]] && ! grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
-  log "ترقيع build.sh (حقن الإضافات المدمجة)"
+# الوسم يتضمّن إصدار الحقن؛ بدّله عند توسيع الرُقَع كي يُعاد الترقيع على build.sh نظيف.
+if [[ -f "$BSH" ]] && ! grep -q 'محراب: رُقَع النواة v14 (+محرّر RTL م5 حارس طيّ)' "$BSH"; then
+  log "ترقيع build.sh (حقن الإضافات + رُقَع النواة: لغة + اتّجاه RTL)"
+  # أعِد ضبط build.sh لو كان مُرقَّعًا بحقن أقدم كي يُطبَّق الحقن الموسَّع على نسخة نظيفة.
+  # نتحقّق من نجاح الاستعادة فعلًا (لا || true صامت) لتفادي تراكب حقنين في الحالة الحديّة.
+  if grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
+    git -C "$UP" checkout -- build.sh 2>/dev/null || true
+    if grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
+      echo "❌ تعذّر استعادة build.sh نظيفًا (ربّما صار غير متعقَّب) — لتفادي حقن مزدوج، أوقف." >&2
+      echo "   أعد توليد المنبع: shift أو احذف $UP وأعد تشغيل البناء." >&2
+      exit 1
+    fi
+  fi
   python "$ROOT/build/patch_bundle_extensions.py" "$BSH"
 fi
 
@@ -179,6 +201,18 @@ if [[ "${SKIP_SOURCE:-no}" == "yes" ]]; then BUILD_ARGS+=("-s"); fi
 log "بدء dev/build.sh ${BUILD_ARGS[*]:-}"
 # "${BUILD_ARGS[@]:-}" يمنع خطأ unbound تحت set -u عند مصفوفة فارغة في إصدارات bash الأقدم.
 bash dev/build.sh "${BUILD_ARGS[@]:-}"
+
+# ── (ط-0) خبز الواجهة العربيّة في nls.messages.json الافتراضيّ (مساهمة بناء — الطبقة 2) ──
+# خطوة بعد-بناء سريعة على الـartifacts (لا إعادة gulp). تجعل العربيّة الافتراضيّ الحرفيّ
+# للنواة ⇒ أوّل فتح عربيّ بلا إعادة تحميل ولا اعتماد على مسح حزمة لغة. idempotent.
+APP_DIR="$UP/VSCode-win32-x64/resources/app"
+if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
+  log "خبز الواجهة العربيّة في nls.messages.json"
+  python "$ROOT/build/bake_nls_arabic.py" "$APP_DIR" || {
+    echo "❌ فشل خبز الترجمة العربيّة — راجع أعلاه." >&2; exit 1; }
+else
+  log "تخطّي الخبز: لا nls.messages.json في $APP_DIR (بناء غير مكتمل؟)"
+fi
 
 # ── (ط) تحقّق المخرَج (اسم الـexe = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
 EXE="$UP/VSCode-win32-x64/Mihrab.exe"

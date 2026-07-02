@@ -1,0 +1,28 @@
+{
+  "contents": {
+    "dist/extension": {
+      "github.title": "GitHub",
+      "github.publish": "نشر في GitHub",
+      "github.clone": "استنساخ من GitHub",
+      "github.openOnGitHub": "فتح في GitHub",
+      "github.openPullRequest": "فتح طلب السحب",
+      "github.createPullRequest": "إنشاء طلب سحب",
+      "github.openIssue": "فتح المشكلة",
+      "github.createIssue": "إنشاء مشكلة جديدة",
+      "github.copyUrl": "نسخ رابط GitHub",
+      "github.copyPermalink": "نسخ الرابط الدائم",
+      "github.openRepository": "فتح المستودع",
+      "github.publishWorkspace": "نشر مساحة العمل في GitHub",
+      "github.addRemote": "إضافة مستودع بعيد من GitHub",
+      "github.repository.private": "مستودع خاص",
+      "github.repository.public": "مستودع عام",
+      "github.repository.name": "اسم المستودع",
+      "github.repository.description": "وصف المستودع",
+      "github.gist.create": "إنشاء Gist",
+      "github.gist.open": "فتح Gist",
+      "github.actions.status": "حالة الإجراءات",
+      "github.codespaces.create": "إنشاء Codespace",
+      "github.codespaces.connect": "الاتصال بـ Codespace"
+    }
+  }
+}

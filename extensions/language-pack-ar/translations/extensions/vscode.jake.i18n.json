@@ -1,0 +1,10 @@
+{
+  "contents": {
+    "dist/extension": {
+      "jake.autoDetect": "الكشف التلقائي عن مهام Jake",
+      "jake.taskDefinition.file": "ملف Jake",
+      "jake.taskDefinition.task": "اسم المهمة",
+      "jake.enable": "تفعيل اكتشاف مهام Jake"
+    }
+  }
+}

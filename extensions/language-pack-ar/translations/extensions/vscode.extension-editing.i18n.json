@@ -1,0 +1,25 @@
+{
+  "contents": {
+    "dist/extensionEditingMain": {
+      "extension.command.missing": "الأمر '{0}' لم يُعثر عليه",
+      "extension.activate.error": "فشل تفعيل الإضافة '{0}'",
+      "extension.deactivate.error": "فشل تعطيل الإضافة '{0}'",
+      "extension.install.error": "فشل تثبيت الإضافة '{0}'",
+      "extension.uninstall.error": "فشل إلغاء تثبيت الإضافة '{0}'",
+      "extension.update.error": "فشل تحديث الإضافة '{0}'",
+      "extension.dependency.missing": "الاعتماد '{0}' مفقود",
+      "extension.incompatible": "الإضافة '{0}' غير متوافقة مع هذا الإصدار",
+      "extension.deprecated": "الإضافة '{0}' مُهملة",
+      "extension.manifest.invalid": "ملف manifest الإضافة غير صالح",
+      "extension.permissions.required": "الإضافة '{0}' تتطلب أذونات إضافية",
+      "extension.untrusted": "الإضافة '{0}' في وضع مقيد بسبب ثقة مساحة العمل",
+      "extension.crash": "تعطلت الإضافة '{0}'",
+      "extension.host.restarting": "جاري إعادة تشغيل مضيف الإضافات",
+      "extension.recommended": "الإضافات الموصى بها لهذه المساحة",
+      "extension.enable": "تفعيل الإضافة",
+      "extension.disable": "تعطيل الإضافة",
+      "extension.enableWorkspace": "تفعيل (مساحة العمل)",
+      "extension.disableWorkspace": "تعطيل (مساحة العمل)"
+    }
+  }
+}

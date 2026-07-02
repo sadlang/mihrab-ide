@@ -1,0 +1,33 @@
+{
+  "contents": {
+    "dist/extension": {
+      "debug.debugAutoAttach.label": "التصحيح: التتبع التلقائي",
+      "debug.debugAutoAttach.on": "مفعّل",
+      "debug.debugAutoAttach.off": "معطّل",
+      "debug.debugAutoAttach.smart": "ذكي",
+      "debug.debugAutoAttach.disabled": "التتبع التلقائي معطّل",
+      "debug.debugAutoAttach.always": "دائماً",
+      "debug.debugAutoAttach.onlyWithFlag": "فقط مع علامة",
+      "debug.toggleAutoAttach": "تبديل التتبع التلقائي",
+      "debug.startDebugging": "بدء التصحيح",
+      "debug.addConfiguration": "إضافة إعداد تصحيح...",
+      "debug.openLaunchJson": "فتح launch.json",
+      "debug.selectAndStartDebugging": "اختيار وبدء التصحيح",
+      "debug.focusOnBreakpoints": "التركيز على نقاط التوقف",
+      "debug.focusOnCallStack": "التركيز على مكدس الاستدعاءات",
+      "debug.focusOnVariables": "التركيز على المتغيرات",
+      "debug.focusOnWatch": "التركيز على المراقبة",
+      "debug.addWatchExpression": "إضافة تعبير مراقبة",
+      "debug.removeWatchExpression": "إزالة تعبير المراقبة",
+      "debug.removeAllWatchExpressions": "إزالة جميع تعابير المراقبة",
+      "debug.editWatchExpression": "تحرير تعبير المراقبة",
+      "debug.inlineBreakpoint": "نقطة توقف مضمّنة",
+      "debug.conditionalBreakpoint": "نقطة توقف مشروطة...",
+      "debug.logPoint": "نقطة تسجيل...",
+      "debug.functionBreakpoint": "نقطة توقف عند دالة...",
+      "debug.dataBreakpoint": "نقطة توقف عند بيانات",
+      "debug.runToCursor": "تشغيل حتى المؤشر",
+      "debug.jumpToCursor": "القفز إلى المؤشر"
+    }
+  }
+}

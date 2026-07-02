@@ -1,0 +1,17 @@
+{
+  "contents": {
+    "dist/browser/extension": {
+      "simpleBrowser.title": "متصفح بسيط",
+      "simpleBrowser.show": "إظهار المتصفح البسيط",
+      "simpleBrowser.url": "عنوان URL",
+      "simpleBrowser.url.placeholder": "أدخل عنوان URL...",
+      "simpleBrowser.api.openUrl": "فتح عنوان URL في المتصفح البسيط",
+      "simpleBrowser.title.default": "متصفح بسيط",
+      "simpleBrowser.back": "رجوع",
+      "simpleBrowser.forward": "تقدم",
+      "simpleBrowser.navigateBack": "تنقل للخلف",
+      "simpleBrowser.navigateForward": "تنقل للأمام",
+      "simpleBrowser.openExternalBrowser": "فتح في متصفح خارجي"
+    }
+  }
+}

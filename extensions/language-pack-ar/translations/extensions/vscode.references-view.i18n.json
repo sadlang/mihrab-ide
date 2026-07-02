@@ -1,0 +1,26 @@
+{
+  "contents": {
+    "dist/extension": {
+      "references.title": "المراجع",
+      "references.findReferences": "البحث عن جميع المراجع",
+      "references.findImplementations": "البحث عن جميع التنفيذات",
+      "references.showCallHierarchy": "عرض تسلسل الاستدعاءات",
+      "references.showTypeHierarchy": "عرض تسلسل الأنواع",
+      "references.peekReferences": "معاينة المراجع",
+      "references.peekImplementations": "معاينة التنفيذات",
+      "references.peekCallHierarchy": "معاينة تسلسل الاستدعاءات",
+      "references.peekTypeHierarchy": "معاينة تسلسل الأنواع",
+      "references.incomingCalls": "الاستدعاءات الواردة",
+      "references.outgoingCalls": "الاستدعاءات الصادرة",
+      "references.subtypes": "الأنواع الفرعية",
+      "references.supertypes": "الأنواع الأصلية",
+      "references.clearResults": "مسح النتائج",
+      "references.refresh": "تحديث",
+      "references.copy": "نسخ",
+      "references.copyPath": "نسخ المسار",
+      "references.openToSide": "فتح بجانب",
+      "references.collapseAll": "طي الكل",
+      "references.noResults": "لا توجد نتائج"
+    }
+  }
+}
