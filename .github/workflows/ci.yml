@@ -47,3 +47,23 @@ jobs:
           count=$(find patches -name '*.patch' | wc -l)
           echo "📊 رُقَع النواة (الطبقة الثالثة): $count"
           echo "   (م0 يبدأ بصفر؛ ارتفاعه = ارتفاع دَيْن الدمج.)"
+
+  patch-layer:
+    name: طبقة الرقعة (L0 ساكن + L1 مراسي)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # L0 — فحص ساكن: صياغة المرقِّعات، بنية FILES، JSON، مانيفست حزمة اللغة، lint CSS.
+      - name: L0 — فحص ساكن لطبقة الرقعة
+        run: python tests/static/lint_patchers.py
+
+      # L1 — تطبيق المراسي على لقطة المنبع المثبَّتة (fixture مُلتزَمة؛ لا يحتاج تحضير VSCode).
+      #      يمسك انجراف المراسي فورًا بدل فشل بناء صامت بعد ~20 د.
+      - name: L1 — تطبيق مراسي الرُقَع على لقطة المنبع
+        env:
+          MIHRAB_L1_SOURCE: snapshot
+        run: python tests/apply/check_anchors.py
