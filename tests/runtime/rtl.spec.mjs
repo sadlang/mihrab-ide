@@ -78,9 +78,11 @@ export async function interactionAssertions(cdp) {
     const f = await findWidget(cdp);
     if (!f || !f.visible) out.push(skip("البحث أعلى-اليسار", "لم تظهر ودجة البحث"));
     else {
-      const mid = f.editorLeft + f.editorWidth / 2;
-      if (f.left < mid) out.push(pass("البحث أعلى-اليسار", `left=${f.left} (< منتصف ${Math.round(mid)})`));
-      else out.push(fail("البحث أعلى-اليسار", `left=${f.left} (≥ منتصف ${Math.round(mid)}) — لم يُعكَس!`));
+      // قرب الحافّة اليسرى فعلًا (المرآة تضعه عند maxRight≈2×شريط+خريطة ≈ 11% من العرض)، لا
+      // مجرّد النصف الأيسر — عتبة 25% تمسك المرآة الجزئيّة (مثلًا left=400) دون false-pass.
+      const bound = f.editorLeft + f.editorWidth * 0.25;
+      if (f.left < bound) out.push(pass("البحث أعلى-اليسار", `left=${f.left} (< ${Math.round(bound)}، قرب الحافّة اليسرى)`));
+      else out.push(fail("البحث أعلى-اليسار", `left=${f.left} (≥ ${Math.round(bound)}) — لم يُعكَس لأعلى-اليسار!`));
     }
   } catch (e) { out.push(skip("البحث أعلى-اليسار", "تعذّر: " + e.message)); }
 
