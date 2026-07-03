@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- خلفية sessions الفارغة (تستبدل letterpress-sessions-light.svg) — قوس محراب مطموس باهت، على أرضيّة فاتحة. id مِجَسّ. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <path id="mihrab-arch" fill-rule="evenodd" fill="#127C6E" fill-opacity="0.16" d="M30 104 L30 68 A68 68 0 0 1 64 24 A68 68 0 0 1 98 68 L98 104 Z M46 104 L46 74 A40 40 0 0 1 64 46 A40 40 0 0 1 82 74 L82 104 Z M61 76 L67 76 L67 102 L61 102 Z"/>
+</svg>

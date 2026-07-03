@@ -4,6 +4,7 @@
   "nameLong": "محراب",
   "applicationName": "mihrab",
   "dataFolderName": ".mihrab",
+  "defaultLocale": "ar",
   "linuxIconName": "mihrab",
   "quality": "stable",
   "urlProtocol": "mihrab",

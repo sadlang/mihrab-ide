@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- أيقونة رأس التطبيق (شريط العنوان) — تستبدل code-icon.svg. فضاء مربّع 128×128
+     بإزاحة أفقيّة +14 (= PAD_X في gen_ico.py) فتطابق هندسة mihrab.ico بكسلًا.
+     ⚠️ code-icon.svg أصل مشترك (رأس التطبيق + banner + walkthrough + gettingStarted…) يظهر
+     على أرضيّات داكنة وفاتحة، فاللون موازَن لِيَجتاز WCAG 1.4.11 (≥3:1) على الشريطين معًا:
+     تيل #1E8A79 (داكن 3.50 · فاتح 3.30)، ومؤشّر ذهبيّ #A87A22 (داكن 3.85 · فاتح 3.00).
+     المُعرّف mihrab-arch مِجَسّ L0/L2. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="محراب">
+  <title>محراب</title>
+  <g id="mihrab-arch" fill="none">
+    <path d="M36 116 L36 58 A56 56 0 0 1 64 8 A56 56 0 0 1 92 58 L92 116"
+          stroke="#1E8A79" stroke-width="6.5" stroke-linecap="round"/>
+    <path d="M49 116 L49 74 A28 28 0 0 1 64 50 A28 28 0 0 1 79 74 L79 116"
+          stroke="#1E8A79" stroke-width="4" stroke-linecap="round" opacity="0.42"/>
+    <rect x="61" y="82" width="6" height="30" rx="3" fill="#A87A22"/>
+  </g>
+</svg>

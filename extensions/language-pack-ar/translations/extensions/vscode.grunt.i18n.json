@@ -1,0 +1,10 @@
+{
+  "contents": {
+    "dist/extension": {
+      "grunt.autoDetect": "الكشف التلقائي عن مهام Grunt",
+      "grunt.taskDefinition.file": "ملف Grunt",
+      "grunt.taskDefinition.task": "اسم المهمة",
+      "grunt.enable": "تفعيل اكتشاف مهام Grunt"
+    }
+  }
+}

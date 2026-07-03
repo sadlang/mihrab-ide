@@ -1,0 +1,33 @@
+{
+  "iconDefinitions": {
+    "mihrab-sad": { "iconPath": "./icons/sad.svg" },
+    "mihrab-file": { "iconPath": "./icons/file.svg" },
+    "mihrab-folder": { "iconPath": "./icons/folder.svg" },
+    "mihrab-folder-open": { "iconPath": "./icons/folder-open.svg" },
+    "mihrab-sad-light": { "iconPath": "./icons/sad-light.svg" },
+    "mihrab-file-light": { "iconPath": "./icons/file-light.svg" },
+    "mihrab-folder-light": { "iconPath": "./icons/folder-light.svg" },
+    "mihrab-folder-open-light": { "iconPath": "./icons/folder-open-light.svg" }
+  },
+  "file": "mihrab-file",
+  "folder": "mihrab-folder",
+  "folderExpanded": "mihrab-folder-open",
+  "fileExtensions": {
+    "ص": "mihrab-sad"
+  },
+  "languageIds": {
+    "sad": "mihrab-sad"
+  },
+  "light": {
+    "file": "mihrab-file-light",
+    "folder": "mihrab-folder-light",
+    "folderExpanded": "mihrab-folder-open-light",
+    "fileExtensions": {
+      "ص": "mihrab-sad-light"
+    },
+    "languageIds": {
+      "sad": "mihrab-sad-light"
+    }
+  },
+  "hidesExplorerArrows": false
+}

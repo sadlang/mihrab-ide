@@ -1,0 +1,22 @@
+{
+  "contents": {
+    "dist/configurationEditingMain": {
+      "openSettings": "فتح الإعدادات",
+      "openSettingsJson": "فتح ملف الإعدادات (JSON)",
+      "openWorkspaceSettings": "فتح إعدادات مساحة العمل",
+      "openFolderSettings": "فتح إعدادات المجلد",
+      "openGlobalSettings": "فتح الإعدادات العامة",
+      "openWorkspaceSettingsJson": "فتح إعدادات مساحة العمل (JSON)",
+      "openFolderSettingsJson": "فتح إعدادات المجلد (JSON)",
+      "openDefaultSettings": "فتح الإعدادات الافتراضية",
+      "openUserSettings": "فتح إعدادات المستخدم",
+      "configureLanguageSettings": "تهيئة إعدادات خاصة باللغة",
+      "resetSetting": "إعادة تعيين الإعداد",
+      "copySettingId": "نسخ معرّف الإعداد",
+      "copySettingAsJson": "نسخ الإعداد بتنسيق JSON",
+      "showModifiedSettings": "إظهار الإعدادات المعدّلة",
+      "clearSearchResults": "مسح نتائج البحث",
+      "settingsEditorError": "خطأ في قراءة الإعدادات: {0}"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "contents": {
+    "dist/browser/cssClient": {
+      "css.validate": "تفعيل التحقق من CSS",
+      "css.lint.compatibleVendorPrefixes": "بادئات المورد المتوافقة",
+      "css.lint.vendorPrefix": "بادئة المورد",
+      "css.lint.duplicateProperties": "الخصائص المكررة",
+      "css.lint.emptyRules": "القواعد الفارغة",
+      "css.lint.importStatement": "عبارات الاستيراد",
+      "css.lint.boxModel": "نموذج الصندوق",
+      "css.lint.universalSelector": "المحدد العام",
+      "css.lint.zeroUnits": "وحدات الصفر",
+      "css.lint.fontFaceProperties": "خصائص @font-face",
+      "css.lint.hexColorLength": "طول لون سداسي عشري",
+      "css.lint.argumentsInColorFunction": "وسائط دالة اللون",
+      "css.lint.unknownProperties": "الخصائص غير المعروفة",
+      "css.lint.unknownAtRules": "قواعد @ غير المعروفة",
+      "css.lint.ieHack": "اختراقات IE",
+      "css.lint.unknownVendorSpecificProperties": "خصائص المورد غير المعروفة",
+      "css.lint.propertyIgnoredDueToDisplay": "خاصية متجاهلة بسبب العرض",
+      "css.lint.idSelector": "محدد المعرف",
+      "css.lint.float": "استخدام float",
+      "css.completion.triggerPropertyValueCompletion": "تشغيل إكمال القيمة",
+      "css.completion.completePropertyWithSemicolon": "إكمال الخاصية بفاصلة منقوطة",
+      "css.format.enable": "تفعيل التنسيق",
+      "css.format.newlineBetweenSelectors": "سطر جديد بين المحددات",
+      "css.format.newlineBetweenRules": "سطر جديد بين القواعد",
+      "css.format.spaceAroundSelectorSeparator": "مسافة حول فاصل المحدد",
+      "css.format.braceStyle": "نمط الأقواس",
+      "css.hover.documentation": "إظهار التوثيق عند التمرير",
+      "css.hover.references": "إظهار المراجع عند التمرير",
+      "css.trace.server": "تتبع خادم CSS",
+      "css.customData": "بيانات CSS مخصصة"
+    }
+  }
+}

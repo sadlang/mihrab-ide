@@ -1,0 +1,21 @@
+{
+  "contents": {
+    "dist/extension": {
+      "mediaPreview.title": "معاينة الوسائط",
+      "mediaPreview.video.autoplay": "تشغيل تلقائي للفيديو",
+      "mediaPreview.video.loop": "تكرار الفيديو",
+      "mediaPreview.video.controls": "عناصر التحكم بالفيديو",
+      "mediaPreview.audio.autoplay": "تشغيل تلقائي للصوت",
+      "mediaPreview.audio.loop": "تكرار الصوت",
+      "mediaPreview.audio.controls": "عناصر التحكم بالصوت",
+      "mediaPreview.zoomIn": "تكبير",
+      "mediaPreview.zoomOut": "تصغير",
+      "mediaPreview.fitToWindow": "ملاءمة النافذة",
+      "mediaPreview.originalSize": "الحجم الأصلي",
+      "mediaPreview.flipHorizontal": "قلب أفقي",
+      "mediaPreview.flipVertical": "قلب عمودي",
+      "mediaPreview.rotateClockwise": "تدوير مع عقارب الساعة",
+      "mediaPreview.rotateCounterClockwise": "تدوير عكس عقارب الساعة"
+    }
+  }
+}

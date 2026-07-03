@@ -1,0 +1,27 @@
+{
+  "$schema": "vscode://schemas/vscode-extensions",
+  "name": "mihrab-icons",
+  "displayName": "أيقونات محراب",
+  "description": "سمة أيقونات محراب: ملفّ ص يحمل القوس، مجلّدات فيروزيّة، وملفّ عامّ هادئ. تعمل على السمتين الداكنة والفاتحة.",
+  "version": "0.1.0",
+  "publisher": "sadlang",
+  "license": "MIT",
+  "engines": { "vscode": "*" },
+  "categories": ["Themes"],
+  "contributes": {
+    "iconThemes": [
+      {
+        "id": "mihrab-icons",
+        "label": "أيقونات محراب",
+        "path": "./mihrab-icon-theme.json"
+      }
+    ],
+    "configurationDefaults": {
+      "workbench.iconTheme": "mihrab-icons"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sadlang/mihrab-ide.git"
+  }
+}

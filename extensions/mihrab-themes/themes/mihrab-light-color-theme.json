@@ -1,0 +1,182 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "محراب الفاتحة",
+  "type": "light",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#F5F0E4",
+    "editor.foreground": "#33474C",
+    "editorLineNumber.foreground": "#B3A992",
+    "editorLineNumber.activeForeground": "#6E6552",
+    "editor.lineHighlightBackground": "#ECE5D2",
+    "editor.selectionBackground": "#D3E1D8",
+    "editor.selectionHighlightBackground": "#DFE8DC",
+    "editorCursor.foreground": "#C79A3E",
+    "editorWhitespace.foreground": "#DAD0BC",
+    "editorIndentGuide.background1": "#E0D8C6",
+    "editorIndentGuide.activeBackground1": "#C3B79C",
+    "editorBracketMatch.background": "#D3E1D8",
+    "editorBracketMatch.border": "#0F7C6E",
+    "focusBorder": "#0F7C6E",
+    "foreground": "#4A5A50",
+    "titleBar.activeBackground": "#EAE3D1",
+    "titleBar.activeForeground": "#3E4E44",
+    "titleBar.inactiveBackground": "#EFE8D8",
+    "titleBar.inactiveForeground": "#8A7F6B",
+    "activityBar.background": "#EAE3D1",
+    "activityBar.foreground": "#33474C",
+    "activityBar.inactiveForeground": "#9A9078",
+    "activityBar.activeBorder": "#0F7C6E",
+    "activityBarBadge.background": "#0F7C6E",
+    "activityBarBadge.foreground": "#EAF6F2",
+    "sideBar.background": "#EFE8D8",
+    "sideBar.foreground": "#4A5A50",
+    "sideBarSectionHeader.background": "#E7E0CE",
+    "sideBarTitle.foreground": "#7C7360",
+    "statusBar.background": "#0F7C6E",
+    "statusBar.foreground": "#EAF6F2",
+    "statusBar.noFolderBackground": "#0E6A5F",
+    "statusBar.debuggingBackground": "#BB552B",
+    "tab.activeBackground": "#F5F0E4",
+    "tab.inactiveBackground": "#E7E0CE",
+    "tab.activeForeground": "#2C3B40",
+    "tab.inactiveForeground": "#8A7F6B",
+    "tab.activeBorderTop": "#0F7C6E",
+    "tab.border": "#E7E0CE",
+    "editorGroupHeader.tabsBackground": "#E7E0CE",
+    "panel.background": "#EFE8D8",
+    "panelTitle.activeForeground": "#33474C",
+    "terminal.background": "#F5F0E4",
+    "terminal.foreground": "#33474C",
+    "input.background": "#FBF7EC",
+    "input.foreground": "#33474C",
+    "input.border": "#D4C9B0",
+    "dropdown.background": "#FBF7EC",
+    "list.activeSelectionBackground": "#D3E1D8",
+    "list.activeSelectionForeground": "#243B36",
+    "list.hoverBackground": "#EAE3D1",
+    "list.highlightForeground": "#785006",
+    "button.background": "#0F7C6E",
+    "button.foreground": "#EAF6F2",
+    "button.hoverBackground": "#12897A",
+    "badge.background": "#0F7C6E",
+    "badge.foreground": "#EAF6F2",
+    "progressBar.background": "#785006",
+    "textLink.foreground": "#0B626E",
+    "textLink.activeForeground": "#0B808F",
+    "scrollbarSlider.background": "#C3B79C80",
+    "scrollbarSlider.hoverBackground": "#B3A992AA",
+    "editorWidget.background": "#EFE8D8",
+    "editorSuggestWidget.background": "#F1EBDD",
+    "editorSuggestWidget.selectedBackground": "#D9E5DC",
+    "editorHoverWidget.background": "#F1EBDD",
+    "peekViewEditor.background": "#EFE8D8"
+  },
+  "tokenColors": [
+    {
+      "name": "تعليق",
+      "scope": [
+        "comment",
+        "comment.line.number-sign.sad",
+        "comment.block.sad",
+        "comment.line.documentation.sad",
+        "comment.block.documentation.sad"
+      ],
+      "settings": {
+        "foreground": "#6A6452",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "كلمة مفتاحيّة",
+      "scope": [
+        "keyword.control.sad",
+        "keyword.control.directive.sad",
+        "keyword.other.sad",
+        "keyword.operator.word.sad",
+        "storage.type.sad",
+        "storage.modifier.sad",
+        "storage.modifier.lifetime.sad",
+        "constant.language",
+        "constant.language.sad"
+      ],
+      "settings": {
+        "foreground": "#0C6659"
+      }
+    },
+    {
+      "name": "عامل",
+      "scope": [
+        "keyword.operator.sad"
+      ],
+      "settings": {
+        "foreground": "#525C66"
+      }
+    },
+    {
+      "name": "نصّ",
+      "scope": [
+        "string",
+        "string.quoted.double.sad",
+        "string.quoted.raw.sad",
+        "string.quoted.interpolated.sad"
+      ],
+      "settings": {
+        "foreground": "#4C6A2C"
+      }
+    },
+    {
+      "name": "هروب",
+      "scope": [
+        "constant.character.escape.sad"
+      ],
+      "settings": {
+        "foreground": "#8F4117"
+      }
+    },
+    {
+      "name": "رقم",
+      "scope": [
+        "constant.numeric",
+        "constant.numeric.decimal.sad",
+        "constant.numeric.hex.sad",
+        "constant.numeric.binary.sad",
+        "constant.numeric.octal.sad"
+      ],
+      "settings": {
+        "foreground": "#A5431C"
+      }
+    },
+    {
+      "name": "نوع مدعوم",
+      "scope": [
+        "support.type.sad"
+      ],
+      "settings": {
+        "foreground": "#0B626E"
+      }
+    }
+  ],
+  "semanticTokenColors": {
+    "function": "#785006",
+    "method": "#785006",
+    "class": "#0B626E",
+    "struct": "#0B626E",
+    "enum": "#0B626E",
+    "interface": "#0B626E",
+    "type": "#0B626E",
+    "typeParameter": "#0B626E",
+    "namespace": "#0B626E",
+    "variable": "#2E4045",
+    "parameter": "#2E4045",
+    "property": "#2E4045",
+    "enumMember": "#8F4117",
+    "keyword": "#0C6659",
+    "number": "#A5431C",
+    "string": "#4C6A2C",
+    "comment": {
+      "foreground": "#6A6452",
+      "fontStyle": "italic"
+    }
+  }
+}

@@ -19,7 +19,11 @@ for _s in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-MARK = "محراب: حقن الإضافات المدمجة"
+MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
+# وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
+# بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
+CORE_PATCH_VERSION = "v18"
+VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
 
@@ -33,7 +37,75 @@ INJECT = """
       cp -r "${_mext}" "extensions/${_mname}"
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
-  done"""
+  done
+  # محراب: رُقَع النواة v18 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
+  # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
+  # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
+  # زورًا مع إعلان نجاح — على غرار رُقَع RTL/اللغة القاتلة.
+  if [ -d ../.mihrab-branding ]; then
+    for _masset in code.ico code_150x150.png code_70x70.png code-icon.svg letterpress-dark.svg letterpress-light.svg letterpress-hcDark.svg letterpress-hcLight.svg; do
+      [ -f "../.mihrab-branding/${_masset}" ] || { echo "محراب: أصل هوية مفقود ../.mihrab-branding/${_masset}" >&2; exit 1; }
+    done
+    cp -f ../.mihrab-branding/code.ico resources/win32/code.ico
+    cp -f ../.mihrab-branding/code.ico resources/win32/default.ico
+    cp -f ../.mihrab-branding/code_150x150.png resources/win32/code_150x150.png
+    cp -f ../.mihrab-branding/code_70x70.png resources/win32/code_70x70.png
+    echo "محراب: طُبِّقت أيقونة التطبيق وبلاطات ويندوز"
+    # شعار رأس التطبيق: .window-appicon في titlebarpart.css يشير إلى media/code-icon.svg.
+    cp -f ../.mihrab-branding/code-icon.svg src/vs/workbench/browser/media/code-icon.svg
+    # خلفية المحرّر الفارغ: .letterpress في editorgroupview.css يشير إلى letterpress-{dark,light,hcDark,hcLight}.svg.
+    for _lp in dark light hcDark hcLight; do
+      cp -f "../.mihrab-branding/letterpress-${_lp}.svg" "src/vs/workbench/browser/parts/editor/media/letterpress-${_lp}.svg"
+    done
+    echo "محراب: طُبِّق شعار رأس التطبيق وخلفية المحرّر"
+    # أصول مساحة sessions التجريبيّة: شعار حوض الأسماك (vscodeLogoPath.ts، مسار مطموس مملوء)،
+    # أيقونة Open-in-VSCode (بديل تطوير)، وخلفيّة sessions الفارغة.
+    for _sasset in vscode-icon.svg vscodeLogoPath.ts letterpress-sessions-dark.svg letterpress-sessions-light.svg; do
+      [ -f "../.mihrab-branding/${_sasset}" ] || { echo "محراب: أصل هوية sessions مفقود ../.mihrab-branding/${_sasset}" >&2; exit 1; }
+    done
+    cp -f ../.mihrab-branding/vscode-icon.svg src/vs/sessions/browser/media/vscode-icon.svg
+    cp -f ../.mihrab-branding/vscodeLogoPath.ts src/vs/sessions/contrib/aquarium/browser/vscodeLogoPath.ts
+    cp -f ../.mihrab-branding/letterpress-sessions-dark.svg src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-dark.svg
+    cp -f ../.mihrab-branding/letterpress-sessions-light.svg src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-light.svg
+    echo "محراب: طُبِّقت أصول مساحة sessions (شعار الحوض + أيقونة + خلفية)"
+  fi
+  if [ -f ../.mihrab-patch-main-locale.py ]; then
+    python ../.mihrab-patch-main-locale.py src/main.ts || { echo "محراب: فشلت رُقعة اللغة الافتراضيّة" >&2; exit 1; }
+  fi
+  # رُقعة الاتّجاه RTL-0: انسخ ورقة الأنماط إلى media/ ثمّ رقّع workbench.ts ليستوردها ويضبط dir=rtl.
+  if [ -f ../.mihrab-patch-workbench-rtl.py ] && [ -f ../.mihrab-rtl.css ]; then
+    cp -f ../.mihrab-rtl.css src/vs/workbench/browser/media/mihrab-rtl.css
+    python ../.mihrab-patch-workbench-rtl.py src/vs/workbench/browser/workbench.ts || { echo "محراب: فشلت رُقعة اتّجاه RTL" >&2; exit 1; }
+  fi
+  # رُقعة RTL-2: محاذاة منسدلة شريط القوائم يمينًا في RTL (لا تخرج من حافّة النافذة).
+  if [ -f ../.mihrab-patch-menubar-rtl.py ]; then
+    python ../.mihrab-patch-menubar-rtl.py src/vs/base/browser/ui/menu/menubar.ts || { echo "محراب: فشلت رُقعة قوائم RTL" >&2; exit 1; }
+  fi
+  # رُقعة RTL-2: تعاقب القائمة الفرعيّة يسارًا في RTL (menu.ts).
+  if [ -f ../.mihrab-patch-menu-rtl.py ]; then
+    python ../.mihrab-patch-menu-rtl.py src/vs/base/browser/ui/menu/menu.ts || { echo "محراب: فشلت رُقعة القائمة الفرعيّة RTL" >&2; exit 1; }
+  fi
+  # رُقعة RTL-2: وسم splitview الشبكة (يُمكِّن استثناءها في رُقعتَي splitview/sash).
+  if [ -f ../.mihrab-patch-gridview-marker.py ]; then
+    python ../.mihrab-patch-gridview-marker.py src/vs/base/browser/ui/grid/gridview.ts || { echo "محراب: فشلت رُقعة وسم الشبكة" >&2; exit 1; }
+  fi
+  # رُقعة RTL-2: اتّجاه SplitView الأفقيّ المستقلّ (كلّ اللوحات، باستثناء splitview الشبكة) + المقبض.
+  if [ -f ../.mihrab-patch-splitview-rtl.py ]; then
+    python ../.mihrab-patch-splitview-rtl.py src/vs/base/browser/ui/splitview/splitview.ts || { echo "محراب: فشلت رُقعة SplitView RTL" >&2; exit 1; }
+  fi
+  if [ -f ../.mihrab-patch-sash-rtl.py ]; then
+    python ../.mihrab-patch-sash-rtl.py src/vs/base/browser/ui/sash/sash.ts || { echo "محراب: فشلت رُقعة المقبض RTL" >&2; exit 1; }
+  fi
+  # رُقعة محرّر Monaco RTL م1–م4: الحاوية LTR + اتّجاه السطر RTL + خريطة يسارًا · مزراب يمينًا + طيّ + تمرير أفقيّ RTL.
+  # تُرقّع 6 ملفّات (viewModelImpl/margin/editorScrollbar/minimap/mouseTarget/viewLayout) من جذر المصدر «.».
+  if [ -f ../.mihrab-patch-editor-rtl.py ]; then
+    python ../.mihrab-patch-editor-rtl.py . || { echo "محراب: فشلت رُقعة محرّر RTL" >&2; exit 1; }
+  fi
+  # رُقعة صفحة الترحيب: شعار القوس + الجملة الاستعاريّة في ترويسة Get Started (شكل الشعار في mihrab-rtl.css).
+  if [ -f ../.mihrab-patch-welcome-rtl.py ]; then
+    python ../.mihrab-patch-welcome-rtl.py src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts || { echo "محراب: فشلت رُقعة صفحة الترحيب" >&2; exit 1; }
+  fi"""
 
 
 def main() -> int:
@@ -42,14 +114,24 @@ def main() -> int:
         return 2
     path = sys.argv[1]
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", newline="") as f:
             text = f.read()
     except OSError as e:
         print(f"⚠️ تعذّر فتح {path}: {e}", file=sys.stderr)
         return 1
-    if MARK in text:
-        print("مُرقَّع مسبقًا — تخطٍّ.")
+    # حارس انجراف داخليّ: تأكّد أنّ وسم الإصدار مضمَّن فعلًا في INJECT (لا يفترقان بصمت).
+    if VERSION_MARK not in INJECT:
+        print(f"⚠️ تناقض داخليّ: {VERSION_MARK} غير موجود في INJECT — حدّث CORE_PATCH_VERSION.", file=sys.stderr)
+        return 1
+    # idempotency واعٍ بالإصدار: تخطٍّ فقط لو كان الحقن الحاليّ بالضبط موجودًا. لو وُجِد حقنٌ
+    # محرابيّ بإصدار أقدم (MARK دون VERSION_MARK) فلا نتخطّى صامتًا (يُبقي حقنًا بائتًا) ولا نُضاعف
+    # الحقن — بل نُخفِق بوضوح ونطلب استعادة build.sh نظيفًا (كما يفعل مسار build.sh قبل الاستدعاء).
+    if VERSION_MARK in text:
+        print("مُرقَّع بالإصدار الحاليّ مسبقًا — تخطٍّ.")
         return 0
+    if MARK in text:
+        print("مُرقَّع بإصدار أقدم — استعِد build.sh نظيفًا قبل إعادة الترقيع (تفاديًا لحقن بائت/مزدوج).", file=sys.stderr)
+        return 1
     if ANCHOR not in text:
         print("⚠️ لم يُعثر على سطر «cd vscode» المتوقّع في build.sh — ربّما تغيّر المنبع.", file=sys.stderr)
         return 1

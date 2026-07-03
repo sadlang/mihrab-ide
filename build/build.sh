@@ -141,21 +141,73 @@ if [[ -f "$OVERRIDES" ]]; then
   mv -f "$UP/product.json.tmp" "$UP/product.json"
 fi
 
-# ── (ز-2ب) حزم إضافات محراب المدمجة (م2-أ، الطبقة 1): جهّزها في .mihrab-extensions
-#         (ينجو من git reset في وضع -s) ورقّع build.sh المنبع ليحقنها بعد cd vscode
-#         (لا قبل dev/build.sh لأنّ «git add . ; git reset --hard» يحذف غير المتعقَّب). ──
+# ── (ز-2ب) حزم إضافات محراب المدمجة (م2-أ، الطبقة 1) + رُقَع نواة محراب (الطبقة 3):
+#         جهّزها في .mihrab-* (تنجو من git reset في وضع -s) ورقّع build.sh المنبع
+#         ليحقنها بعد cd vscode (لا قبل dev/build.sh لأنّ «git add . ; git reset
+#         --hard» يحذف غير المتعقَّب). يشمل التعريب (إضافة لغة عربيّة + لغة افتراضيّة). ──
 STAGE_EXT="$UP/.mihrab-extensions"
 rm -rf "$STAGE_EXT"; mkdir -p "$STAGE_EXT"
 shopt -s nullglob
 for ext in "$ROOT"/extensions/*/; do
   [[ -f "${ext}package.json" ]] || continue
-  cp -r "$ext" "$STAGE_EXT/$(basename "$ext")"
+  _dst="$STAGE_EXT/$(basename "$ext")"
+  cp -r "$ext" "$_dst"
+  # جرّد مصنوعات التوليد غير الوقتيّة من النسخة المشحونة (cp -r لا يحترم .vscodeignore):
+  # سكربتات مولِّدات السمات/الأيقونات (*.py) و__pycache__ ليست جزءًا من المنتج.
+  find "$_dst" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$_dst" -type f -name '*.py' -delete 2>/dev/null || true
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 shopt -u nullglob
+# جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).
+[[ -f "$ROOT/build/patch_main_locale.py" ]] && cp -f "$ROOT/build/patch_main_locale.py" "$UP/.mihrab-patch-main-locale.py"
+[[ -f "$ROOT/build/patch_workbench_rtl.py" ]] && cp -f "$ROOT/build/patch_workbench_rtl.py" "$UP/.mihrab-patch-workbench-rtl.py"
+[[ -f "$ROOT/build/patch_menubar_rtl.py" ]] && cp -f "$ROOT/build/patch_menubar_rtl.py" "$UP/.mihrab-patch-menubar-rtl.py"
+[[ -f "$ROOT/build/patch_menu_rtl.py" ]] && cp -f "$ROOT/build/patch_menu_rtl.py" "$UP/.mihrab-patch-menu-rtl.py"
+[[ -f "$ROOT/build/patch_splitview_rtl.py" ]] && cp -f "$ROOT/build/patch_splitview_rtl.py" "$UP/.mihrab-patch-splitview-rtl.py"
+[[ -f "$ROOT/build/patch_sash_rtl.py" ]] && cp -f "$ROOT/build/patch_sash_rtl.py" "$UP/.mihrab-patch-sash-rtl.py"
+[[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
+[[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
+[[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
+[[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
+# جهّز أصول هوية محراب البصريّة (أيقونة التطبيق + بلاطتا ويندوز) في مجلّد ينجو من reset،
+# ليحقنها build.sh المنبع فوق resources/win32/ بعد cd vscode (تستبدل هوية VSCodium).
+BRAND_SRC="$ROOT/assets/branding"
+BRAND_STAGE="$UP/.mihrab-branding"
+rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
+[[ -f "$BRAND_SRC/mihrab.ico" ]] && cp -f "$BRAND_SRC/mihrab.ico" "$BRAND_STAGE/code.ico"
+[[ -f "$BRAND_SRC/mihrab_150x150.png" ]] && cp -f "$BRAND_SRC/mihrab_150x150.png" "$BRAND_STAGE/code_150x150.png"
+[[ -f "$BRAND_SRC/mihrab_70x70.png" ]] && cp -f "$BRAND_SRC/mihrab_70x70.png" "$BRAND_STAGE/code_70x70.png"
+# شعار رأس التطبيق (code-icon.svg) + خلفية المحرّر الفارغ (letterpress-*.svg) — أصول SVG
+# تُحقَن فوق مصدر vscode في كتلة INJECT، فيظهر شعار القوس في شريط العنوان والخلفية أيضًا.
+[[ -f "$BRAND_SRC/mihrab-appicon.svg" ]] && cp -f "$BRAND_SRC/mihrab-appicon.svg" "$BRAND_STAGE/code-icon.svg"
+for _lp in dark light hcDark hcLight; do
+  [[ -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" ]] && cp -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" "$BRAND_STAGE/letterpress-$_lp.svg"
+done
+# أصول مساحة sessions التجريبيّة (شعار الحوض + أيقونة Open-in + خلفيّتها الفارغة).
+[[ -f "$BRAND_SRC/mihrab-sessions-icon.svg" ]] && cp -f "$BRAND_SRC/mihrab-sessions-icon.svg" "$BRAND_STAGE/vscode-icon.svg"
+[[ -f "$BRAND_SRC/mihrab-vscodeLogoPath.ts" ]] && cp -f "$BRAND_SRC/mihrab-vscodeLogoPath.ts" "$BRAND_STAGE/vscodeLogoPath.ts"
+for _lps in dark light; do
+  [[ -f "$BRAND_SRC/mihrab-letterpress-sessions-$_lps.svg" ]] && cp -f "$BRAND_SRC/mihrab-letterpress-sessions-$_lps.svg" "$BRAND_STAGE/letterpress-sessions-$_lps.svg"
+done
 BSH="$UP/build.sh"
-if [[ -f "$BSH" ]] && ! grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
-  log "ترقيع build.sh (حقن الإضافات المدمجة)"
+# مصدر حقيقة واحد لإصدار الرُقَع: يُشتَقّ CORE_PATCH_VERSION من patch_bundle_extensions.py
+# فيبقى الحارس هنا والوسم في المرقِّع متّسقين تلقائيًّا (رفع الإصدار في موضع واحد يكفي).
+CORE_PATCH_VERSION="$(sed -n 's/.*CORE_PATCH_VERSION[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/build/patch_bundle_extensions.py" | head -1)"
+[[ -z "$CORE_PATCH_VERSION" ]] && { echo "❌ تعذّر اشتقاق CORE_PATCH_VERSION من patch_bundle_extensions.py." >&2; exit 1; }
+# الوسم يتضمّن إصدار الحقن؛ بدّله (في المرقِّع) عند توسيع الرُقَع كي يُعاد الترقيع على build.sh نظيف.
+if [[ -f "$BSH" ]] && ! grep -q "محراب: رُقَع النواة $CORE_PATCH_VERSION" "$BSH"; then
+  log "ترقيع build.sh (حقن الإضافات + رُقَع النواة: لغة + اتّجاه RTL)"
+  # أعِد ضبط build.sh لو كان مُرقَّعًا بحقن أقدم كي يُطبَّق الحقن الموسَّع على نسخة نظيفة.
+  # نتحقّق من نجاح الاستعادة فعلًا (لا || true صامت) لتفادي تراكب حقنين في الحالة الحديّة.
+  if grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
+    git -C "$UP" checkout -- build.sh 2>/dev/null || true
+    if grep -q 'محراب: حقن الإضافات المدمجة' "$BSH"; then
+      echo "❌ تعذّر استعادة build.sh نظيفًا (ربّما صار غير متعقَّب) — لتفادي حقن مزدوج، أوقف." >&2
+      echo "   أعد توليد المنبع: shift أو احذف $UP وأعد تشغيل البناء." >&2
+      exit 1
+    fi
+  fi
   python "$ROOT/build/patch_bundle_extensions.py" "$BSH"
 fi
 
@@ -179,6 +231,18 @@ if [[ "${SKIP_SOURCE:-no}" == "yes" ]]; then BUILD_ARGS+=("-s"); fi
 log "بدء dev/build.sh ${BUILD_ARGS[*]:-}"
 # "${BUILD_ARGS[@]:-}" يمنع خطأ unbound تحت set -u عند مصفوفة فارغة في إصدارات bash الأقدم.
 bash dev/build.sh "${BUILD_ARGS[@]:-}"
+
+# ── (ط-0) خبز الواجهة العربيّة في nls.messages.json الافتراضيّ (مساهمة بناء — الطبقة 2) ──
+# خطوة بعد-بناء سريعة على الـartifacts (لا إعادة gulp). تجعل العربيّة الافتراضيّ الحرفيّ
+# للنواة ⇒ أوّل فتح عربيّ بلا إعادة تحميل ولا اعتماد على مسح حزمة لغة. idempotent.
+APP_DIR="$UP/VSCode-win32-x64/resources/app"
+if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
+  log "خبز الواجهة العربيّة في nls.messages.json"
+  python "$ROOT/build/bake_nls_arabic.py" "$APP_DIR" || {
+    echo "❌ فشل خبز الترجمة العربيّة — راجع أعلاه." >&2; exit 1; }
+else
+  log "تخطّي الخبز: لا nls.messages.json في $APP_DIR (بناء غير مكتمل؟)"
+fi
 
 # ── (ط) تحقّق المخرَج (اسم الـexe = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
 EXE="$UP/VSCode-win32-x64/Mihrab.exe"

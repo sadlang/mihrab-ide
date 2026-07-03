@@ -1,0 +1,24 @@
+{
+  "contents": {
+    "dist/ipynbMain": {
+      "ipynb.newUntitledIpynb": "دفتر Jupyter جديد",
+      "ipynb.openIpynbInNotebookEditor": "فتح في محرر الدفتر",
+      "ipynb.cellTag.add": "إضافة وسم للخلية",
+      "ipynb.cellTag.remove": "إزالة وسم الخلية",
+      "ipynb.pasteImage": "لصق صورة",
+      "ipynb.convertToMarkdown": "تحويل إلى Markdown",
+      "ipynb.convertToCode": "تحويل إلى كود",
+      "ipynb.clearCellOutput": "مسح مخرجات الخلية",
+      "ipynb.clearAllCellOutputs": "مسح جميع مخرجات الخلايا",
+      "ipynb.restartKernel": "إعادة تشغيل النواة",
+      "ipynb.runAll": "تشغيل جميع الخلايا",
+      "ipynb.runAbove": "تشغيل الخلايا أعلاه",
+      "ipynb.runBelow": "تشغيل الخلايا أدناه",
+      "ipynb.insertCellAbove": "إدراج خلية فوق",
+      "ipynb.insertCellBelow": "إدراج خلية تحت",
+      "ipynb.deleteCells": "حذف الخلايا المحددة",
+      "ipynb.moveCellUp": "نقل الخلية لأعلى",
+      "ipynb.moveCellDown": "نقل الخلية لأسفل"
+    }
+  }
+}
