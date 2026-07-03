@@ -164,6 +164,34 @@ export async function explorerSadIcon(cdp) {
   })()`);
 }
 
+// رأس التطبيق: أيقونة شريط العنوان (.window-appicon) تحمل شعار القوس (code-icon.svg في بناء محراب).
+// حاضرة دائمًا مع شريط عنوان مخصّص (custom titlebar). صحّة **المحتوى** (قوس محراب لا VSCodium)
+// مضمونة بـL2 (توقيع لونيّ في out/media)؛ هنا نؤكّد الحضور والارتباط والرسم في التطبيق الحيّ.
+export async function titlebarAppicon(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const e = document.querySelector('.window-appicon');
+    if (!e) return { present: false };
+    const bg = getComputedStyle(e).backgroundImage || '';
+    const r = e.getBoundingClientRect();
+    const at = bg.indexOf('/media/'); return { present: true, wired: bg.includes('/media/code-icon.svg'), visible: r.width > 4 && r.height > 4, bg: at >= 0 ? bg.slice(at) : bg.slice(0, 90) };
+  })()`);
+}
+
+// خلفية المحرّر الفارغ: عنصر .letterpress يحمل قوس محراب (letterpress-*.svg). مرئيّ فقط حين لا محرّر
+// مفتوح (شاشة ترحيب المجموعة الفارغة)؛ best-effort. المحتوى مضمون بـL2؛ هنا الحضور والارتباط.
+export async function editorLetterpress(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const e = document.querySelector('.letterpress');
+    if (!e) return { present: false };
+    const bg = getComputedStyle(e).backgroundImage || '';
+    const r = e.getBoundingClientRect();
+    const at = bg.indexOf('/media/');
+    return { present: true, wired: bg.includes('/media/letterpress-'), visible: r.width > 4 && r.height > 4, bg: at >= 0 ? bg.slice(at) : bg.slice(0, 90) };
+  })()`);
+}
+
 // يفتح البحث (Ctrl+F) ويقيس موضعه.
 export async function findWidget(cdp, clickX = 700, clickY = 60) {
   await bringToFront(cdp);
