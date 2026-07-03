@@ -1,5 +1,5 @@
 // تأكيدات RTL الوقتيّة (L3) — مشتقّة من docs/rtl/rtl-inventory.md، هندسيّة حتميّة بسماحية.
-import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress } from "./harness.mjs";
+import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -160,6 +160,21 @@ export async function interactionAssertions(cdp) {
     else if (l.wired) out.push(pass("خلفية المحرّر: القوس", "letterpress مرتبطة (المحتوى مضمون بـL2)"));
     else out.push(fail("خلفية المحرّر: القوس", `bg=${JSON.stringify(l.bg)} ليست letterpress`));
   } catch (e) { out.push(skip("خلفية المحرّر: القوس", "تعذّر: " + e.message, true)); }
+
+  // bidi المحرّر (#24): النصّ العربيّ في السطر مُحاذًى يمينًا (اتّجاه RTL فعليّ) — يحتاج الـfixture.
+  try {
+    const b = await editorBidi(cdp);
+    if (!b || !b.present) out.push(skip("bidi: النصّ العربيّ يمينًا", "لا سطر عربيّ (افتح rtl_fixture.sad)", true));
+    else if (!b.hasText) out.push(skip("bidi: النصّ العربيّ يمينًا", "السطر بلا نصّ قابل للقياس", true));
+    else {
+      // مقارنة الفجوتين (مستقلّة عن حجم النافذة/التمرير/الخطّ، بلا ثابت سحريّ — مراجعة Amelia):
+      // النصّ أقرب لليمين منه لليسار ⇒ محاذاة RTL. ترفض الوسط (فجوتان متساويتان) واليسار.
+      const rightGap = b.lineRight - b.textRight, leftGap = b.textLeft - b.lineLeft;
+      const rightAligned = rightGap < leftGap;
+      if (b.dir === "rtl" && rightAligned) out.push(pass("bidi: النصّ العربيّ يمينًا", `النصّ [${b.textLeft},${b.textRight}] أقرب ليمين السطر [${b.lineLeft},${b.lineRight}] (فجوة يمنى ${rightGap} < يسرى ${leftGap})`));
+      else out.push(fail("bidi: النصّ العربيّ يمينًا", `dir=${b.dir}، النصّ [${b.textLeft},${b.textRight}] في سطر [${b.lineLeft},${b.lineRight}] (متوقَّع محاذاة يمينًا)`));
+    }
+  } catch (e) { out.push(skip("bidi: النصّ العربيّ يمينًا", "تعذّر: " + e.message, true)); }
 
   return out;
 }
