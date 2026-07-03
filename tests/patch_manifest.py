@@ -62,6 +62,15 @@ BRANDING_SVG_ASSETS = [
     ("assets/branding/mihrab-letterpress-hcLight.svg", "src/vs/workbench/browser/parts/editor/media/letterpress-hcLight.svg"),
 ]
 
+# أصول مساحة sessions التجريبيّة (شعار حوض الأسماك المطموس + أيقونة Open-in + خلفيّة فارغة).
+# (مصدر, وجهة داخل src/). vscodeLogoPath.ts مسار مطموس مملوء يُبنَى في sessions.desktop.main.js.
+BRANDING_SESSIONS_ASSETS = [
+    ("assets/branding/mihrab-sessions-icon.svg", "src/vs/sessions/browser/media/vscode-icon.svg"),
+    ("assets/branding/mihrab-vscodeLogoPath.ts", "src/vs/sessions/contrib/aquarium/browser/vscodeLogoPath.ts"),
+    ("assets/branding/mihrab-letterpress-sessions-dark.svg", "src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-dark.svg"),
+    ("assets/branding/mihrab-letterpress-sessions-light.svg", "src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-light.svg"),
+]
+
 
 def editor_target_files(build_dir):
     """يستورد patch_editor_rtl.FILES ويعيد قائمة الملفّات النسبيّة التي يمسّها.

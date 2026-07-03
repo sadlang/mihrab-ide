@@ -184,6 +184,12 @@ rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
 for _lp in dark light hcDark hcLight; do
   [[ -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" ]] && cp -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" "$BRAND_STAGE/letterpress-$_lp.svg"
 done
+# أصول مساحة sessions التجريبيّة (شعار الحوض + أيقونة Open-in + خلفيّتها الفارغة).
+[[ -f "$BRAND_SRC/mihrab-sessions-icon.svg" ]] && cp -f "$BRAND_SRC/mihrab-sessions-icon.svg" "$BRAND_STAGE/vscode-icon.svg"
+[[ -f "$BRAND_SRC/mihrab-vscodeLogoPath.ts" ]] && cp -f "$BRAND_SRC/mihrab-vscodeLogoPath.ts" "$BRAND_STAGE/vscodeLogoPath.ts"
+for _lps in dark light; do
+  [[ -f "$BRAND_SRC/mihrab-letterpress-sessions-$_lps.svg" ]] && cp -f "$BRAND_SRC/mihrab-letterpress-sessions-$_lps.svg" "$BRAND_STAGE/letterpress-sessions-$_lps.svg"
+done
 BSH="$UP/build.sh"
 # مصدر حقيقة واحد لإصدار الرُقَع: يُشتَقّ CORE_PATCH_VERSION من patch_bundle_extensions.py
 # فيبقى الحارس هنا والوسم في المرقِّع متّسقين تلقائيًّا (رفع الإصدار في موضع واحد يكفي).

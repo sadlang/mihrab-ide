@@ -127,6 +127,22 @@ def _surface_svgs():
         print("  ⏭️  أسطح SVG (رأس/خلفية) غير مشحونة بعد — يحتاج إعادة بناء v17 (الربط مضمون بـL0).")
 
 
+# حزمة مساحة sessions التجريبيّة: شعار الحوض (VSCODE_LOGO_PATH) يُبنَى فيها كسلسلة مسار.
+SESSIONS_BUNDLE = os.path.join(APP, "out", "vs", "sessions", "sessions.desktop.main.js")
+
+
+@check("هوية بصريّة: شعار حوض sessions في الحزمة = قوس محراب (لا VSCodium)")
+def _sessions_aquarium_logo():
+    if not os.path.isfile(SESSIONS_BUNDLE):
+        print("  ⏭️  حزمة sessions غير مبنيّة — تخطٍّ.")
+        return
+    txt = _readtext(SESSIONS_BUNDLE)
+    if "M14 88" in txt:  # مسار قوس محراب المطموس
+        assert "M65.566" not in txt, "الحزمة تحمل مسار محراب ومسار VSCodium معًا (حقن جزئيّ؟)"
+        return  # pass: شعار الحوض = محراب
+    # لا مسار محراب ⇒ بناء أقدم من v18 (يُدخَل بإعادة البناء). L0 يضمن الربط ساكنًا.
+    print("  ⏭️  شعار حوض sessions غير مشحون بعد — يحتاج إعادة بناء v18 (الربط مضمون بـL0).")
+
 @check("سمات محراب: مشحونة (داكنة + فاتحة) + الافتراضيّة معلَنة")
 def _themes_shipped():
     d = os.path.join(APP, "extensions", "mihrab-themes")
