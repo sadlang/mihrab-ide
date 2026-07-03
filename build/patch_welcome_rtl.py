@@ -20,6 +20,7 @@
 idempotent عبر الوسم mihrab-welcome. كتابة ذرّيّة. Python 3.12-آمن.
 الاستعمال: python patch_welcome_rtl.py <مسار gettingStarted.ts>
 """
+import json
 import os
 import sys
 
@@ -46,12 +47,18 @@ ANCHOR = (
 # جزءًا من هذه الجملة؛ أيّ إعادة صياغة تُسقِط ذلك الجزء يجب أن تُحدِّث المِجَسّ أيضًا.
 WELCOME_TAGLINE = "للمِحرابِ اتّجاه، ولكودِك وِجهة. مكانٌ صافٍ تكتب فيه بالعربيّة كما تُفكّر بها."
 
+# حرفيّة JS مهرَّبة بأمان (json.dumps ⇒ اقتباس مزدوج مقبول في TS، ويهرّب أيّ ' أو \\ مستقبليّ
+# في إعادة صياغة الجملة). تعليق allow-any-unicode-next-line = إعفاء لينتر VSCode المعياريّ
+# لسلسلة غير-ASCII حرفيّة في workbench/contrib (يمنع إخفاق no-unexternalized/unicode لو مُشِّط اللينتر).
+_TAGLINE_JS = json.dumps(WELCOME_TAGLINE, ensure_ascii=False)
+
 REPLACEMENT = (
     "\t\t// mihrab-welcome: شعار القوس + العنوان (nameLong=محراب) + الجملة الاستعاريّة بدل «Editing evolved».\n"
     "\t\tconst header = $('.header', {},\n"
     "\t\t\t$('.mihrab-welcome-mark', { 'aria-hidden': 'true' }),\n"
     "\t\t\t$('h1.product-name.caption', {}, this.productService.nameLong),\n"
-    "\t\t\t$('p.subtitle.description', {}, '" + WELCOME_TAGLINE + "')\n"
+    "\t\t\t/* allow-any-unicode-next-line */\n"
+    "\t\t\t$('p.subtitle.description', {}, " + _TAGLINE_JS + ")\n"
     "\t\t);"
 )
 
