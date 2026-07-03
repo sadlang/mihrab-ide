@@ -52,6 +52,16 @@ BRANDING_ASSETS = [
     ("assets/branding/mihrab_70x70.png", "code_70x70.png"),
 ]
 
+# أصول SVG لهوية الأسطح غير resources/win32/ (شعار رأس التطبيق + خلفية المحرّر الفارغ).
+# (مصدر, مسار الوجهة المنبعيّ داخل src/) — تُحقَن في كتلة INJECT بـcp -f.
+BRANDING_SVG_ASSETS = [
+    ("assets/branding/mihrab-appicon.svg", "src/vs/workbench/browser/media/code-icon.svg"),
+    ("assets/branding/mihrab-letterpress-dark.svg", "src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg"),
+    ("assets/branding/mihrab-letterpress-light.svg", "src/vs/workbench/browser/parts/editor/media/letterpress-light.svg"),
+    ("assets/branding/mihrab-letterpress-hcDark.svg", "src/vs/workbench/browser/parts/editor/media/letterpress-hcDark.svg"),
+    ("assets/branding/mihrab-letterpress-hcLight.svg", "src/vs/workbench/browser/parts/editor/media/letterpress-hcLight.svg"),
+]
+
 
 def editor_target_files(build_dir):
     """يستورد patch_editor_rtl.FILES ويعيد قائمة الملفّات النسبيّة التي يمسّها.

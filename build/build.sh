@@ -178,6 +178,12 @@ rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
 [[ -f "$BRAND_SRC/mihrab.ico" ]] && cp -f "$BRAND_SRC/mihrab.ico" "$BRAND_STAGE/code.ico"
 [[ -f "$BRAND_SRC/mihrab_150x150.png" ]] && cp -f "$BRAND_SRC/mihrab_150x150.png" "$BRAND_STAGE/code_150x150.png"
 [[ -f "$BRAND_SRC/mihrab_70x70.png" ]] && cp -f "$BRAND_SRC/mihrab_70x70.png" "$BRAND_STAGE/code_70x70.png"
+# شعار رأس التطبيق (code-icon.svg) + خلفية المحرّر الفارغ (letterpress-*.svg) — أصول SVG
+# تُحقَن فوق مصدر vscode في كتلة INJECT، فيظهر شعار القوس في شريط العنوان والخلفية أيضًا.
+[[ -f "$BRAND_SRC/mihrab-appicon.svg" ]] && cp -f "$BRAND_SRC/mihrab-appicon.svg" "$BRAND_STAGE/code-icon.svg"
+for _lp in dark light hcDark hcLight; do
+  [[ -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" ]] && cp -f "$BRAND_SRC/mihrab-letterpress-$_lp.svg" "$BRAND_STAGE/letterpress-$_lp.svg"
+done
 BSH="$UP/build.sh"
 # مصدر حقيقة واحد لإصدار الرُقَع: يُشتَقّ CORE_PATCH_VERSION من patch_bundle_extensions.py
 # فيبقى الحارس هنا والوسم في المرقِّع متّسقين تلقائيًّا (رفع الإصدار في موضع واحد يكفي).

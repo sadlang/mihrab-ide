@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v16"
+CORE_PATCH_VERSION = "v17"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,13 +38,13 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v16 (+صفحة الترحيب) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v17 (+رأس التطبيق + خلفية المحرّر) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
   # زورًا مع إعلان نجاح — على غرار رُقَع RTL/اللغة القاتلة.
   if [ -d ../.mihrab-branding ]; then
-    for _masset in code.ico code_150x150.png code_70x70.png; do
+    for _masset in code.ico code_150x150.png code_70x70.png code-icon.svg letterpress-dark.svg letterpress-light.svg letterpress-hcDark.svg letterpress-hcLight.svg; do
       [ -f "../.mihrab-branding/${_masset}" ] || { echo "محراب: أصل هوية مفقود ../.mihrab-branding/${_masset}" >&2; exit 1; }
     done
     cp -f ../.mihrab-branding/code.ico resources/win32/code.ico
@@ -52,6 +52,13 @@ INJECT = """
     cp -f ../.mihrab-branding/code_150x150.png resources/win32/code_150x150.png
     cp -f ../.mihrab-branding/code_70x70.png resources/win32/code_70x70.png
     echo "محراب: طُبِّقت أيقونة التطبيق وبلاطات ويندوز"
+    # شعار رأس التطبيق: .window-appicon في titlebarpart.css يشير إلى media/code-icon.svg.
+    cp -f ../.mihrab-branding/code-icon.svg src/vs/workbench/browser/media/code-icon.svg
+    # خلفية المحرّر الفارغ: .letterpress في editorgroupview.css يشير إلى letterpress-{dark,light,hcDark,hcLight}.svg.
+    for _lp in dark light hcDark hcLight; do
+      cp -f "../.mihrab-branding/letterpress-${_lp}.svg" "src/vs/workbench/browser/parts/editor/media/letterpress-${_lp}.svg"
+    done
+    echo "محراب: طُبِّق شعار رأس التطبيق وخلفية المحرّر"
   fi
   if [ -f ../.mihrab-patch-main-locale.py ]; then
     python ../.mihrab-patch-main-locale.py src/main.ts || { echo "محراب: فشلت رُقعة اللغة الافتراضيّة" >&2; exit 1; }

@@ -354,6 +354,33 @@ def _branding_assets():
             f"كتلة الحقن لا تنسخ {target} إلى resources/win32/ (أمر cp فعليّ) — أُزيل ربط الهوية؟"
 
 
+@check("أصول SVG للأسطح (رأس التطبيق + خلفية المحرّر): موجودة وسليمة، وكتلة الحقن تنسخها للوجهة الفعليّة")
+def _branding_svg_assets():
+    import re
+    import xml.dom.minidom
+    src_lines = _read(os.path.join(BUILD, "patch_bundle_extensions.py")).splitlines()
+    code_only = chr(10).join(ln for ln in src_lines if not ln.lstrip().startswith("#"))
+    cp_lines = [ln for ln in code_only.splitlines() if "cp -f" in ln]
+    loop_m = re.search("for _lp in ([A-Za-z ]+)", code_only)  # كلمات المتغيّرات فقط (يقف عند ; أو do)
+    q = chr(34)
+    for src, dest in M.BRANDING_SVG_ASSETS:
+        ap = os.path.join(ROOT, src)
+        assert os.path.isfile(ap), f"أصل SVG مفقود: {src}"
+        body = _read(ap)
+        xml.dom.minidom.parseString(body.encode("utf-8"))  # يرفع عند XML غير سليم
+        # مِجَسّ ASCII داخل الأصل: يميّز شعار محراب عن أصل VSCodium (يصمد في الحزمة — SVG لا يُهرَّب).
+        assert ("id=" + q + "mihrab-arch" + q) in body, f"{src} لا يحمل مِجَسّ mihrab-arch (ليس شعار محراب؟)"
+        base = os.path.basename(dest)
+        # نفحص الوجهة الفعليّة في سطر cp حقيقيّ (لا مجرّد ظهور الاسم في سطر الفحص القاتل).
+        if base.startswith("letterpress-"):
+            variant = base[len("letterpress-"):-len(".svg")]  # dark/light/hcDark/hcLight
+            templ = os.path.dirname(dest) + "/letterpress-${_lp}.svg"
+            assert any(templ in ln for ln in cp_lines), f"لا سطر cp مُعامَل ينسخ letterpress إلى {os.path.dirname(dest)}"
+            assert loop_m and variant in loop_m.group(1).split(), f"المتغيّر {variant} غير مُغطّى في حلقة for _lp"
+        else:
+            assert any(dest in ln for ln in cp_lines), f"لا سطر cp ينسخ إلى الوجهة الحرفيّة {dest} (أُزيل ربط سطح الهوية؟)"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
