@@ -192,6 +192,27 @@ export async function editorLetterpress(cdp) {
   })()`);
 }
 
+// تحقّق bidi المحرّر (م3، البند #24 اتّجاه السطر + محاذاة النصّ) — يحتاج rtl_fixture.sad مفتوحًا.
+// برهان حتميّ بلا إدخال مُصطنَع: في سطر عربيّ قصير، مدى النصّ يلتصق **بيمين** السطر (RTL)
+// لا بيساره. يتجنّب السطر الطويل (يتجاوز النافذة فيمتدّ يسارًا).
+export async function editorBidi(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const lines = [...document.querySelectorAll('.monaco-editor .view-line')];
+    const arb = lines.find(l => /اطبع/.test(l.textContent) && !/الطويل/.test(l.textContent));
+    if (!arb) return { present: false };
+    const lr = arb.getBoundingClientRect();
+    const dir = getComputedStyle(arb).direction;
+    const spans = [...arb.querySelectorAll('span')].filter(s => s.textContent.trim());
+    if (!spans.length) return { present: true, dir, hasText: false };
+    let l = Infinity, r = -Infinity;
+    for (const s of spans) { const b = s.getBoundingClientRect(); l = Math.min(l, b.left); r = Math.max(r, b.right); }
+    return { present: true, dir, hasText: true,
+      lineLeft: Math.round(lr.left), lineRight: Math.round(lr.right), lineMid: Math.round(lr.left + lr.width / 2),
+      textLeft: Math.round(l), textRight: Math.round(r) };
+  })()`);
+}
+
 // يفتح البحث (Ctrl+F) ويقيس موضعه.
 export async function findWidget(cdp, clickX = 700, clickY = 60) {
   await bringToFront(cdp);
