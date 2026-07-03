@@ -1,0 +1,21 @@
+{
+  "contents": {
+    "dist/extension": {
+      "github.authentication.signin": "تسجيل الدخول بحساب GitHub",
+      "github.authentication.signout": "تسجيل الخروج من GitHub",
+      "github.authentication.managePermissions": "إدارة الأذونات",
+      "github.authentication.account": "حساب GitHub",
+      "github.authentication.signIn.title": "تسجيل الدخول",
+      "github.authentication.signIn.description": "سجل دخولك بحساب GitHub للوصول إلى المستودعات والميزات",
+      "github.authentication.useEnterprise": "استخدام GitHub Enterprise",
+      "github.authentication.useGitHub": "استخدام GitHub.com",
+      "github.authentication.enterpriseUrl": "عنوان GitHub Enterprise",
+      "github.authentication.scopes": "أذونات التطبيق",
+      "github.authentication.grantAccess": "منح الوصول",
+      "github.authentication.revokeAccess": "إلغاء الوصول",
+      "github.authentication.switchAccount": "تبديل الحساب",
+      "github.authentication.tokenExpired": "انتهت صلاحية الرمز",
+      "github.authentication.refreshToken": "تحديث الرمز"
+    }
+  }
+}

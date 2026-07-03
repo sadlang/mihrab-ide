@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- أيقونة sessions (تستبدل vscode-icon.svg، بديل تطوير) — قوس محراب مطموس، فضاء 96×96. id=mihrab-arch مِجَسّ. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <path id="mihrab-arch" fill-rule="evenodd" fill="#1E8A79" d="M14 88 L14 52 A68 68 0 0 1 48 8 A68 68 0 0 1 82 52 L82 88 Z M30 88 L30 58 A40 40 0 0 1 48 30 A40 40 0 0 1 66 58 L66 88 Z M45 60 L51 60 L51 86 L45 86 Z"/>
+</svg>

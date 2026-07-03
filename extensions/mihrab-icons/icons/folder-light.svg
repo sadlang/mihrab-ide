@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- مجلّد مغلق (سمة فاتحة) — تيل أعمق ليقرأ على الأرضيّة الفاتحة -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 28" width="34" height="28">
+  <path d="M4 6 h8 l3 4 h13 a2 2 0 0 1 2 2 v10 a2 2 0 0 1 -2 2 H4 a2 2 0 0 1 -2 -2 V8 a2 2 0 0 1 2 -2 z"
+        fill="#1F6A5F"/>
+  <path d="M4 6 h8 l3 4 H4 z" fill="#2A8577"/>
+</svg>

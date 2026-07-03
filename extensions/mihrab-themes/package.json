@@ -1,0 +1,32 @@
+{
+  "$schema": "vscode://schemas/vscode-extensions",
+  "name": "mihrab-themes",
+  "displayName": "سمات محراب",
+  "description": "سمتا محراب اللونيّتان (داكنة/فاتحة) لكود ص: تُخرّطان نطاقات نحو ص ورموز LSP الدلاليّة على لوحة الهوية (فيروزيّ + ذهب).",
+  "version": "0.1.0",
+  "publisher": "sadlang",
+  "license": "MIT",
+  "engines": { "vscode": "*" },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      {
+        "label": "محراب الداكنة",
+        "uiTheme": "vs-dark",
+        "path": "./themes/mihrab-dark-color-theme.json"
+      },
+      {
+        "label": "محراب الفاتحة",
+        "uiTheme": "vs",
+        "path": "./themes/mihrab-light-color-theme.json"
+      }
+    ],
+    "configurationDefaults": {
+      "workbench.colorTheme": "محراب الداكنة"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sadlang/mihrab-ide.git"
+  }
+}

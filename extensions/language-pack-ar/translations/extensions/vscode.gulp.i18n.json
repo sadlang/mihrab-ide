@@ -1,0 +1,10 @@
+{
+  "contents": {
+    "dist/extension": {
+      "gulp.autoDetect": "الكشف التلقائي عن مهام Gulp",
+      "gulp.taskDefinition.file": "ملف Gulp",
+      "gulp.taskDefinition.task": "اسم المهمة",
+      "gulp.enable": "تفعيل اكتشاف مهام Gulp"
+    }
+  }
+}
