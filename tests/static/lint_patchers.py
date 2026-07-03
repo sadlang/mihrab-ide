@@ -368,7 +368,8 @@ def _branding_svg_assets():
         assert os.path.isfile(ap), f"أصل SVG مفقود: {src}"
         body = _read(ap)
         xml.dom.minidom.parseString(body.encode("utf-8"))  # يرفع عند XML غير سليم
-        # مِجَسّ ASCII داخل الأصل: يميّز شعار محراب عن أصل VSCodium (يصمد في الحزمة — SVG لا يُهرَّب).
+        # مِجَسّ ASCII في **مصدر** الأصل يميّز شعار محراب عن أصل VSCodium. (svgo يجرّده في الحزمة ⇒
+        # تحقّق المخرَج بتوقيع لونيّ في L2 _surface_svgs لا بهذا المِجَسّ.)
         assert ("id=" + q + "mihrab-arch" + q) in body, f"{src} لا يحمل مِجَسّ mihrab-arch (ليس شعار محراب؟)"
         base = os.path.basename(dest)
         # نفحص الوجهة الفعليّة في سطر cp حقيقيّ (لا مجرّد ظهور الاسم في سطر الفحص القاتل).

@@ -88,26 +88,42 @@ def _app_icon():
             f"{target} المشحون ≠ {src} (رجعت هوية VSCodium؟)"
 
 
-# الحزمة تُسطّح أصول media/ إلى out/media/<basename> (لا تُمرِّر بنية src). أسطح الهوية
-# غير-win32 (رأس التطبيق code-icon.svg + خلفية المحرّر letterpress-*.svg) تُقارَن هنا.
+# الحزمة تُسطّح أصول media/ إلى out/media/<basename> (لا تُمرِّر بنية src)، **وتُحسِّنها بـsvgo**:
+# تُجرَّد التعليقات والـ id وviewBox ويُختصر المسار ⇒ لا مطابقة بايتيّة ولا مِجَسّ id يصمد.
+# لكنّ svgo يُبقي ألوان stroke وبيانات المسار ⇒ نتحقّق بتوقيع لونيّ مشتقّ من المصدر.
 OUT_MEDIA = os.path.join(APP, "out", "media")
 
 
-@check("هوية بصريّة: أصول SVG للأسطح (رأس التطبيق + خلفية المحرّر) في الحزمة = مصدر محراب")
+def _readtext(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def _stroke_colors(svg_text):
+    import re
+    return {c.lower() for c in re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', svg_text)}
+
+
+@check("هوية بصريّة: أصول SVG للأسطح (رأس التطبيق + خلفية المحرّر) في الحزمة = شعار محراب")
 def _surface_svgs():
     matched, pending = [], []
     for src, dest in M.BRANDING_SVG_ASSETS:
         sp = os.path.join(ROOT, *src.split("/"))
         tp = os.path.join(OUT_MEDIA, os.path.basename(dest))
         assert os.path.isfile(sp), f"لا أصل مصدر: {src}"
-        if os.path.isfile(tp) and filecmp.cmp(sp, tp, shallow=False):
-            matched.append(os.path.basename(dest))
-        else:
+        colors = _stroke_colors(_readtext(sp))  # ألوان القوس في مصدر محراب (تُشتَقّ، لا تُكتب حرفيًّا)
+        assert colors, f"لا لون stroke في مصدر {src} (بنية SVG غير متوقَّعة؟)"
+        if not os.path.isfile(tp):
             pending.append(os.path.basename(dest))
+            continue
+        shipped = _stroke_colors(_readtext(tp))
+        # كلّ لون قوس محرابيّ حاضر في المخرَج المُحسَّن ⇒ شُحن شعار محراب (لا أصل VSCodium الأصليّ
+        # ذو التدرّج الأزرق/الرماديّ #B2B2B2 — ألواننا الفيروزيّة غائبة عنه قطعًا).
+        (matched if colors <= shipped else pending).append(os.path.basename(dest))
     if matched and pending:
         raise AssertionError(f"شحن جزئيّ لأسطح الهوية: طابق {matched}، وتخلّف {pending} (انحدار؟)")
     if not matched:
-        # لا سطح مشحون بعد ⇒ بناء أقدم من v17 (الأسطح تُدخَل بإعادة البناء). L0 يضمن الربط.
+        # لا سطح مشحون بعد ⇒ بناء أقدم من v17 (الأسطح تُدخَل بإعادة البناء). L0 يضمن الربط ساكنًا.
         print("  ⏭️  أسطح SVG (رأس/خلفية) غير مشحونة بعد — يحتاج إعادة بناء v17 (الربط مضمون بـL0).")
 
 
