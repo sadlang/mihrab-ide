@@ -22,6 +22,10 @@ for _s in (sys.stdout, sys.stderr):
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # جذر mihrab-ide
 BUILD = os.path.join(ROOT, "build")
+
+# أصناف هويّة محراب المحقونة (عناصر نملكها) — تُعفى قواعدها من قصر [dir=rtl] لأنّها غير
+# اتّجاهيّة وتستهدف عناصرنا لا عناصر VSCode العامّة. أضِف هنا كلّ صنف هويّة جديد.
+IDENTITY_CLASSES = ("mihrab-welcome-mark",)
 sys.path.insert(0, os.path.dirname(HERE))  # tests/
 import patch_manifest as M  # noqa: E402
 
@@ -197,8 +201,157 @@ def _css_lint():
             part = part.strip()
             if not part:
                 continue
+            # استثناء قواعد هويّة محراب: محدّد يستهدف عنصرًا **نملكه** (صنف هوية مُحقَن) لا
+            # عنصر VSCode عامّ ⇒ لا تسرّب عالميّ ممكن، ويجب أن يظهر في الاتّجاهين (الشعار غير
+            # اتّجاهيّ، كالعنوان). قائمة صريحة (لا بادئة mihrab- عامّة كي لا نُعفي .mihrab-grid-sv
+            # في القاعدة 12 التي يجب أن تبقى مقصورة على RTL).
+            if any(idc in part for idc in IDENTITY_CLASSES):
+                continue
             assert '[dir="rtl"]' in part, (
                 f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…»")
+
+
+# ───────────── L0-8: سمتا محراب (خريطة الرموز ↔ نحو ص) ─────────────
+def _grammar_scopes():
+    """كلّ نطاقات (scopes) نحو ص الفعليّة من sad.tmLanguage.json."""
+    g = os.path.join(ROOT, "extensions", "sad-lang", "syntaxes", "sad.tmLanguage.json")
+    if not os.path.isfile(g):
+        return None
+    data = json.load(open(g, encoding="utf-8"))
+    found = set()
+
+    def walk(o):
+        if isinstance(o, dict):
+            n = o.get("name")
+            if isinstance(n, str) and "." in n:
+                found.add(n)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(data)
+    return found
+
+
+@check("سمتا محراب: JSON صالح، مُسهَمتان وافتراضيّة، ونطاقاتها تطابق نحو ص")
+def _themes():
+    ext = os.path.join(ROOT, "extensions", "mihrab-themes")
+    if not os.path.isdir(ext):
+        return  # لا إضافة سمات في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    contrib = pkg.get("contributes", {})
+    themes = contrib.get("themes", [])
+    assert len(themes) >= 2, f"متوقّع سمتان (داكنة/فاتحة)، وُجد {len(themes)}"
+    # الافتراضيّة يجب أن تساوي أحد الـlabels فعلًا (خطأ مطبعيّ ⇒ VS Code يسقط للأساس صامتًا).
+    default = contrib.get("configurationDefaults", {}).get("workbench.colorTheme")
+    labels = {t.get("label") for t in themes}
+    assert default in labels, f"السمة الافتراضيّة «{default}» ليست من labels السمات {labels}"
+    gscopes = _grammar_scopes()  # نحو ص الفعليّ
+    grammar_sad = {s for s in gscopes if s.endswith(".sad")} if gscopes is not None else set()
+    # نطاقات نحو لا تُلوَّن عمدًا (حاويات بنيويّة نلوّن محتواها لا هي): تُعفى من التغطية العكسيّة.
+    uncolored = {"meta.interpolation.sad"}
+    for t in themes:
+        assert t.get("label") and t.get("uiTheme") and t.get("path"), f"عقد سمة ناقص: {t}"
+        tp = os.path.join(ext, *t["path"].lstrip("./").split("/"))
+        assert os.path.isfile(tp), f"ملفّ سمة مفقود: {t['path']}"
+        td = json.load(open(tp, encoding="utf-8"))
+        assert td.get("name"), f"سمة بلا name: {t['path']}"
+        assert td.get("type") in ("dark", "light"), f"type غير صالح في {t['path']}"
+        assert td.get("colors") and td.get("tokenColors"), f"بلا colors/tokenColors: {t['path']}"
+        # نطاقات ص في **هذه السمة** (التغطية تُفحَص لكلّ سمة، لا اتّحادهما).
+        this_scopes = set()
+        for rule in td["tokenColors"]:
+            sc = rule.get("scope", [])
+            for s in ([sc] if isinstance(sc, str) else sc):
+                if s.endswith(".sad"):
+                    this_scopes.add(s)
+        # (أمام) كلّ نطاق ص في السمة موجود في النحو الفعليّ (لا اختراع/انجراف):
+        if gscopes is not None:
+            invented = this_scopes - grammar_sad
+            assert not invented, (
+                f"نطاقات في {t['path']} غير موجودة في نحو ص (مخترَعة/منجرفة): {sorted(invented)}")
+            # (خلف) كلّ نطاق نحو ص مُلوَّن في هذه السمة (أو مُعفى) — يمسك نطاقًا جديدًا بلا لون:
+            missing = grammar_sad - this_scopes - uncolored
+            assert not missing, (
+                f"نطاقات نحو ص بلا لون في {t['path']} (سترث افتراضيًّا متنافرًا): {sorted(missing)} "
+                f"— أضِف لونًا في gen_themes.py أو أعفِها صراحةً")
+
+
+# ───────────── L0-9: سمة أيقونات محراب ─────────────
+@check("سمة أيقونات محراب: JSON صالح، خرائط ص/مجلّد/عامّ، SVG موجود، مُعرّف افتراضيّ")
+def _icon_theme():
+    ext = os.path.join(ROOT, "extensions", "mihrab-icons")
+    if not os.path.isdir(ext):
+        return  # لا إضافة أيقونات في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    contrib = pkg.get("contributes", {})
+    icons = contrib.get("iconThemes", [])
+    assert icons, "لا iconThemes في الحزمة"
+    ids = {i.get("id") for i in icons}
+    # الافتراضيّة (سمات الأيقونات تُفتَّح بالـid لا الـlabel):
+    default = contrib.get("configurationDefaults", {}).get("workbench.iconTheme")
+    assert default in ids, f"سمة الأيقونات الافتراضيّة «{default}» ليست من ids {ids}"
+    for it in icons:
+        assert it.get("id") and it.get("label") and it.get("path"), f"عقد سمة أيقونات ناقص: {it}"
+        tp = os.path.join(ext, *it["path"].lstrip("./").split("/"))
+        assert os.path.isfile(tp), f"ملفّ سمة الأيقونات مفقود: {it['path']}"
+        td = json.load(open(tp, encoding="utf-8"))
+        defs = td.get("iconDefinitions", {})
+        assert defs, "لا iconDefinitions"
+        # الافتراضات الأساسيّة موجودة (ملفّ + مجلّد) وإلّا فالملفّات غير المعرّفة بلا أيقونة:
+        assert td.get("file") in defs, "لا أيقونة ملفّ افتراضيّة (file)"
+        assert td.get("folder") in defs, "لا أيقونة مجلّد افتراضيّة (folder)"
+        # ملفّ ص مخرَّط (بالامتداد ص أو بلغة sad):
+        sad_ref = td.get("fileExtensions", {}).get("ص") or td.get("languageIds", {}).get("sad")
+        assert sad_ref in defs, "ملفّ ص غير مخرَّط لأيقونة (fileExtensions.ص / languageIds.sad)"
+
+        # **كلّ** مرجع أيقونة (base + light + highContrast، بما فيه folderExpanded) له تعريف —
+        # يمنع مرجعًا مكسورًا يمرّ صامتًا (يرتدّ لأيقونة أخرى/يختفي).
+        def _refs(block):
+            r = set()
+            for k in ("file", "folder", "folderExpanded", "rootFolder", "rootFolderExpanded"):
+                if block.get(k):
+                    r.add(block[k])
+            for m in ("fileExtensions", "fileNames", "folderNames",
+                      "folderNamesExpanded", "languageIds"):
+                r.update((block.get(m) or {}).values())
+            return r
+        refs = _refs(td)
+        for variant in ("light", "highContrast"):
+            if isinstance(td.get(variant), dict):
+                refs |= _refs(td[variant])
+        for r in refs:
+            assert r in defs, f"مرجع أيقونة «{r}» بلا تعريف في iconDefinitions ({it['path']})"
+        # كلّ iconPath يشير لملفّ SVG موجود وصالح الترويسة:
+        for name, d in defs.items():
+            ip = d.get("iconPath")
+            assert ip, f"iconDefinition «{name}» بلا iconPath"
+            svg = os.path.join(ext, *ip.lstrip("./").split("/"))
+            assert os.path.isfile(svg), f"أيقونة SVG مفقودة: {ip}"
+            head = _read(svg).lstrip()
+            assert head.startswith("<?xml") or head.startswith("<svg"), f"ليس SVG صالحًا: {ip}"
+
+
+# ───────────── L0-7: أصول الهوية البصريّة (أيقونة التطبيق) ─────────────
+@check("أصول الهوية موجودة وسليمة، وكتلة الحقن تنسخها فعلًا")
+def _branding_assets():
+    # كلّ أصل معلَن موجود؛ والـico ترويسته صالحة (00 00 01 00) — دون اعتماد PIL في CI.
+    for src in {s for s, _t in M.BRANDING_ASSETS}:
+        p = os.path.join(ROOT, src)
+        assert os.path.isfile(p), f"أصل هوية مفقود: {src} (شغّل assets/branding/gen_ico.py)"
+        if src.endswith(".ico"):
+            with open(p, "rb") as f:
+                head = f.read(4)
+            assert head == b"\x00\x00\x01\x00", f"ترويسة ICO غير صالحة في {src}: {head!r}"
+            assert os.path.getsize(p) > 2000, f"{src} صغير بشكل مريب (ربّما تالف)"
+    # كتلة الحقن تنسخ كلّ هدف فعلًا. **جرّد أسطر التعليق** قبل الفحص: تعليق يذكر المسار
+    # (winIcon=resources/win32/code.ico) يُرضي فحص السلسلة زورًا حتى لو حُذف أمر cp الفعليّ.
+    src_lines = _read(os.path.join(BUILD, "patch_bundle_extensions.py")).splitlines()
+    code_only = "\n".join(ln for ln in src_lines if not ln.lstrip().startswith("#"))
+    for _src, target in M.BRANDING_ASSETS:
+        assert f"cp -f ../.mihrab-branding/" in code_only and f"resources/win32/{target}" in code_only, \
+            f"كتلة الحقن لا تنسخ {target} إلى resources/win32/ (أمر cp فعليّ) — أُزيل ربط الهوية؟"
 
 
 # ───────────────────────── المشغّل ─────────────────────────

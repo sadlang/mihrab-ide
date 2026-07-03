@@ -150,7 +150,12 @@ rm -rf "$STAGE_EXT"; mkdir -p "$STAGE_EXT"
 shopt -s nullglob
 for ext in "$ROOT"/extensions/*/; do
   [[ -f "${ext}package.json" ]] || continue
-  cp -r "$ext" "$STAGE_EXT/$(basename "$ext")"
+  _dst="$STAGE_EXT/$(basename "$ext")"
+  cp -r "$ext" "$_dst"
+  # جرّد مصنوعات التوليد غير الوقتيّة من النسخة المشحونة (cp -r لا يحترم .vscodeignore):
+  # سكربتات مولِّدات السمات/الأيقونات (*.py) و__pycache__ ليست جزءًا من المنتج.
+  find "$_dst" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$_dst" -type f -name '*.py' -delete 2>/dev/null || true
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 shopt -u nullglob
@@ -163,10 +168,19 @@ shopt -u nullglob
 [[ -f "$ROOT/build/patch_sash_rtl.py" ]] && cp -f "$ROOT/build/patch_sash_rtl.py" "$UP/.mihrab-patch-sash-rtl.py"
 [[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
 [[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
+[[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
 [[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
+# جهّز أصول هوية محراب البصريّة (أيقونة التطبيق + بلاطتا ويندوز) في مجلّد ينجو من reset،
+# ليحقنها build.sh المنبع فوق resources/win32/ بعد cd vscode (تستبدل هوية VSCodium).
+BRAND_SRC="$ROOT/assets/branding"
+BRAND_STAGE="$UP/.mihrab-branding"
+rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
+[[ -f "$BRAND_SRC/mihrab.ico" ]] && cp -f "$BRAND_SRC/mihrab.ico" "$BRAND_STAGE/code.ico"
+[[ -f "$BRAND_SRC/mihrab_150x150.png" ]] && cp -f "$BRAND_SRC/mihrab_150x150.png" "$BRAND_STAGE/code_150x150.png"
+[[ -f "$BRAND_SRC/mihrab_70x70.png" ]] && cp -f "$BRAND_SRC/mihrab_70x70.png" "$BRAND_STAGE/code_70x70.png"
 BSH="$UP/build.sh"
 # الوسم يتضمّن إصدار الحقن؛ بدّله عند توسيع الرُقَع كي يُعاد الترقيع على build.sh نظيف.
-if [[ -f "$BSH" ]] && ! grep -q 'محراب: رُقَع النواة v14 (+محرّر RTL م5 حارس طيّ)' "$BSH"; then
+if [[ -f "$BSH" ]] && ! grep -q 'محراب: رُقَع النواة v16 (+صفحة الترحيب)' "$BSH"; then
   log "ترقيع build.sh (حقن الإضافات + رُقَع النواة: لغة + اتّجاه RTL)"
   # أعِد ضبط build.sh لو كان مُرقَّعًا بحقن أقدم كي يُطبَّق الحقن الموسَّع على نسخة نظيفة.
   # نتحقّق من نجاح الاستعادة فعلًا (لا || true صامت) لتفادي تراكب حقنين في الحالة الحديّة.

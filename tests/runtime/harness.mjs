@@ -84,6 +84,7 @@ export async function editorGeometry(cdp) {
       overviewRuler: q('.monaco-editor .decorationsOverviewRuler'),
       activityBar: q('.monaco-workbench .activitybar'),
       firstLineDir: (() => { const l = document.querySelector('.monaco-editor .view-line'); return l ? getComputedStyle(l).direction : null; })(),
+      editorBg: (() => { const e = document.querySelector('.monaco-editor'); return e ? getComputedStyle(e).backgroundColor : null; })(),
     };
   })()`);
 }
@@ -126,6 +127,41 @@ export async function suggestGap(cdp) {
   await escape(cdp);
   for (let i = 0; i < 4; i++) await key(cdp, 90, "KeyZ", MOD.CTRL);
   return result;
+}
+
+// يقرأ ترويسة صفحة الترحيب (Get Started): شعار القوس (mihrab-welcome-mark) + العنوان الفرعيّ.
+// لا يفتح الصفحة (تحتاج أمرًا/بدء تشغيل)؛ يعيد present=false إن لم تكن مفتوحة ⇒ تخطٍّ best-effort.
+export async function welcomeHeader(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const mark = document.querySelector('.gettingStartedCategoriesContainer .header .mihrab-welcome-mark');
+    // العنوان الفرعيّ من نفس ترويسة الشعار (لا .gettingStartedContainer الأعمّ) فيبقى المِجَسّان متّسقين:
+    // لو تغيّر الصنف الخارجيّ في المنبع لا يصير subtitle=null فشلًا كاذبًا بينما الشعار حاضر.
+    const sub = document.querySelector('.gettingStartedCategoriesContainer .header .subtitle');
+    if (!mark && !sub) return { present: false };
+    const mr = mark ? mark.getBoundingClientRect() : null;
+    const bg = mark ? getComputedStyle(mark).backgroundImage : '';
+    return {
+      present: true,
+      markVisible: !!mr && mr.width > 4 && mr.height > 4 && /data:image\\/svg/.test(bg),
+      markWidth: mr ? Math.round(mr.width) : 0,
+      subtitle: sub ? sub.textContent.trim() : null,
+    };
+  })()`);
+}
+
+// يفحص أيقونة ملفّ ص في المستكشف: يبحث عن صفٍّ ينتهي اسمه بـ.ص ويقرأ خلفيّة أيقونته (::before).
+// لا يفتح مجلّدًا (يحتاج مساحة عمل)؛ present=false إن لا ملفّ .ص ظاهر ⇒ تخطٍّ best-effort.
+export async function explorerSadIcon(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.monaco-icon-label')];
+    const sad = rows.find(r => ((r.querySelector('.label-name') || {}).textContent || '').trim().endsWith('.ص'));
+    if (!sad) return { present: false, rows: rows.length };
+    const el = sad.classList.contains('file-icon') ? sad : (sad.closest('.file-icon') || sad);
+    const bg = getComputedStyle(el, '::before').backgroundImage || getComputedStyle(el).backgroundImage || '';
+    return { present: true, bg, isSad: /sad(-light)?\\.svg|mihrab-sad/i.test(bg) };
+  })()`);
 }
 
 // يفتح البحث (Ctrl+F) ويقيس موضعه.

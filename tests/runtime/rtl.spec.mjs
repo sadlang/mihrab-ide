@@ -1,5 +1,11 @@
 // تأكيدات RTL الوقتيّة (L3) — مشتقّة من docs/rtl/rtl-inventory.md، هندسيّة حتميّة بسماحية.
-import { editorGeometry, suggestGap, findWidget } from "./harness.mjs";
+import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon } from "./harness.mjs";
+
+// جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
+// ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
+const WELCOME_TAGLINE_MARKER = "تكتب فيه";
+// الليل المِحرابيّ #0F1C24 = خلفيّة سمة محراب الداكنة (getComputedStyle بلا مسافات).
+const MIHRAB_NIGHT_RGB = "rgb(15,28,36)";
 
 const TOL = 3;         // سماحية بكسل للمحاذاة
 const GAP_TOL = 3;     // فجوة الاقتراحات المقبولة (0 مثاليّ)
@@ -72,6 +78,15 @@ export function geometryAssertions(geo) {
     ? pass("اتّجاه السطر RTL", "view-line direction=rtl")
     : fail("اتّجاه السطر RTL", `direction=${geo.firstLineDir} (متوقَّع rtl)`));
 
+  // سمة محراب الداكنة مطبَّقة: خلفيّة المحرّر = الليل المِحرابيّ #0F1C24 = rgb(15,28,36).
+  // best-effort: تخطٍّ لا فشل إن اختلفت (قد يبدّل المستخدم السمة يدويًّا؛ الافتراضيّة محراب الداكنة).
+  if (geo.editorBg) {
+    const bg = geo.editorBg.replace(/\s+/g, "");
+    out.push(bg === MIHRAB_NIGHT_RGB
+      ? pass("سمة محراب الداكنة مطبَّقة", `خلفيّة المحرّر ${geo.editorBg}`)
+      : skip("سمة محراب الداكنة مطبَّقة", `خلفيّة ${geo.editorBg} ≠ الليل المِحرابيّ (سمة أخرى؟)`, true));
+  }
+
   return out;
 }
 
@@ -102,6 +117,32 @@ export async function interactionAssertions(cdp) {
       else out.push(fail("البحث أعلى-اليسار", `left=${f.left} (≥ ${Math.round(bound)}) — لم يُعكَس لأعلى-اليسار!`));
     }
   } catch (e) { out.push(skip("البحث أعلى-اليسار", "تعذّر: " + e.message)); }
+
+  // ترحيب: شعار القوس + الجملة الاستعاريّة (best-effort — يحتاج صفحة Get Started مفتوحة).
+  try {
+    const w = await welcomeHeader(cdp);
+    if (!w || !w.present) {
+      out.push(skip("ترحيب: الشعار والجملة", "صفحة الترحيب غير مفتوحة (افتح Get Started ثمّ أعِد)", true));
+    } else {
+      const okMark = w.markVisible;
+      const okSub = !!w.subtitle && w.subtitle.includes(WELCOME_TAGLINE_MARKER);
+      if (okMark && okSub) out.push(pass("ترحيب: الشعار والجملة", `شعار ${w.markWidth}px + الجملة الاستعاريّة`));
+      else out.push(fail("ترحيب: الشعار والجملة",
+        `شعار مرئيّ=${okMark} (عرض ${w.markWidth})، الجملة=${JSON.stringify((w.subtitle || "").slice(0, 24))}`));
+    }
+  } catch (e) { out.push(skip("ترحيب: الشعار والجملة", "تعذّر: " + e.message, true)); }
+
+  // أيقونة ملفّ ص في المستكشف تحمل القوس (best-effort — يحتاج مجلّدًا فيه ملفّ .ص مفتوحًا).
+  try {
+    const e = await explorerSadIcon(cdp);
+    if (!e || !e.present) {
+      out.push(skip("أيقونة ملفّ ص (المستكشف)", "لا ملفّ .ص ظاهر (افتح مجلّدًا فيه ملفّ ص)", true));
+    } else {
+      out.push(e.isSad
+        ? pass("أيقونة ملفّ ص (المستكشف)", "القوس مطبَّق على .ص")
+        : fail("أيقونة ملفّ ص (المستكشف)", `خلفيّة «${(e.bg || "").slice(0, 40)}» ليست أيقونة القوس`));
+    }
+  } catch (e) { out.push(skip("أيقونة ملفّ ص (المستكشف)", "تعذّر: " + e.message, true)); }
 
   return out;
 }

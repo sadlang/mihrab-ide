@@ -1,0 +1,15 @@
+{
+  "// ملاحظة": "استبعاد مخرَجات البناء الثقيلة من مراقبة/فهرسة/بحث VS Code — تمنع تعليق node_modules.asar بمقبض يقفل تنظيف البناء (Device busy / Permission denied).",
+  "files.watcherExclude": {
+    "**/.upstream/**": true,
+    "**/build/.toolchain/**": true
+  },
+  "search.exclude": {
+    "**/.upstream": true,
+    "**/build/.toolchain": true
+  },
+  "files.exclude": {
+    "**/.upstream": true,
+    "**/build/.toolchain": true
+  }
+}
