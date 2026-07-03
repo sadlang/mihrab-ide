@@ -382,6 +382,29 @@ def _branding_svg_assets():
             assert any(dest in ln for ln in cp_lines), f"لا سطر cp ينسخ إلى الوجهة الحرفيّة {dest} (أُزيل ربط سطح الهوية؟)"
 
 
+@check("أصول مساحة sessions: موجودة وسليمة، وكتلة الحقن تنسخها للوجهة الفعليّة")
+def _branding_sessions_assets():
+    import xml.dom.minidom
+    src_lines = _read(os.path.join(BUILD, "patch_bundle_extensions.py")).splitlines()
+    code_only = chr(10).join(ln for ln in src_lines if not ln.lstrip().startswith("#"))
+    cp_lines = [ln for ln in code_only.splitlines() if "cp -f" in ln]
+    import re as _re
+    fatal_m = _re.search("for _sasset in ([^;]+)", code_only)  # قائمة الفحص القاتل ضدّ الأصل المفقود
+    fatal_list = fatal_m.group(1).split() if fatal_m else []
+    q = chr(34)
+    for src, dest in M.BRANDING_SESSIONS_ASSETS:
+        ap = os.path.join(ROOT, src)
+        assert os.path.isfile(ap), f"أصل sessions مفقود: {src}"
+        body = _read(ap)
+        if src.endswith(".svg"):
+            xml.dom.minidom.parseString(body.encode("utf-8"))
+            assert ("id=" + q + "mihrab-arch" + q) in body, f"{src} بلا مِجَسّ mihrab-arch"
+        else:  # vscodeLogoPath.ts: مسار محراب المطموس لا مسار VSCodium
+            assert "M14 88" in body, f"{src} لا يحمل مسار قوس محراب (M14 88)"
+            assert "M65.566" not in body, f"{src} ما زال يحمل مسار شعار VSCodium (M65.566)"
+        assert any(dest in ln for ln in cp_lines), f"لا سطر cp ينسخ إلى وجهة sessions {dest}"
+        assert os.path.basename(dest) in fatal_list, f"basename {os.path.basename(dest)} غائب عن قائمة الفحص القاتل for _sasset"
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")

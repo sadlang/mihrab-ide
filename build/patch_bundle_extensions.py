@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v17"
+CORE_PATCH_VERSION = "v18"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,7 +38,7 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v17 (+رأس التطبيق + خلفية المحرّر) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v18 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
@@ -59,6 +59,16 @@ INJECT = """
       cp -f "../.mihrab-branding/letterpress-${_lp}.svg" "src/vs/workbench/browser/parts/editor/media/letterpress-${_lp}.svg"
     done
     echo "محراب: طُبِّق شعار رأس التطبيق وخلفية المحرّر"
+    # أصول مساحة sessions التجريبيّة: شعار حوض الأسماك (vscodeLogoPath.ts، مسار مطموس مملوء)،
+    # أيقونة Open-in-VSCode (بديل تطوير)، وخلفيّة sessions الفارغة.
+    for _sasset in vscode-icon.svg vscodeLogoPath.ts letterpress-sessions-dark.svg letterpress-sessions-light.svg; do
+      [ -f "../.mihrab-branding/${_sasset}" ] || { echo "محراب: أصل هوية sessions مفقود ../.mihrab-branding/${_sasset}" >&2; exit 1; }
+    done
+    cp -f ../.mihrab-branding/vscode-icon.svg src/vs/sessions/browser/media/vscode-icon.svg
+    cp -f ../.mihrab-branding/vscodeLogoPath.ts src/vs/sessions/contrib/aquarium/browser/vscodeLogoPath.ts
+    cp -f ../.mihrab-branding/letterpress-sessions-dark.svg src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-dark.svg
+    cp -f ../.mihrab-branding/letterpress-sessions-light.svg src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-light.svg
+    echo "محراب: طُبِّقت أصول مساحة sessions (شعار الحوض + أيقونة + خلفية)"
   fi
   if [ -f ../.mihrab-patch-main-locale.py ]; then
     python ../.mihrab-patch-main-locale.py src/main.ts || { echo "محراب: فشلت رُقعة اللغة الافتراضيّة" >&2; exit 1; }
