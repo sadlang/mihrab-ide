@@ -1,5 +1,5 @@
 // تأكيدات RTL الوقتيّة (L3) — مشتقّة من docs/rtl/rtl-inventory.md، هندسيّة حتميّة بسماحية.
-import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon } from "./harness.mjs";
+import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -143,6 +143,23 @@ export async function interactionAssertions(cdp) {
         : fail("أيقونة ملفّ ص (المستكشف)", `خلفيّة «${(e.bg || "").slice(0, 40)}» ليست أيقونة القوس`));
     }
   } catch (e) { out.push(skip("أيقونة ملفّ ص (المستكشف)", "تعذّر: " + e.message, true)); }
+
+  // رأس التطبيق: أيقونة شريط العنوان تحمل شعار القوس (code-icon). حاضرة دائمًا مع شريط عنوان مخصّص.
+  try {
+    const a = await titlebarAppicon(cdp);
+    if (!a || !a.present) out.push(skip("رأس التطبيق: شعار القوس", "لا .window-appicon (شريط عنوان أصيل؟)", true));
+    else if (!a.wired) out.push(fail("رأس التطبيق: شعار القوس", `مرتبط=false bg=${JSON.stringify(a.bg)}`));
+    else if (!a.visible) out.push(skip("رأس التطبيق: شعار القوس", "مرتبط لكن غير مرئيّ (شريط مطويّ/ملء شاشة؟)", true));
+    else out.push(pass("رأس التطبيق: شعار القوس", "أيقونة شريط العنوان = code-icon (المحتوى مضمون بـL2)"));
+  } catch (e) { out.push(skip("رأس التطبيق: شعار القوس", "تعذّر: " + e.message, true)); }
+
+  // خلفية المحرّر الفارغ: letterpress تحمل القوس (best-effort — مرئيّة فقط بلا محرّر مفتوح).
+  try {
+    const l = await editorLetterpress(cdp);
+    if (!l || !l.present) out.push(skip("خلفية المحرّر: القوس", "لا .letterpress (لا مجموعة محرّر فارغة)", true));
+    else if (l.wired) out.push(pass("خلفية المحرّر: القوس", "letterpress مرتبطة (المحتوى مضمون بـL2)"));
+    else out.push(fail("خلفية المحرّر: القوس", `bg=${JSON.stringify(l.bg)} ليست letterpress`));
+  } catch (e) { out.push(skip("خلفية المحرّر: القوس", "تعذّر: " + e.message, true)); }
 
   return out;
 }
