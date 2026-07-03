@@ -179,8 +179,12 @@ rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
 [[ -f "$BRAND_SRC/mihrab_150x150.png" ]] && cp -f "$BRAND_SRC/mihrab_150x150.png" "$BRAND_STAGE/code_150x150.png"
 [[ -f "$BRAND_SRC/mihrab_70x70.png" ]] && cp -f "$BRAND_SRC/mihrab_70x70.png" "$BRAND_STAGE/code_70x70.png"
 BSH="$UP/build.sh"
-# الوسم يتضمّن إصدار الحقن؛ بدّله عند توسيع الرُقَع كي يُعاد الترقيع على build.sh نظيف.
-if [[ -f "$BSH" ]] && ! grep -q 'محراب: رُقَع النواة v16 (+صفحة الترحيب)' "$BSH"; then
+# مصدر حقيقة واحد لإصدار الرُقَع: يُشتَقّ CORE_PATCH_VERSION من patch_bundle_extensions.py
+# فيبقى الحارس هنا والوسم في المرقِّع متّسقين تلقائيًّا (رفع الإصدار في موضع واحد يكفي).
+CORE_PATCH_VERSION="$(sed -n 's/.*CORE_PATCH_VERSION[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/build/patch_bundle_extensions.py" | head -1)"
+[[ -z "$CORE_PATCH_VERSION" ]] && { echo "❌ تعذّر اشتقاق CORE_PATCH_VERSION من patch_bundle_extensions.py." >&2; exit 1; }
+# الوسم يتضمّن إصدار الحقن؛ بدّله (في المرقِّع) عند توسيع الرُقَع كي يُعاد الترقيع على build.sh نظيف.
+if [[ -f "$BSH" ]] && ! grep -q "محراب: رُقَع النواة $CORE_PATCH_VERSION" "$BSH"; then
   log "ترقيع build.sh (حقن الإضافات + رُقَع النواة: لغة + اتّجاه RTL)"
   # أعِد ضبط build.sh لو كان مُرقَّعًا بحقن أقدم كي يُطبَّق الحقن الموسَّع على نسخة نظيفة.
   # نتحقّق من نجاح الاستعادة فعلًا (لا || true صامت) لتفادي تراكب حقنين في الحالة الحديّة.
