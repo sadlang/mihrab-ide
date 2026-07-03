@@ -145,7 +145,8 @@ FILES = [
         "src/vs/editor/common/viewLayout/viewLayout.ts",
         "mihrab-rtl-hscroll",
         [
-            # مرساة سطر-واحد (المصدر CRLF؛ مرساة متعدّدة الأسطر بـ\n لا تطابق). التعليق فريد.
+            # مرساة سطر-واحد. التعليق فريد. (المراسي متعدّدة الأسطر بـ\n صارت مدعومة: patch_file يطبّع
+            # \n إلى سطر الملفّ CRLF/LF قبل المطابقة — انظر rulers أدناه.)
             (
                 "\t\t// The height might depend on the fact that there is a horizontal scrollbar or not",
                 (
@@ -243,6 +244,36 @@ FILES = [
             ),
         ],
     ),
+    (
+        # م5 (المسطرات rulers): خطوط عموديّة عند أعمدة (editor.rulers، مُطفأة افتراضيًّا). حاوية
+        # .view-rulers تُلحَق بـ_linesContent (الطبقة القابلة للتمرير) فـsetLeft بإحداثيّات المحتوى.
+        # في RTL يبدأ النصّ من يمين صندوق المحتوى (عرضه scrollWidth) ⇒ العمود N عند scrollWidth−N*w.
+        # (مراجعة Amelia: contentWidth = viewport خطأ؛ ctx.scrollWidth الصحيح، ولا حاجة scrollLeft إذ
+        # الطبقة تُترجَم تلقائيًّا.) ونوسّع onScrollChanged لـscrollWidthChanged وإلّا جمدت المسطرة عند
+        # كتابة سطر أطول (يغيّر العرض لا الارتفاع). التحجيم مُغطّى بـonConfigurationChanged (يُعيد الرسم بلا
+        # شرط عند إعادة حساب التخطيط) — لا onLayoutChanged (غير موجود في ViewPart الأساس). والعكس مشروط
+        # بـdir==='rtl' (مراجعة Amelia MEDIUM-1) متّسقًا مع أخوات م5 (contentWidgets/overlayWidgets) فلا نعكس
+        # محتوى LTR (سطر إنجليزيّ مفروض) على مسطرة يمينًا. مُتحقَّق حيًّا (CDP): عمود 20 عند الحافّة اليمنى−20حرفًا.
+        "src/vs/editor/browser/viewParts/rulers/rulers.ts",
+        "mihrab-rtl-rulers",
+        [
+            (
+                "		return e.scrollHeightChanged;",
+                "		return e.scrollHeightChanged || e.scrollWidthChanged; // mihrab-rtl-rulers (م5): أعِد الرسم عند تغيّر العرض (موضع RTL يعتمد scrollWidth)",
+                1,
+            ),
+            (
+                "		this._ensureRulersCount();\n\n		for (let i = 0, len = this._rulers.length; i < len; i++) {",
+                "		this._ensureRulersCount();\n\n		// mihrab-rtl-rulers (م5، Amelia MEDIUM-1): حارس RTL يُقاس مرّة لا لكلّ مسطرة، متّسق مع أخوات م5.\n		const mihrabRtl = this.domNode.domNode.closest('.monaco-workbench')?.getAttribute('dir') === 'rtl';\n\n		for (let i = 0, len = this._rulers.length; i < len; i++) {",
+                1,
+            ),
+            (
+                "			node.setLeft(ruler.column * this._typicalHalfwidthCharacterWidth);",
+                "			const mihrabLeft = ruler.column * this._typicalHalfwidthCharacterWidth; // mihrab-rtl-rulers\n			node.setLeft(mihrabRtl ? ctx.scrollWidth - mihrabLeft : mihrabLeft); // mihrab-rtl-rulers (م5): العمود N من يمين المحتوى في RTL، وإلّا LTR أصليّ",
+                1,
+            ),
+        ],
+    ),
 ]
 
 
@@ -257,13 +288,17 @@ def patch_file(root: str, relpath: str, mark: str, edits) -> int:
     if mark in text:
         print(f"مُرقَّع مسبقًا ({mark}) — تخطٍّ: {relpath}")
         return 0
-    for old, _new, count in edits:
-        if text.count(old) != count:
-            print(f"⚠️ عدد تطابقات غير متوقَّع ({text.count(old)}≠{count}) للمرساة في {relpath}: «{old[:44]}...»", file=sys.stderr)
-            return 1
+    # نطبّع أسطر المرساة على سطر الملفّ (CRLF/LF) قبل المطابقة: مراسٍ متعدّدة الأسطر تُكتب بـ\n
+    # لكنّ الملفّ قد يكون CRLF (نقرأ newline="") فتفشل المطابقة صامتةً بلا هذا التطبيع.
+    # خلط النهايات في ملفّ واحد ⇒ مرساة LF لا تطابق nl=CRLF ⇒ إجهاض صاخب (return 1) لا إفساد — فشل آمن.
     nl = "\r\n" if "\r\n" in text else "\n"
+    for old, _new, count in edits:
+        old_nl = old.replace("\n", nl)
+        if text.count(old_nl) != count:
+            print(f"⚠️ عدد تطابقات غير متوقَّع ({text.count(old_nl)}≠{count}) للمرساة في {relpath}: «{old[:44]}...»", file=sys.stderr)
+            return 1
     for old, new, count in edits:
-        text = text.replace(old, new.replace("\n", nl), count)
+        text = text.replace(old.replace("\n", nl), new.replace("\n", nl), count)
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8", newline="") as f:

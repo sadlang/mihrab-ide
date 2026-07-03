@@ -80,7 +80,7 @@ overviewRuler.right (3011) = 0   // دائمًا يمينًا
 | **التمرير الأفقيّ (كشف)** | `viewParts/viewLines/viewLines.ts:676,784-835` | `setLeft(-scrollLeft)` واتّجاه الكشف؛ حشو `HORIZONTAL_EXTRA_PX:101` |
 | **hit-test الفأرة** | `controller/mouseTarget.ts:408-414,700-730,760-795` | `mouseContentHorizontalOffset` ومنطق الهوامش (فيه `isRtl()` جزئيّ:370) |
 | **ودجات المحتوى** | `viewParts/contentWidgets/contentWidgets.ts:376,581` | موضع أفقيّ نسبةً لـcontentLeft |
-| **المسطرات (rulers)** | `viewParts/rulers/rulers.ts:96` | من اليمين في RTL |
+| **المسطرات (rulers)** | `viewParts/rulers/rulers.ts:96` (mihrab-rtl-rulers) | ✅ `ctx.scrollWidth − column*w` من يمين صندوق المحتوى + `onScrollChanged` يشمل scrollWidthChanged. مُتحقَّق حيًّا (CDP): عمود 20 عند حافّة المحتوى اليمنى−20حرفًا بالضبط، بلا إزاحة |
 | **زخارف الكتل** | `viewParts/blockDecorations/blockDecorations.ts:107` | جهة |
 
 **ملاحظة:** المؤشّر (`viewCursor.ts:269 setLeft(renderData.left)`) والتحديد (`selections.ts`) —
@@ -130,8 +130,15 @@ glyphMarginLeft = lineNumbersLeft + lineNumbersWidth
    تحقّق CDP: فتح ⇒ scrollLeft=−1200، الأسطر القصيرة مرئيّة `[941,1070]`؛ نقر x=1050→ع١ (بداية)،
    x=960→ع١٥ (نهاية) ⇒ **hit-test دقيق**. حارس `scrollLeft===0` ذرّيّ (لا حلقة، Amelia).
    قيود متبقّية (تجميليّة): استعادة scrollLeft=0 محفوظ تُدفَع يمينًا؛ مزامنة الفرق لحظيّة.
-5. **م5 (متبقٍّ، تجميليّ):** حارس الطيّ 4px، أيقونة طيّ التمرير اللاصق، ودجات المحتوى/التراكب،
-   المسطرات، زخارف الكتل، IME/الالتفاف، حالة `minimap.side='left'` الحديّة.
+5. **م5 (مُنجَز 2026-07-03):** حارس الطيّ 4px ✅ (mihrab-rtl-hit)، ودجات المحتوى/التراكب ✅
+   (mihrab-rtl-cwpos/overlay)، **المسطرات ✅ (mihrab-rtl-rulers: `ctx.scrollWidth − column*w` من يمين المحتوى،
+   مشروط بـ`dir==='rtl'` كأخوات م5 (التحجيم مُغطّى بـ`onConfigurationChanged`)، مُتحقَّق بصريًّا بلا إزاحة)**.
+   **زخارف الكتل:** لا-قضيّة (تمتدّ كامل `contentWidth` ⇒ محايدة للاتّجاه — مُتحقَّق حيًّا count=0/بنيويًّا).
+   حالات حافّيّة موثَّقة (لا تظهر عاديًّا): `minimap.side='left'` (إعداد مستخدم؛ محراب يفرض اليسار)،
+   IME/الالتفاف (محرّك Monaco مدمج)، أيقونة طيّ التمرير اللاصق (تفصيل hover ضمن السطر اللاصق المرقَّع قاعدة 14).
+   **حدود المسطرات المعروفة (مراجعة Amelia، مطفأة افتراضيًّا فلا تظهر):** (أ) مسار GPU التجريبيّ `rulersGpu.ts`
+   (`editor.experimentalGpuAcceleration==='on'`) غير مرقَّع ⇒ المسطرات تعود يسارًا في وضع GPU؛ يُرقَّع موازيًا عند
+   تثبيت GPU. (ب) عمود يتجاوز `scrollWidth` (نافذة ضيّقة) ⇒ `left` سالب يُقصّ يسارًا (لا انهيار؛ اختفاء غير متماثل مقبول).
 
 ## ملفّات المشروع (مرجع سريع)
 
