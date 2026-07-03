@@ -11,6 +11,7 @@ L1 يضمن أنّ الرُقَع **طبَّقت على المصدر**؛ L2 يض
 
 الاستعمال: python tests/bundle/check_injected.py   (يتطلّب بناءً؛ يتخطّى بلطف إن غاب)
 """
+import filecmp
 import json
 import os
 import sys
@@ -23,11 +24,15 @@ for _s in (sys.stdout, sys.stderr):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.dirname(HERE))  # tests/
+import patch_manifest as M  # noqa: E402
 APP = os.path.join(ROOT, ".upstream", "VSCode-win32-x64", "resources", "app")
 OUT = os.path.join(APP, "out")
 JS = os.path.join(OUT, "vs", "workbench", "workbench.desktop.main.js")
 CSS = os.path.join(OUT, "vs", "workbench", "workbench.desktop.main.css")
 EXE = os.path.join(ROOT, ".upstream", "VSCode-win32-x64", "Mihrab.exe")
+# هوية بصريّة: مجلّد أصول win32 في الحزمة المشحونة (يُقارَن بالمصدر عبر M.BRANDING_ASSETS).
+WIN32_OUT = os.path.join(APP, "resources", "win32")
 
 # (وصف، ملفّ، سلسلة يجب وجودها، أدنى عدد)
 BUNDLE_MARKERS = [
@@ -36,12 +41,17 @@ BUNDLE_MARKERS = [
     ("استيراد ورقة mihrab-rtl في workbench", JS, "mihrab-rtl", 1),
     ("محرّر: محاذاة ودجة المحتوى بالـcaret (cwpos)", JS, ".cursors-layer .cursor", 1),
     ("محرّر: تمرير لاصق RTL (sticky content)", JS, "sticky-line-content", 1),
+    # مِجَسّ الشعار (ASCII، يصمد أمام التصغير) يثبت أنّ **رُقعة الترويسة شُحنت**. لا يثبت نصّ
+    # الجملة نفسه (esbuild يهرّب غير-ASCII إلى \\uXXXX ⇒ لا عربيّة حرفيّة في الحزمة، تحقّقنا).
+    # نصّ الجملة يتحقّق منه L1 (السلسلة حرفيًّا في المصدر المُرقَّع) وL3 الوقتيّ (نصّ العنوان الفرعيّ).
+    ("ترحيب: عنصر شعار القوس (ترويسة Get Started)", JS, "mihrab-welcome-mark", 1),
     # CSS — طبقة الأنماط (mihrab-rtl.css)
     ("CSS13: مسطرة النظرة يسارًا", CSS, "decorationsOverviewRuler", 1),
     ("CSS14: أرقام التمرير اللاصق يمينًا", CSS, "sticky-widget-line-numbers", 1),
     ("CSS15: ودجة الاقتراحات RTL", CSS, "suggest-widget{direction:rtl}", 1),
     ("CSS16: مرآة الإشعارات (مقصورة)", CSS, "notifications-toasts:not(.bottom-left)", 1),
     ("CSS16: مرآة الزرّ العائم", CSS, "floating-click-widget", 1),
+    ("CSS17: شكل شعار القوس في الترحيب", CSS, "mihrab-welcome-mark", 1),
 ]
 
 
@@ -65,6 +75,51 @@ def check(name):
 @check("Mihrab.exe منتَج")
 def _exe():
     assert os.path.isfile(EXE), f"لا exe: {EXE}"
+
+
+@check("هوية بصريّة: كلّ أصول win32 في الحزمة = مصدر محراب (بايتيًّا)")
+def _app_icon():
+    for src, target in M.BRANDING_ASSETS:
+        sp = os.path.join(ROOT, *src.split("/"))
+        tp = os.path.join(WIN32_OUT, target)
+        assert os.path.isfile(sp), f"لا أصل مصدر: {src} (شغّل assets/branding/gen_ico.py)"
+        assert os.path.isfile(tp), f"لا {target} في الحزمة (لم تُحقَن الهوية؟)"
+        assert filecmp.cmp(sp, tp, shallow=False), \
+            f"{target} المشحون ≠ {src} (رجعت هوية VSCodium؟)"
+
+
+@check("سمات محراب: مشحونة (داكنة + فاتحة) + الافتراضيّة معلَنة")
+def _themes_shipped():
+    d = os.path.join(APP, "extensions", "mihrab-themes")
+    if not os.path.isdir(os.path.join(ROOT, "extensions", "mihrab-themes")):
+        return  # لا إضافة سمات في هذا الفرع — تخطٍّ (لا يُفشِل)
+    assert os.path.isdir(d), "إضافة سمات محراب غير مشحونة في المخرَج (extensions/mihrab-themes)"
+    for fn in ("mihrab-dark-color-theme.json", "mihrab-light-color-theme.json"):
+        assert os.path.isfile(os.path.join(d, "themes", fn)), f"سمة مفقودة في الحزمة: {fn}"
+    pkg = json.load(open(os.path.join(d, "package.json"), encoding="utf-8"))
+    assert pkg.get("contributes", {}).get("configurationDefaults", {}).get("workbench.colorTheme"), \
+        "السمة الافتراضيّة غير معلَنة في حزمة المخرَج"
+
+
+@check("سمة أيقونات محراب: مشحونة (SVG + JSON) + الافتراضيّة معلَنة")
+def _icons_shipped():
+    if not os.path.isdir(os.path.join(ROOT, "extensions", "mihrab-icons")):
+        return  # لا إضافة أيقونات في هذا الفرع — تخطٍّ
+    d = os.path.join(APP, "extensions", "mihrab-icons")
+    assert os.path.isdir(d), "إضافة أيقونات محراب غير مشحونة (extensions/mihrab-icons)"
+    tj = os.path.join(d, "mihrab-icon-theme.json")
+    assert os.path.isfile(tj), "ملفّ سمة الأيقونات مفقود في الحزمة"
+    for svg in ("sad.svg", "file.svg", "folder.svg", "folder-open.svg"):
+        assert os.path.isfile(os.path.join(d, "icons", svg)), f"أيقونة SVG مفقودة في الحزمة: {svg}"
+    # افحص **محتوى** الـJSON المشحون لا وجوده فقط (بناء يشحن JSON بائتًا/فارغًا يمرّ وإلّا):
+    td = json.load(open(tj, encoding="utf-8"))
+    defs = td.get("iconDefinitions", {})
+    sad_ref = td.get("fileExtensions", {}).get("ص") or td.get("languageIds", {}).get("sad")
+    assert sad_ref in defs, "خريطة ملفّ ص مفقودة/مكسورة في سمة الأيقونات المشحونة"
+    pkg = json.load(open(os.path.join(d, "package.json"), encoding="utf-8"))
+    default = pkg.get("contributes", {}).get("configurationDefaults", {}).get("workbench.iconTheme")
+    ids = {i.get("id") for i in pkg.get("contributes", {}).get("iconThemes", [])}
+    assert default in ids, "سمة الأيقونات الافتراضيّة لا تطابق أيّ id في حزمة المخرَج"
 
 
 @check("product.json المبنيّ: عربيّ افتراضيّ (defaultLocale=ar)")

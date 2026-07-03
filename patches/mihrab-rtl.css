@@ -169,3 +169,22 @@
 	right: auto;
 	left: 20px;
 }
+
+/* ── 17) شعار محراب في ترويسة صفحة الترحيب (Get Started). رُقعة النواة patch_welcome_rtl
+   تحقن عنصرًا `.mihrab-welcome-mark` قبل عنوان المنتج؛ هنا نمنحه شكل «القوس الخالص» كخلفيّة
+   SVG مضمّنة. الألوان (فيروزيّ #31A796 + شفافيّة القوس الداخليّ 0.42 + مؤشّر ذهبيّ #E3BE68)
+   = نبرات نسخة الخلفيّة الداكنة حرفيًّا، إذ السمة الافتراضيّة «محراب الداكنة»؛ فالـbase64 أدناه
+   تشفيرٌ مطابق بالبكسل لـassets/branding/mihrab-mark-dark.svg (الهندسة والألوان معًا).
+   العنوان يبقى nameLong=«محراب»، والعنوان الفرعيّ = الجملة الاستعاريّة (من الرُقعة). القوس
+   يتوسّط الترويسة المتمركزة (margin:0 auto).
+
+   **غير مقصور على [dir=rtl] عمدًا** (قاعدة هويّة لا تخطيط): الشعار غير اتّجاهيّ ويجب أن يظهر
+   في الاتّجاهين كالعنوان — وإلّا اختفى في وضع اللغة الإنجليزيّة (dir=ltr) بينما تبقى الجملة.
+   يستهدف صنفًا نملكه (mihrab-welcome-mark) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES. ── */
+.monaco-workbench .gettingStartedCategoriesContainer .header .mihrab-welcome-mark {
+	display: block;
+	width: 68px;
+	height: 78px;
+	margin: 0 auto 16px;
+	background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTI4Jz48cGF0aCBkPSdNMjIgMTE2IEwyMiA1OCBBNTYgNTYgMCAwIDEgNTAgOCBBNTYgNTYgMCAwIDEgNzggNTggTDc4IDExNicgZmlsbD0nbm9uZScgc3Ryb2tlPScjMzFBNzk2JyBzdHJva2Utd2lkdGg9JzYuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+PHBhdGggZD0nTTM1IDExNiBMMzUgNzQgQTI4IDI4IDAgMCAxIDUwIDUwIEEyOCAyOCAwIDAgMSA2NSA3NCBMNjUgMTE2JyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nNCcgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJyBvcGFjaXR5PScwLjQyJy8+PHJlY3QgeD0nNDcnIHk9JzgyJyB3aWR0aD0nNicgaGVpZ2h0PSczMCcgcng9JzMnIGZpbGw9JyNFM0JFNjgnLz48L3N2Zz4=");
+}

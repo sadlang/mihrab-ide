@@ -22,6 +22,8 @@ PATCHERS = [
     ("patch_gridview_marker.py", "file", ["src/vs/base/browser/ui/grid/gridview.ts"]),
     ("patch_splitview_rtl.py", "file", ["src/vs/base/browser/ui/splitview/splitview.ts"]),
     ("patch_sash_rtl.py", "file", ["src/vs/base/browser/ui/sash/sash.ts"]),
+    ("patch_welcome_rtl.py", "file",
+     ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts"]),
     # جذر: يشتقّ ملفّاته الثمانية من FILES (تُستخرَج ديناميكيًّا في L1).
     ("patch_editor_rtl.py", "root", None),
 ]
@@ -37,6 +39,18 @@ BUILD_PATCHERS = [
 
 # طبقة الأنماط (تُفحَص في L0/L2 لا L1):
 CSS_PATCH = "patches/mihrab-rtl.css"
+
+# أصول الهوية البصريّة: يجهّزها build.sh في .mihrab-branding ويحقنها patch_bundle_extensions
+# فوق resources/win32/ (electron.ts:winIcon='resources/win32/code.ico' ⇒ أيقونة الـexe؛
+# code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico ⇒ أيقونة
+# المستند الافتراضيّة في المستكشف). تُفحَص في L0 (وجود) وL2 (تطابق بايتيّ مع الحزمة).
+# قائمة أزواج (مصدر، هدف في resources/win32/) — الأصل الواحد قد يُنسَخ لهدفين.
+BRANDING_ASSETS = [
+    ("assets/branding/mihrab.ico", "code.ico"),
+    ("assets/branding/mihrab.ico", "default.ico"),
+    ("assets/branding/mihrab_150x150.png", "code_150x150.png"),
+    ("assets/branding/mihrab_70x70.png", "code_70x70.png"),
+]
 
 
 def editor_target_files(build_dir):
