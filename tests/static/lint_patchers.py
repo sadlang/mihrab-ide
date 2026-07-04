@@ -405,6 +405,32 @@ def _branding_sessions_assets():
         assert any(dest in ln for ln in cp_lines), f"لا سطر cp ينسخ إلى وجهة sessions {dest}"
         assert os.path.basename(dest) in fatal_list, f"basename {os.path.basename(dest)} غائب عن قائمة الفحص القاتل for _sasset"
 
+@check("الملفّ التكميليّ للترجمة: JSON صالح، قيم نصّيّة غير فارغة، تكافؤ الحوامل، ووصل الخبز به")
+def _ar_supplement():
+    import re as _re
+    supp_path = os.path.join(BUILD, "mihrab_ar_supplement.json")
+    assert os.path.isfile(supp_path), "الملفّ التكميليّ mihrab_ar_supplement.json مفقود"
+    data = json.load(open(supp_path, encoding="utf-8"))
+    assert isinstance(data, dict), "الملفّ التكميليّ ليس كائن JSON"
+    ph = _re.compile(r"\{\d+\}")
+    mnem = _re.compile(r"&&(.)")
+    for en, ar in data.items():
+        assert isinstance(en, str) and isinstance(ar, str) and ar, f"زوج غير نصّيّ/فارغ: {en!r}"
+        # تكافؤ الحوامل {n} كـmultiset (لا set) — يمسك اختلال العدد المكرَّر ({0}...{0}).
+        assert sorted(ph.findall(en)) == sorted(ph.findall(ar)), \
+            f"اختلال حوامل بين الإنجليزيّة والعربيّة: {en!r}"
+        # تكافؤ بنية الماركداون/المعرّفات الحرفيّة: رابط `](`، backtick، وبادئة الرابط http.
+        for tok in ("](", "`", "http"):
+            assert en.count(tok) == ar.count(tok), \
+                f"اختلال بنية «{tok}» بين الإنجليزيّة والعربيّة: {en!r}"
+        # علامة اختصار &&: يجب بقاء حرف الوصول اللاتينيّ نفسه (لا مجرّد وجود &&).
+        assert {c.lower() for c in mnem.findall(en)} == {c.lower() for c in mnem.findall(ar)}, \
+            f"اختلّ حرف اختصار && بين الإنجليزيّة والعربيّة: {en!r}"
+    # الخبز يجب أن يشير إلى اسم الملفّ التكميليّ (وإلّا فالوصل مقطوع).
+    bake_src = _read(os.path.join(BUILD, "bake_nls_arabic.py"))
+    assert "mihrab_ar_supplement.json" in bake_src, "bake_nls_arabic.py لا يشير إلى الملفّ التكميليّ"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
