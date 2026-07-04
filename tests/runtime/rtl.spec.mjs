@@ -1,5 +1,5 @@
 // تأكيدات RTL الوقتيّة (L3) — مشتقّة من docs/rtl/rtl-inventory.md، هندسيّة حتميّة بسماحية.
-import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi } from "./harness.mjs";
+import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi, tabsDropRtl } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -175,6 +175,17 @@ export async function interactionAssertions(cdp) {
       else out.push(fail("bidi: النصّ العربيّ يمينًا", `dir=${b.dir}، النصّ [${b.textLeft},${b.textRight}] في سطر [${b.lineLeft},${b.lineRight}] (متوقَّع محاذاة يمينًا)`));
     }
   } catch (e) { out.push(skip("bidi: النصّ العربيّ يمينًا", "تعذّر: " + e.message, true)); }
+
+  // إفلات التبويبات (#18، رقعة mihrab-rtl-tabdrop): حارس اتّجاه الحاوية + انعكاسها الفيزيائيّ.
+  try {
+    const t = await tabsDropRtl(cdp);
+    if (!t || !t.present) out.push(skip("إفلات التبويبات: حاوية RTL", "لا حاوية تبويبات بـ≥2 تبويب (افتح ملفّين+)", true));
+    else if (t.dir !== "rtl") out.push(fail("إفلات التبويبات: حاوية RTL", `direction=${t.dir} (متوقَّع rtl) — الحارس لن يُفعَّل!`));
+    else if (!t.firstIsPhysicallyRight) out.push(fail("إفلات التبويبات: حاوية RTL",
+      `dir=rtl لكنّ تبويب DOM الأوّل ليس أقصى اليمين (first.left=${t.firstLeft} ≤ last.left=${t.lastLeft}) — انهار افتراض انعكاس الـflex!`));
+    else out.push(pass("إفلات التبويبات: حاوية RTL",
+      `${t.tabCount} تبويب، direction=rtl، تبويب DOM الأوّل أقصى اليمين (first.left=${t.firstLeft} > last.left=${t.lastLeft})`));
+  } catch (e) { out.push(skip("إفلات التبويبات: حاوية RTL", "تعذّر: " + e.message, true)); }
 
   return out;
 }

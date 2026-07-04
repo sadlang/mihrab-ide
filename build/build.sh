@@ -166,6 +166,7 @@ shopt -u nullglob
 [[ -f "$ROOT/build/patch_menu_rtl.py" ]] && cp -f "$ROOT/build/patch_menu_rtl.py" "$UP/.mihrab-patch-menu-rtl.py"
 [[ -f "$ROOT/build/patch_splitview_rtl.py" ]] && cp -f "$ROOT/build/patch_splitview_rtl.py" "$UP/.mihrab-patch-splitview-rtl.py"
 [[ -f "$ROOT/build/patch_sash_rtl.py" ]] && cp -f "$ROOT/build/patch_sash_rtl.py" "$UP/.mihrab-patch-sash-rtl.py"
+[[ -f "$ROOT/build/patch_tabsdrop_rtl.py" ]] && cp -f "$ROOT/build/patch_tabsdrop_rtl.py" "$UP/.mihrab-patch-tabsdrop-rtl.py"
 [[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
 [[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"

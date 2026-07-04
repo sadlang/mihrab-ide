@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v18"
+CORE_PATCH_VERSION = "v19"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,7 +38,7 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v18 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v19 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
@@ -96,6 +96,10 @@ INJECT = """
   fi
   if [ -f ../.mihrab-patch-sash-rtl.py ]; then
     python ../.mihrab-patch-sash-rtl.py src/vs/base/browser/ui/sash/sash.ts || { echo "محراب: فشلت رُقعة المقبض RTL" >&2; exit 1; }
+  fi
+  # رُقعة إفلات تبويبات المحرّر RTL (البند #18): اتّجاه الإدراج + مؤشّره البصريّ (LTR مطابق بايتًا).
+  if [ -f ../.mihrab-patch-tabsdrop-rtl.py ]; then
+    python ../.mihrab-patch-tabsdrop-rtl.py src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts || { echo "محراب: فشلت رُقعة إفلات التبويبات RTL" >&2; exit 1; }
   fi
   # رُقعة محرّر Monaco RTL م1–م4: الحاوية LTR + اتّجاه السطر RTL + خريطة يسارًا · مزراب يمينًا + طيّ + تمرير أفقيّ RTL.
   # تُرقّع 6 ملفّات (viewModelImpl/margin/editorScrollbar/minimap/mouseTarget/viewLayout) من جذر المصدر «.».
