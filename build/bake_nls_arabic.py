@@ -26,6 +26,7 @@ idempotent: يحفظ الإنجليزيّة الأصليّة في nls.messages.e
 
 الاستعمال: python bake_nls_arabic.py <مسار resources/app>
 """
+import hashlib
 import json
 import os
 import sys
@@ -140,6 +141,47 @@ def main() -> int:
     with open(tmp2, "w", encoding="utf-8", newline="") as f:
         json.dump(new_pack, f, ensure_ascii=False)
     os.replace(tmp2, i18n_file)
+
+    # (3) إبطال كاش حزمة اللغة الوقتيّ (CLP) عند تغيّر المحتوى — إصلاح فخّ الإزاحة (off-by-one).
+    # صلاحيّة كاش CLP في userDataPath تُشتَقّ من md5(extId + نسخة الحزمة) ومساره يحوي commit
+    # المنبع الثابت (languagePacks.ts). فلو تغيّر تخطيط nls أو الترجمة مع ثبات نسخة الحزمة، بقي
+    # كاش CLP بائتًا يُزيح الترجمات موضعًا (زرّ «عدم الحفظ» ظهر «حفظ»). نجعل نسخة الحزمة **بصمةَ
+    # محتوى**: هاش result المخبوز يلتقط تغيّر التخطيط والترجمة معًا. فأيّ تغيّر يبمب النسخة ⇒ هاش
+    # صلاحيّة جديد ⇒ إعادة توليد الكاش تلقائيًّا؛ وثبات المحتوى ⇒ نسخة ثابتة (بلا إبطال زائف).
+    # قيد تصميميّ (مراجعة Amelia M1): النسخة **غير رتيبة** (قد تنقص عن الأصل) — لا يضرّ لأنّ الهاش
+    # يقارن بالتساوي لا بالترتيب، ويفترض أنّ الحزمة **مدمجة فقط** (محراب محرِّر مغلق بلا سوق يُظلّل
+    # النسخة المدمجة بأعلى semver). لو أُضيف سوق لاحقًا، اجعل الـpatch رتيبًا (طابع زمنيّ للبناء).
+    pkg_file = os.path.join(app, "extensions", "language-pack-ar", "package.json")
+    if os.path.isfile(pkg_file):
+        # الأصل (idempotency + مرجع major.minor للحزمة المنبعيّة): يُحفَظ مرّة ذرّيًّا قبل أوّل bump.
+        pkg_backup = pkg_file + ".orig"
+        if not os.path.isfile(pkg_backup):
+            tmp_b = pkg_backup + ".tmp"
+            with open(tmp_b, "w", encoding="utf-8", newline="") as f:
+                json.dump(_read_json(pkg_file), f, ensure_ascii=False, indent=2)
+            os.replace(tmp_b, pkg_backup)
+        base_ver = str(_read_json(pkg_backup).get("version", "1.0.0"))
+        # حارس المكوّنين (Amelia L2): نسخة مكوّن واحد («1») ⇒ "1.<int>" = semver غير صالح.
+        _mm = base_ver.split(".")[:2]
+        major_minor = ".".join(_mm) if len(_mm) == 2 else "1.0"
+        # بصمة حتميّة من المحتوى المخبوز (نفس المحتوى ⇒ نفس النسخة ⇒ idempotent).
+        content_sig = hashlib.md5(
+            json.dumps(result, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        new_ver = f"{major_minor}.{int(content_sig[:8], 16)}"  # patch عدد صحيح ≤ ~4.3e9 (semver صالح)
+        pkg = _read_json(pkg_file)
+        if pkg.get("version") != new_ver:
+            pkg["version"] = new_ver
+            tmp3 = pkg_file + ".tmp"
+            with open(tmp3, "w", encoding="utf-8", newline="") as f:
+                json.dump(pkg, f, ensure_ascii=False, indent=2)
+            os.replace(tmp3, pkg_file)
+            print(f"↻ نسخة حزمة اللغة ⇐ {new_ver} (بصمة محتوى ⇒ إبطال كاش CLP البائت)")
+        else:
+            print(f"= نسخة حزمة اللغة ثابتة ({new_ver}) — لا تغيّر محتوى، لا إبطال زائف")
+    else:
+        print("⚠️ لا package.json لحزمة اللغة — تُخطّى بصمة إبطال الكاش (الترجمة مخبوزة سلفًا).",
+              file=sys.stderr)
 
     pct = (translated * 100) // idx if idx else 0
     print(
