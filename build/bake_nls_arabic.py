@@ -85,6 +85,26 @@ def main() -> int:
         print("حُفِظت نسخة الحزمة الأصليّة: main.i18n.orig.json")
     contents = orig.get("contents", {})
 
+    # طبقة الارتداد الثالثة (ملكيّة محراب): ملفّ تكميليّ إنجليزيّ→عربيّ يكمّل السلاسل التي
+    # لا تغطّيها حزمة اللغة المنبعيّة (1.85) — أساسًا ميزات أحدث (chat/sessions/agentHost…).
+    # يُطبَّق **فقط** حين يفشل التطابق الحرفيّ وارتداد المفتاح معًا، فلا يدوس ترجمة منبعيّة.
+    # المفتاح = نصّ الإنجليزيّة المصدر حرفيًّا (يطابق default_messages[idx])؛ يزيل التكرار عبر
+    # الوحدات تلقائيًّا. آمن: أيّ سلسلة غير موجودة ترتدّ للإنجليزيّة كالمعتاد.
+    supplement: dict[str, str] = {}
+    supp_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mihrab_ar_supplement.json")
+    if os.path.isfile(supp_file):
+        try:
+            _sup_raw = _read_json(supp_file)
+        except (ValueError, OSError) as _e:
+            print(f"⚠️ الملفّ التكميليّ تالف ({supp_file}): {_e} — يُتخطّى (الترجمة المنبعيّة تبقى).",
+                  file=sys.stderr)
+            _sup_raw = {}
+        # نقبل فقط أزواج نصّ→نصّ غير الفارغة (تجاهل التعليقات/الميتاداتا إن وُجدت بمفتاح يبدأ بـ«//»).
+        supplement = {
+            k: v for k, v in _sup_raw.items()
+            if isinstance(k, str) and isinstance(v, str) and v and not k.startswith("//")
+        }
+
     # خريطة ارتداد على مستوى المفتاح: key -> ar، لكن فقط للمفاتيح غير الملتبسة
     # (ترجمة واحدة عبر كلّ الحزمة). المفاتيح متعدّدة الترجمات تُترَك للتطابق الحرفيّ.
     key_votes: dict[str, set] = {}
@@ -104,6 +124,7 @@ def main() -> int:
     idx = 0
     exact = 0
     fallback = 0
+    supp = 0
     for module_id, keys in nls_keys:
         mod = contents.get(module_id) or {}
         for key in keys:
@@ -113,13 +134,19 @@ def main() -> int:
             elif key in key_fallback:
                 ar = key_fallback[key]
                 fallback += 1
+            else:
+                # الطبقة الثالثة: ملفّ محراب التكميليّ (بمفتاح نصّ الإنجليزيّة المصدر).
+                sup_ar = supplement.get(default_messages[idx])
+                if sup_ar:
+                    ar = sup_ar
+                    supp += 1
             if ar:
                 result.append(ar)
                 remapped.setdefault(module_id, {})[key] = ar
             else:
                 result.append(default_messages[idx])
             idx += 1
-    translated = exact + fallback
+    translated = exact + fallback + supp
 
     if idx != len(default_messages):
         print(
@@ -186,7 +213,8 @@ def main() -> int:
     pct = (translated * 100) // idx if idx else 0
     print(
         f"✅ عُرّبت الواجهة: {translated}/{idx} سلسلة ({pct}%) — حرفيّ={exact}، "
-        f"ارتداد-مفتاح={fallback}. (nls.messages.json مخبوز + main.i18n.json معاد تخطيطه)"
+        f"ارتداد-مفتاح={fallback}، تكميليّ-محراب={supp}. "
+        f"(nls.messages.json مخبوز + main.i18n.json معاد تخطيطه)"
     )
     return 0
 
