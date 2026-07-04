@@ -414,8 +414,17 @@ def _ar_supplement():
     assert isinstance(data, dict), "الملفّ التكميليّ ليس كائن JSON"
     ph = _re.compile(r"\{\d+\}")
     mnem = _re.compile(r"&&(.)")
+    # محارف تنسيق غير مرئيّة تلوّث النصّ العربيّ بصمت (لا مكان لها في هذه السلاسل):
+    # واصلة ليّنة، مسافة/واصل/فاصل صفريّ العرض، واصل الكلمات، BOM. (ترميز صريح — لا محارف
+    # غير مرئيّة في الكود نفسه.)
+    INVISIBLE = {
+        0x00AD: "SOFT-HYPHEN", 0x200B: "ZWSP", 0x200C: "ZWNJ",
+        0x200D: "ZWJ", 0x2060: "WORD-JOINER", 0xFEFF: "BOM",
+    }
     for en, ar in data.items():
         assert isinstance(en, str) and isinstance(ar, str) and ar, f"زوج غير نصّيّ/فارغ: {en!r}"
+        for cp, nm in INVISIBLE.items():
+            assert chr(cp) not in ar, f"محرف غير مرئيّ ({nm}) في الترجمة: {en!r}"
         # تكافؤ الحوامل {n} كـmultiset (لا set) — يمسك اختلال العدد المكرَّر ({0}...{0}).
         assert sorted(ph.findall(en)) == sorted(ph.findall(ar)), \
             f"اختلال حوامل بين الإنجليزيّة والعربيّة: {en!r}"
