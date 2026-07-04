@@ -213,6 +213,29 @@ export async function editorBidi(cdp) {
   })()`);
 }
 
+// البند #18 (رقعة mihrab-rtl-tabdrop): يتحقّق من حارس اتّجاه إفلات التبويبات حيًّا.
+// يقيس (أ) اتّجاه `.tabs-container` المحسوب — عليه تتوقّف الرقعة كلّها؛ (ب) الافتراض الأساس:
+// تبويب DOM الأوّل يُصيَّر فيزيائيًّا أقصى اليمين (انعكاس محور الـflex تحت dir=rtl). إن انهار
+// الافتراض (المنبع ضبط direction على الحاوية مثلًا) فالرقعة صامتة الخطأ — هذا الحارس يرصده.
+export async function tabsDropRtl(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const conts = [...document.querySelectorAll('.tabs-container')]
+      .filter(c => c.querySelectorAll('.tab').length >= 2);
+    if (!conts.length) return { present: false };
+    const c = conts[0];
+    const dir = getComputedStyle(c).direction;
+    const tabs = [...c.querySelectorAll(':scope > .tab')];
+    const first = tabs[0].getBoundingClientRect();
+    const last = tabs[tabs.length - 1].getBoundingClientRect();
+    return { present: true, dir, tabCount: tabs.length,
+      firstLeft: Math.round(first.left), firstRight: Math.round(first.right),
+      lastLeft: Math.round(last.left), lastRight: Math.round(last.right),
+      // في RTL: تبويب DOM الأوّل فيزيائيًّا يمينَ الأخير (firstLeft > lastLeft).
+      firstIsPhysicallyRight: first.left > last.left };
+  })()`);
+}
+
 // يفتح البحث (Ctrl+F) ويقيس موضعه.
 export async function findWidget(cdp, clickX = 700, clickY = 60) {
   await bringToFront(cdp);
