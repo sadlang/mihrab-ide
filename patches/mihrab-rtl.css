@@ -188,3 +188,17 @@
 	margin: 0 auto 16px;
 	background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTI4Jz48cGF0aCBkPSdNMjIgMTE2IEwyMiA1OCBBNTYgNTYgMCAwIDEgNTAgOCBBNTYgNTYgMCAwIDEgNzggNTggTDc4IDExNicgZmlsbD0nbm9uZScgc3Ryb2tlPScjMzFBNzk2JyBzdHJva2Utd2lkdGg9JzYuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+PHBhdGggZD0nTTM1IDExNiBMMzUgNzQgQTI4IDI4IDAgMCAxIDUwIDUwIEEyOCAyOCAwIDAgMSA2NSA3NCBMNjUgMTE2JyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nNCcgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJyBvcGFjaXR5PScwLjQyJy8+PHJlY3QgeD0nNDcnIHk9JzgyJyB3aWR0aD0nNicgaGVpZ2h0PSczMCcgcng9JzMnIGZpbGw9JyNFM0JFNjgnLz48L3N2Zz4=");
 }
+
+/* ── 18) البند #18 (تكملة): تصحيح موضع مؤشّر إفلات التبويبات الملتفّة في RTL.
+   الوضع المبوَّب (`.title.tabs`، الفعّال افتراضيًّا) يعلّم `last-in-row` بـ`offsetTop` المحايد ⇒
+   آخِر تبويب DOM في الصفّ = فيزيائيًّا يمينُ الصفّ في LTR ويسارُه في RTL. فقاعدة المنبع (683)
+   تُزيح مؤشّرَ «نهاية الصفّ» إلى `right:calc(var*0)` (=0) بدل الأساس `-1px` — صحيحٌ لحافّة LTR
+   الخارجيّة اليمنى، لكنّه في RTL يُصيب الحافّة الداخليّة المقابلة فيزيح الخطّ 1px. المنبع لا يعلّم
+   `first-in-row` فلا مقبض للحافّة المقابلة؛ فنُعيد الإزاحة للأساس `-1px` فتتّسق مع بقيّة الحدود
+   (موضعها سليم عبر رقعة patch_tabsdrop_rtl). التخصيص (0,13,1) عبر `.title.tabs`+`[dir=rtl]` يفوق
+   يقينًا المنبعَ (0,12,1) فلا يعتمد على ترتيب المصدر. العرض (سماكة `width` المحايدة الاتّجاه) يُترَك
+   عمدًا (لا انكسار اتّجاهيّ فيه). مقصور على [dir=rtl]+`.title.tabs`+`last-in-row`(التفاف)+
+   `drop-target`(سحب)+`:not(:last-child)` فلا تسريب لـLTR ولا لغير-السحب ولا لغير-الالتفاف. ── */
+.monaco-workbench[dir="rtl"] .part.editor > .content .editor-group-container > .title.tabs .tabs-container > .tab.last-in-row.drop-target-left:not(:last-child)::after {
+	right: -1px;
+}
