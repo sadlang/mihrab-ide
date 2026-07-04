@@ -22,6 +22,8 @@ PATCHERS = [
     ("patch_gridview_marker.py", "file", ["src/vs/base/browser/ui/grid/gridview.ts"]),
     ("patch_splitview_rtl.py", "file", ["src/vs/base/browser/ui/splitview/splitview.ts"]),
     ("patch_sash_rtl.py", "file", ["src/vs/base/browser/ui/sash/sash.ts"]),
+    ("patch_tabsdrop_rtl.py", "file",
+     ["src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts"]),
     ("patch_welcome_rtl.py", "file",
      ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts"]),
     # جذر: يشتقّ ملفّاته الثمانية من FILES (تُستخرَج ديناميكيًّا في L1).
