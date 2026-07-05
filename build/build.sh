@@ -245,6 +245,17 @@ else
   log "تخطّي الخبز: لا nls.messages.json في $APP_DIR (بناء غير مكتمل؟)"
 fi
 
+# ── (ط-0ب) حقن ترجمة بيانات الامتدادات (package.nls.ar.json) — مساهمة بناء (الطبقة 2) ──
+# يكتب package.nls.ar.json كاملًا لكلّ امتداد مدمج (عناوين أوامر/أوصاف إعدادات). النواة
+# تحلّها عبر getLocalizedMessages(package.nls.<locale>.json) — أصيلة، مستقلّة عن كاش CLP.
+if [[ -d "$APP_DIR/extensions" ]]; then
+  log "حقن ترجمة بيانات الامتدادات (package.nls.ar.json)"
+  python "$ROOT/build/patch_extension_nls.py" "$APP_DIR" || {
+    echo "❌ فشل حقن ترجمة بيانات الامتدادات — راجع أعلاه." >&2; exit 1; }
+else
+  log "تخطّي حقن بيانات الامتدادات: لا مجلّد extensions في $APP_DIR"
+fi
+
 # ── (ط) تحقّق المخرَج (اسم الـexe = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
 EXE="$UP/VSCode-win32-x64/Mihrab.exe"
 if [[ -f "$EXE" ]]; then
