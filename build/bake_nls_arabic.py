@@ -191,9 +191,21 @@ def main() -> int:
         # حارس المكوّنين (Amelia L2): نسخة مكوّن واحد («1») ⇒ "1.<int>" = semver غير صالح.
         _mm = base_ver.split(".")[:2]
         major_minor = ".".join(_mm) if len(_mm) == 2 else "1.0"
-        # بصمة حتميّة من المحتوى المخبوز (نفس المحتوى ⇒ نفس النسخة ⇒ idempotent).
+        # بصمة حتميّة من المحتوى المخبوز (نفس المحتوى ⇒ نفس النسخة ⇒ idempotent). تشمل أيضًا
+        # ملفّات i18n المحقونة (contents.package) من patch_extension_nls الذي يعمل قبلنا، كي
+        # يُبطَل كاش CLP (مفتاحه md5(extId+version)) عند تغيّر ترجمة الامتدادات — لا بالـmtime
+        # وحده. [[mihrab-stale-clp-language-cache-gotcha]].
+        ext_i18n_dir = os.path.join(
+            app, "extensions", "language-pack-ar", "translations", "extensions")
+        ext_sig = hashlib.md5()
+        if os.path.isdir(ext_i18n_dir):
+            for name in sorted(os.listdir(ext_i18n_dir)):
+                if name.endswith(".i18n.json"):
+                    ext_sig.update(name.encode("utf-8"))
+                    with open(os.path.join(ext_i18n_dir, name), "rb") as _ef:
+                        ext_sig.update(_ef.read())
         content_sig = hashlib.md5(
-            json.dumps(result, ensure_ascii=False).encode("utf-8")
+            (json.dumps(result, ensure_ascii=False) + ext_sig.hexdigest()).encode("utf-8")
         ).hexdigest()
         new_ver = f"{major_minor}.{int(content_sig[:8], 16)}"  # patch عدد صحيح ≤ ~4.3e9 (semver صالح)
         pkg = _read_json(pkg_file)

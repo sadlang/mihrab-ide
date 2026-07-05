@@ -35,6 +35,7 @@ PATCHERS = [
 BUILD_PATCHERS = [
     "patch_bundle_extensions.py",  # يرقّع build.sh المنبع (لا مصدر vscode)
     "bake_nls_arabic.py",          # خطوة بعد-بناء على الـartifacts
+    "patch_extension_nls.py",      # حقن package.nls.ar.json للامتدادات (بعد-بناء)
     "patch_node_gyp_spectre.py",   # م0
     "patch_npmrc_tolerance.py",    # م0
 ]
