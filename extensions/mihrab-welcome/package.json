@@ -1,0 +1,70 @@
+{
+  "$schema": "vscode://schemas/vscode-extensions",
+  "name": "mihrab-welcome",
+  "displayName": "ترحيب محراب",
+  "description": "تجربة الإعداد الأوّل في محراب (الطبقة 1): جولة تفاعليّة عربيّة «ابدأ في ٩٠ ثانية»، وأمر «مشروع ص جديد» بقالب حيّ، وأمر تشغيل ملفّ ص. يردم «وادي الحيرة» بين الانطباع الأوّل وأوّل نجاح فعليّ.",
+  "version": "0.1.0",
+  "publisher": "sadlang",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onWalkthrough:mihrab.gettingStarted",
+    "onCommand:mihrab.newSadProject",
+    "onCommand:mihrab.runSadFile"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "mihrab.newSadProject",
+        "title": "محراب: مشروع ص جديد",
+        "shortTitle": "مشروع ص جديد"
+      },
+      {
+        "command": "mihrab.runSadFile",
+        "title": "محراب: شغّل ملفّ ص الحاليّ",
+        "shortTitle": "تشغيل"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "mihrab.gettingStarted",
+        "title": "ابدأ في ٩٠ ثانية مع محراب",
+        "description": "أوّل برنامج بلغة ص خلال دقيقة ونصف — من الملفّ الفارغ إلى مخرجات عربيّة على الشاشة.",
+        "steps": [
+          {
+            "id": "mihrab.step.newProject",
+            "title": "أنشئ أوّل مشروع ص",
+            "description": "أمر واحد ينشئ مجلّدًا فيه برنامج ص يعمل فورًا، مشروحًا بالعربية.\n[أنشئ مشروع ص جديد](command:mihrab.newSadProject)",
+            "media": { "markdown": "media/step-project.md" },
+            "completionEvents": ["onCommand:mihrab.newSadProject"]
+          },
+          {
+            "id": "mihrab.step.write",
+            "title": "اكتب أوّل سطر",
+            "description": "الملفّ ‹مرحبا.ص› جاهز. غيّر النصّ بين علامتَي الاقتباس لترى أثر تعديلك.\nكلّ سطر يبدأ بـ# هو تعليق (شرح) لا يُنفَّذ.",
+            "media": { "markdown": "media/step-write.md" }
+          },
+          {
+            "id": "mihrab.step.run",
+            "title": "شغّل برنامجك",
+            "description": "شغّل الملفّ الحاليّ لترى المخرجات العربيّة في الطرفيّة.\n[شغّل ملفّ ص الحاليّ](command:mihrab.runSadFile)\n(يتطلّب تثبيت أدوات ص ‹sad-run› على النظام.)",
+            "media": { "markdown": "media/step-run.md" },
+            "completionEvents": ["onCommand:mihrab.runSadFile"]
+          },
+          {
+            "id": "mihrab.step.errors",
+            "title": "افهم الأخطاء الودودة",
+            "description": "حين تخطئ، يشرح محراب ما حدث وأين وكيف تُصلحه — بالعربية. الخطأ معلّمٌ لطيف لا إهانة.",
+            "media": { "markdown": "media/step-errors.md" }
+          }
+        ]
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sadlang/mihrab-ide.git"
+  }
+}
