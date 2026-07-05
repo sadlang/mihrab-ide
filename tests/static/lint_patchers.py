@@ -440,6 +440,51 @@ def _ar_supplement():
     assert "mihrab_ar_supplement.json" in bake_src, "bake_nls_arabic.py لا يشير إلى الملفّ التكميليّ"
 
 
+@check("تكميليّ بيانات الامتدادات: JSON صالح، قيم نصّيّة، تكافؤ الحوامل/البنية، ووصل الحقن به")
+def _ext_nls_supplement():
+    import re as _re
+    supp_path = os.path.join(BUILD, "mihrab_ext_nls_ar.json")
+    assert os.path.isfile(supp_path), "الملفّ التكميليّ mihrab_ext_nls_ar.json مفقود"
+
+    # كشف المفاتيح المكرّرة عند المصدر: json.load يحتفظ بآخر قيمة صمتًا فيُسقِط ترجمةً
+    # (نزاهة بيانات — 1139 زوجًا محرَّرًا يدويًّا). object_pairs_hook يمسكها قبل الابتلاع.
+    def _no_dups(pairs):
+        seen = {}
+        for k, v in pairs:
+            assert k not in seen, f"مفتاح مكرّر في تكميليّ الامتدادات: {k!r}"
+            seen[k] = v
+        return seen
+    data = json.load(open(supp_path, encoding="utf-8"), object_pairs_hook=_no_dups)
+    assert isinstance(data, dict), "تكميليّ الامتدادات ليس كائن JSON"
+    # حوامل بأسلوبين: {0} و${name} (سلاسل package.nls تستعمل كليهما).
+    ph = _re.compile(r"\{\d+\}|\$\{[^}]*\}")
+    mnem = _re.compile(r"&&(.)")
+    INVISIBLE = {
+        0x00AD: "SOFT-HYPHEN", 0x200B: "ZWSP", 0x200C: "ZWNJ",
+        0x200D: "ZWJ", 0x2060: "WORD-JOINER", 0xFEFF: "BOM",
+    }
+    for en, ar in data.items():
+        if en.startswith("//"):  # تعليقات مسموحة، تُتخطّى في الحقن
+            continue
+        assert isinstance(en, str) and isinstance(ar, str) and ar, f"زوج غير نصّيّ/فارغ: {en!r}"
+        for cp, nm in INVISIBLE.items():
+            assert chr(cp) not in ar, f"محرف غير مرئيّ ({nm}) في الترجمة: {en!r}"
+        # تكافؤ الحوامل كـmultiset (يمسك اختلال العدد المكرَّر).
+        assert sorted(ph.findall(en)) == sorted(ph.findall(ar)), \
+            f"اختلال حوامل بين الإنجليزيّة والعربيّة: {en!r}"
+        # تكافؤ بنية الماركداون/المعرّفات الحرفيّة: رابط `](`، backtick، بادئة http،
+        # ومرجع الأمر command: (روابط الإجراءات في أوصاف Git يجب ألّا تُترجَم بنيتها).
+        for tok in ("](", "`", "http", "command:"):
+            assert en.count(tok) == ar.count(tok), \
+                f"اختلال بنية «{tok}» بين الإنجليزيّة والعربيّة: {en!r}"
+        # تكافؤ حرف اختصار && (mnemonic) كما في حارس النواة _ar_supplement.
+        assert {c.lower() for c in mnem.findall(en)} == {c.lower() for c in mnem.findall(ar)}, \
+            f"اختلّ حرف اختصار && بين الإنجليزيّة والعربيّة: {en!r}"
+    # الحقن يجب أن يشير إلى اسم الملفّ التكميليّ (وإلّا فالوصل مقطوع).
+    inj_src = _read(os.path.join(BUILD, "patch_extension_nls.py"))
+    assert "mihrab_ext_nls_ar.json" in inj_src, "patch_extension_nls.py لا يشير إلى الملفّ التكميليّ"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")

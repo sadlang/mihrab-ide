@@ -237,6 +237,23 @@ bash dev/build.sh "${BUILD_ARGS[@]:-}"
 # خطوة بعد-بناء سريعة على الـartifacts (لا إعادة gulp). تجعل العربيّة الافتراضيّ الحرفيّ
 # للنواة ⇒ أوّل فتح عربيّ بلا إعادة تحميل ولا اعتماد على مسح حزمة لغة. idempotent.
 APP_DIR="$UP/VSCode-win32-x64/resources/app"
+
+# ── (ط-0أ) حقن ترجمة بيانات الامتدادات إلى العربيّة — مساهمة بناء (الطبقة 2) ──
+# يعيد بناء contents.package في ملفّ i18n لحزمة اللغة لكلّ امتداد مدمج (عناوين أوامر/أوصاف
+# إعدادات)؛ المسار الذي تحلّه النواة فعلًا حين تكون حزمة اللغة نشطة (getLocalizedMessages
+# ⟵ nlsConfig.translations[id].contents.package). package.nls.ar.json يُتجاوَز مع حزمة لغة
+# نشطة، فيُكتب فقط للامتدادات غير المُدرَجة فيها. أُثبِت حيًّا عبر CDP.
+# **قبل الخبز**: bake_nls يرفع نسخة حزمة اللغة من بصمة تشمل ملفّات i18n المحقونة هنا ⇒
+# إبطال كاش CLP (%APPDATA%/clp) في «التحديث فوق ملفّ تعريف قائم». [[mihrab-stale-clp...]]
+if [[ -d "$APP_DIR/extensions" ]]; then
+  log "حقن ترجمة بيانات الامتدادات (contents.package في حزمة اللغة)"
+  python "$ROOT/build/patch_extension_nls.py" "$APP_DIR" || {
+    echo "❌ فشل حقن ترجمة بيانات الامتدادات — راجع أعلاه." >&2; exit 1; }
+else
+  log "تخطّي حقن بيانات الامتدادات: لا مجلّد extensions في $APP_DIR"
+fi
+
+# ── (ط-0ب) خبز الواجهة العربيّة + رفع نسخة حزمة اللغة (يشمل بصمة i18n المحقونة أعلاه) ──
 if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
   log "خبز الواجهة العربيّة في nls.messages.json"
   python "$ROOT/build/bake_nls_arabic.py" "$APP_DIR" || {
