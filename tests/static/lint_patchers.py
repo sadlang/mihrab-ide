@@ -524,6 +524,10 @@ def _welcome_ext():
     assert "resolveSadRun" in js, "لا دالّة resolveSadRun (حلّ الثنائيّ المدمج) في نقطة الدخول"
     assert _re.search(r"ProcessExecution\(\s*sadRunCmd", js), \
         "ProcessExecution لا يستعمل المسار المحلول sadRunCmd — قد يتجاهل الثنائيّ المدمج"
+    # مهمّة tasks.json المولَّدة يجب أن تُبنى من المُشغّل المحلول (buildTasksJson(sadRunCmd)) لا
+    # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
+    assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \
+        "مهمّة tasks.json لا تُبنى من المُشغّل المحلول (buildTasksJson/command: runCommand) — خطر تباعد المسارين"
 
     # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
     #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
@@ -540,7 +544,6 @@ def _welcome_ext():
     #     يجوز أن يسجّل JS أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ).
     manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
     assert manifest_cmds, "لا أوامر معلَنة في امتداد الترحيب"
-    import re as _re
     js_cmds = set(_re.findall(r"registerCommand\(\s*[\"']([^\"']+)[\"']", js))
     missing = manifest_cmds - js_cmds
     assert not missing, f"أوامر معلَنة في المانيفست بلا registerCommand في JS: {missing}"

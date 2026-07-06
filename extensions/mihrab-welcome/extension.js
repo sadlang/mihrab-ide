@@ -74,31 +74,45 @@ const TEMPLATE_MAIN =
   "# جرّب الآن: غيّر النصّ بين علامتَي الاقتباس ثمّ شغّل البرنامج من جديد\n" +
   "# (من الجولة، أو بأمر «محراب: شغّل ملفّ ص الحاليّ»).\n";
 
-/** يبني نصّ اقرأني بعنوان يطابق اسم المشروع الفعليّ (لا الاسم الافتراضيّ). */
-function buildReadme(projectName) {
+/**
+ * يبني نصّ اقرأني بعنوان يطابق اسم المشروع الفعليّ (لا الاسم الافتراضيّ). ملاحظة المهمّة تتبع
+ * حالة المُشغّل: محلول لمسار مطلق (runnerReady=صحيح، مدمجًا أو من PATH) ⇒ تعمل مباشرةً؛
+ * وإلا اسم مجرّد ⇒ تتطلّب توفّره على PATH.
+ */
+function buildReadme(projectName, runnerReady) {
+  const taskNote = runnerReady
+    ? "- أو شغّل المهمّة **«" + RUN_TASK_LABEL + "»** (تعمل مباشرةً بمُشغّل ص المحلول).\n"
+    : "- أو شغّل المهمّة **«" + RUN_TASK_LABEL + "»** (تتطلّب تثبيت أدوات ص ‹" + SAD_RUN + "› على PATH).\n";
   return (
     "# " + projectName + "\n\n" +
     "أوّل مشروع لك بلغة ص داخل محراب.\n\n" +
     "## التشغيل\n\n" +
     "- افتح ‹" + MAIN_FILE + "› ثمّ نفّذ أمر **«محراب: شغّل ملفّ ص الحاليّ»**.\n" +
-    "- أو شغّل المهمّة **«" + RUN_TASK_LABEL + "»** (تتطلّب تثبيت أدوات ص ‹" + SAD_RUN + "› على النظام).\n"
+    taskNote
   );
 }
 
-// مهمّة تشغيل قياسيّة (آليّة VSCode) — تعمل عند توفّر sad-run على PATH.
-const TEMPLATE_TASKS = {
-  version: "2.0.0",
-  tasks: [
-    {
-      label: RUN_TASK_LABEL,
-      type: "process",
-      command: SAD_RUN,
-      args: ["${file}"],
-      group: { kind: "build", isDefault: true },
-      problemMatcher: [],
-    },
-  ],
-};
+// مهمّة تشغيل قياسيّة (آليّة VSCode). الأمر = المُشغّل المحلول (runCommand): الثنائيّ المدمج
+// بمساره المطلق حين يُشحَن (تعمل المهمّة فورًا كزرّ التشغيل، بلا تثبيت)، وإلا اسم PATH المجرّد
+// (منقول بين الأجهزة). يُبنى وقت الإنشاء بالقيمة نفسها التي يستعملها الأمر كي لا يتباعد
+// مسارا التشغيل (الأمر مقابل المهمّة) — كان التباعد يُفشِل المهمّة رغم توفّر المدمج.
+// مقايضة مقبولة لهدف P0: المسار المطلق المخبوز يبيت إن نُقل المشروع لجهاز آخر أو تغيّر مسار
+// تثبيت محراب؛ لكنّ جولة المبتدئ على جهازه تعمل فورًا — وهو الأهمّ هنا.
+function buildTasksJson(runCommand) {
+  return {
+    version: "2.0.0",
+    tasks: [
+      {
+        label: RUN_TASK_LABEL,
+        type: "process",
+        command: runCommand,
+        args: ["${file}"],
+        group: { kind: "build", isDefault: true },
+        problemMatcher: [],
+      },
+    ],
+  };
+}
 
 const enc = new TextEncoder();
 
@@ -204,10 +218,12 @@ async function newSadProject() {
     await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(targetUri, VSCODE_DIR));
     const mainUri = vscode.Uri.joinPath(targetUri, MAIN_FILE);
     await writeText(mainUri, TEMPLATE_MAIN);
-    await writeText(vscode.Uri.joinPath(targetUri, README_FILE), buildReadme(projectName));
+    // مسار مطلق للمُشغّل ⇒ محلول (مدمج أو من PATH؛ تعمل المهمّة فورًا)؛ اسم مجرّد ⇒ يتطلّب PATH.
+    const runnerReady = path.isAbsolute(sadRunCmd);
+    await writeText(vscode.Uri.joinPath(targetUri, README_FILE), buildReadme(projectName, runnerReady));
     await writeText(
       vscode.Uri.joinPath(targetUri, VSCODE_DIR, TASKS_FILE),
-      JSON.stringify(TEMPLATE_TASKS, null, 2) + "\n"
+      JSON.stringify(buildTasksJson(sadRunCmd), null, 2) + "\n"
     );
 
     // (٥) افتح الملفّ الرئيس، واعرض دعوة لفتح المجلّد كمساحة عمل.
