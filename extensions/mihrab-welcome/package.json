@@ -10,6 +10,7 @@
   "categories": ["Other"],
   "main": "./extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onWalkthrough:mihrab.gettingStarted",
     "onCommand:mihrab.newSadProject",
     "onCommand:mihrab.runSadFile"
@@ -32,6 +33,7 @@
         "id": "mihrab.gettingStarted",
         "title": "ابدأ في ٩٠ ثانية مع محراب",
         "description": "أوّل برنامج بلغة ص خلال دقيقة ونصف — من الملفّ الفارغ إلى مخرجات عربيّة على الشاشة.",
+        "featuredFor": ["**/*.ص", "**/*.sad"],
         "steps": [
           {
             "id": "mihrab.step.newProject",

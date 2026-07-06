@@ -511,6 +511,31 @@ def _welcome_ext():
         r = subprocess.run([node, "--check", main_path], capture_output=True, text=True)
         assert r.returncode == 0, f"خطأ نحويّ في {main_rel}:\n{r.stderr.strip()}"
 
+    # (١ب) الفتح التلقائيّ للجولة يعتمد على تنشيط عند اكتمال الإقلاع؛ بدونه لا تظهر لمستخدم عائد.
+    assert "onStartupFinished" in pkg.get("activationEvents", []), \
+        "activationEvents لا يحوي onStartupFinished — الجولة لن تُفتَح تلقائيًّا أوّل مرّة"
+    assert "maybeShowWelcome" in js and "openWalkthrough" in js, \
+        "لا منطق فتح تلقائيّ للجولة (maybeShowWelcome/openWalkthrough) في نقطة الدخول"
+
+    # (١ج) تشغيل ملفّ ص يجب أن يمرّ بالمسار المحلول (المدمج ثمّ PATH) لا باسم ثابت مباشر،
+    #      وإلّا ينكسر ربط الثنائيّ المدمج ولا يعمل التشغيل دون تثبيت على PATH.
+    #      (أنماط متسامحة مع المسافات كي لا تنكسر بإعادة تنسيق. [N1])
+    import re as _re
+    assert "resolveSadRun" in js, "لا دالّة resolveSadRun (حلّ الثنائيّ المدمج) في نقطة الدخول"
+    assert _re.search(r"ProcessExecution\(\s*sadRunCmd", js), \
+        "ProcessExecution لا يستعمل المسار المحلول sadRunCmd — قد يتجاهل الثنائيّ المدمج"
+
+    # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
+    #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
+    assert _re.search(r'BUNDLED_BIN_DIR\s*=\s*"bin"', js), \
+        "ثابت BUNDLED_BIN_DIR ليس \"bin\" — قد يفترق عن مسار الحقن في build.sh"
+    build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
+    assert "WELCOME_BIN" in build_sh and "sad-run.exe" in build_sh, \
+        "build.sh لا يحوي كتلة حزم sad-run المدمجة (WELCOME_BIN/sad-run.exe)"
+    gitignore = _read(os.path.join(ROOT, ".gitignore"))
+    assert "extensions/mihrab-welcome/bin/" in gitignore, \
+        ".gitignore لا يتجاهل الثنائيّ المدمج extensions/mihrab-welcome/bin/ (خطر إيداعه)"
+
     # (٢) كلّ أمر معلَن في المانيفست مُسجَّل فعلًا في JS (احتواء لا تطابق تامّ:
     #     يجوز أن يسجّل JS أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ).
     manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}

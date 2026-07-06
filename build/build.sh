@@ -159,6 +159,29 @@ for ext in "$ROOT"/extensions/*/; do
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 shopt -u nullglob
+
+# ── (ز-2ب-2) حزم سلسلة أدوات ص المدمجة (الخيار ١): احقن sad-run.exe في bin/ داخل
+#         نسخة mihrab-welcome المُجهَّزة كي يعمل «شغّل ملفّ ص» فورًا دون تثبيت. المصدر:
+#         MIHRAB_SAD_RUN إن ضُبط، وإلّا الافتراضيّ المجاور (../sad-engines-dev/sad-run.exe).
+#         **سقوط رشيق لا قاتل** (بخلاف الهوية/RTL): غياب الثنائيّ يعني بناءً بلا تشغيل مدمج،
+#         والامتداد يسقط إلى PATH ويعرض تلميح التثبيت — لا نُفشِل البناء كلّه لأجله.
+#         الهدف المستقبليّ (الخيار ٣، موثَّق في docs/toolchain-delivery.md): أمر «ثبّت أدوات ص»
+#         يُنزّل أحدث إصدار عند الطلب فوق هذا المدمج. (راجع resolveSadRun في extension.js.)
+SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
+if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
+  WELCOME_BIN="$STAGE_EXT/mihrab-welcome/bin"
+  # نظّف أيّ bin/ منسوخ من الشجرة المصدريّة (قد يوجد على جهاز مطوّر رغم تجاهله في git):
+  # لا نشحن إلّا الثنائيّ من المصدر المعتمَد، أو لا شيء — فلا نسخة بائتة تُشحن صامتًا. [H1]
+  rm -rf "$WELCOME_BIN"
+  if [[ -f "$SAD_RUN_SRC" ]]; then
+    mkdir -p "$WELCOME_BIN"
+    cp -f "$SAD_RUN_SRC" "$WELCOME_BIN/sad-run.exe"
+    log "حُزِمت أداة ص المدمجة: sad-run.exe ($(du -h "$WELCOME_BIN/sad-run.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_RUN_SRC"
+  else
+    log "⚠️ لا sad-run.exe في $SAD_RUN_SRC — بناء بلا تشغيل مدمج (يسقط الامتداد إلى PATH). اضبط MIHRAB_SAD_RUN للحزم."
+  fi
+fi
+
 # جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).
 [[ -f "$ROOT/build/patch_main_locale.py" ]] && cp -f "$ROOT/build/patch_main_locale.py" "$UP/.mihrab-patch-main-locale.py"
 [[ -f "$ROOT/build/patch_workbench_rtl.py" ]] && cp -f "$ROOT/build/patch_workbench_rtl.py" "$UP/.mihrab-patch-workbench-rtl.py"

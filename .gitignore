@@ -9,6 +9,9 @@
 /dist/
 /*.vsix
 
+# سلسلة أدوات ص المدمجة (تُحقَن وقت البناء من sad-engines-dev — لا تُتعقَّب)
+/extensions/mihrab-welcome/bin/
+
 # اعتماديّات
 node_modules/
 

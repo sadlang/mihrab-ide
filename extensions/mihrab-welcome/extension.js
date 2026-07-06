@@ -8,9 +8,19 @@
 
 const vscode = require("vscode");
 const cp = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 // اسم أداة تشغيل ص (مصدر حقيقة واحد داخل هذا الامتداد).
 const SAD_RUN = "sad-run";
+// مجلّد سلسلة الأدوات المدمجة داخل الامتداد (يُحقَن وقت البناء إن توفّرت الثنائيّات).
+const BUNDLED_BIN_DIR = "bin";
+// معرّف الجولة المحلّيّ (id في contributes.walkthroughs)؛ المعرّف الكامل يُشتَقّ وقت
+// التشغيل من context.extension.id (publisher.name) كي لا ينكسر لو تغيّرت الهوية. [M4]
+const WALKTHROUGH_LOCAL_ID = "mihrab.gettingStarted";
+const WALKTHROUGH_ID_SEP = "#";
+// مفتاح حالة عامّة: هل عُرِضت جولة الترحيب مرّة على هذا الملفّ الشخصيّ؟ (تُفتح مرّة واحدة).
+const WELCOME_SHOWN_KEY = "mihrab.welcome.shown";
 // معرّف لغة ص (يطابق contributes.languages في sad-lang) وامتدادها (حرف الصاد).
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
@@ -212,12 +222,55 @@ async function newSadProject() {
   }
 }
 
-/** هل أداة sad-run متوفّرة على PATH؟ (فحص غير حاجب عبر where/which). */
+// أمر التشغيل المحلول: يُضبَط عند التنشيط إلى الثنائيّ المدمج (إن وُجِد) وإلا اسم PATH.
+let sadRunCmd = SAD_RUN;
+
+// اسم ثنائيّ ص المدمج حسب المنصّة (البناء ويندوزيّ ويحزم sad-run.exe؛ نطابقه هنا). [L1]
+const SAD_RUN_EXE = process.platform === "win32" ? SAD_RUN + ".exe" : SAD_RUN;
+
+/** يحلّ مسار sad-run: الثنائيّ المدمج مع محراب أوّلًا (يعمل دون تثبيت)، ثمّ اسم PATH احتياطًا. */
+function resolveSadRun(context) {
+  const bundled = path.join(context.extensionPath, BUNDLED_BIN_DIR, SAD_RUN_EXE);
+  try {
+    // ملفّ فعليّ لا مجلّد (accessSync/X_OK على ويندوز = وجود فقط، ينجح على مجلّد أيضًا). [L8]
+    if (fs.statSync(bundled).isFile()) {
+      fs.accessSync(bundled, fs.constants.X_OK);
+      return bundled; // مسار مطلق للثنائيّ المدمج
+    }
+  } catch {
+    // لا ثنائيّ مدمج — يسقط إلى PATH.
+  }
+  return SAD_RUN; // يسقط إلى اسم PATH (يُرقّى لمسار مطلق في isSadRunAvailable). [M1]
+}
+
+/**
+ * هل sad-run متاح للتشغيل؟ الثنائيّ المدمج بمسار مطلق ⇒ إعادة تحقّق من الوجود (يمسك حذفًا
+ * بين التنشيط والتشغيل [N3]). وإلا فحص PATH عبر where/which، ومع النجاح نرقّي sadRunCmd إلى
+ * المسار المطلق الأوّل الذي يُرجعه where — فلا يفشل ProcessExecution بحلّ لاحقة .exe على ويندوز. [M1]
+ */
 function isSadRunAvailable() {
+  if (path.isAbsolute(sadRunCmd)) {
+    try {
+      return Promise.resolve(fs.statSync(sadRunCmd).isFile());
+    } catch {
+      return Promise.resolve(false);
+    }
+  }
   const probe = process.platform === "win32" ? "where" : "which";
   return new Promise((resolve) => {
     try {
-      const child = cp.execFile(probe, [SAD_RUN], { timeout: 4000 }, (err) => resolve(!err));
+      const child = cp.execFile(probe, [sadRunCmd], { timeout: 4000 }, (err, stdout) => {
+        if (err) {
+          resolve(false);
+          return;
+        }
+        const first = String(stdout || "")
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)[0];
+        if (first) sadRunCmd = first; // ارفع إلى المسار المطلق المحلول
+        resolve(true);
+      });
       child.on("error", () => resolve(false));
     } catch {
       resolve(false);
@@ -260,12 +313,14 @@ async function runSadFile() {
   }
 
   // ProcessExecution: البرنامج ووسيطته مفصولان — لا صدفة ولا تأويل، فلا حقن عبر اسم المسار.
+  // نستعمل المسار المحلول (الثنائيّ المدمج إن وُجِد، وإلا اسم PATH)، ومجلّد عمل = مجلّد
+  // الملفّ كي تُحلّ المسارات النسبيّة داخل برنامج ص صوابًا (لا مجلّد عمل غير محدَّد). [M5]
   const task = new vscode.Task(
     { type: RUN_TASK_TYPE },
     vscode.TaskScope.Workspace,
     RUN_TASK_LABEL,
     "mihrab",
-    new vscode.ProcessExecution(SAD_RUN, [doc.fileName]),
+    new vscode.ProcessExecution(sadRunCmd, [doc.fileName], { cwd: path.dirname(doc.fileName) }),
     []
   );
   task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, clear: true };
@@ -276,11 +331,35 @@ async function runSadFile() {
   }
 }
 
+// أمر النواة لفتح جولة، ووسيط «لا عمود جانبيّ» (تُملأ منطقة المحرّر الرئيسة).
+const OPEN_WALKTHROUGH_CMD = "workbench.action.openWalkthrough";
+
+/** يفتح جولة الترحيب مرّة واحدة على هذا الملفّ الشخصيّ (أوّل إقلاع بعد التثبيت). */
+async function maybeShowWelcome(context) {
+  if (context.globalState.get(WELCOME_SHOWN_KEY)) return;
+  // المعرّف الكامل يُشتَقّ من هوية الامتداد وقت التشغيل (لا يُثبَّت publisher حرفيًّا). [M4]
+  const ext = context.extension;
+  const fullId = (ext && ext.id ? ext.id : "sadlang.mihrab-welcome") +
+    WALKTHROUGH_ID_SEP + WALKTHROUGH_LOCAL_ID;
+  try {
+    await vscode.commands.executeCommand(OPEN_WALKTHROUGH_CMD, fullId, false);
+    // نسِم «عُرِضت» فقط بعد نجاح الفتح: فشلٌ عابر (الجولة لم تُسجَّل بعدُ) يُعيد المحاولة
+    // في الإقلاع التالي بدل إخماد الجولة أبدًا — وهو ذات العطل الأصليّ المُبلَّغ. [M2]
+    await context.globalState.update(WELCOME_SHOWN_KEY, true);
+  } catch {
+    // الجولة تحسينيّة — فشلها لا يُفشِل التنشيط ولا يُسجَّل كمعروض (تُعاد المحاولة لاحقًا).
+  }
+}
+
 function activate(context) {
+  // حلّ مسار sad-run مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
+  sadRunCmd = resolveSadRun(context);
   context.subscriptions.push(
     vscode.commands.registerCommand("mihrab.newSadProject", newSadProject),
     vscode.commands.registerCommand("mihrab.runSadFile", runSadFile)
   );
+  // عند اكتمال الإقلاع (onStartupFinished) اعرض الجولة أوّل مرّة فقط (رفض الوعد مُبتلَع). [L5]
+  void maybeShowWelcome(context).catch(() => {});
 }
 
 function deactivate() {}
