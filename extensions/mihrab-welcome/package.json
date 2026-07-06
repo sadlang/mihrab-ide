@@ -51,7 +51,7 @@
           {
             "id": "mihrab.step.run",
             "title": "شغّل برنامجك",
-            "description": "شغّل الملفّ الحاليّ لترى المخرجات العربيّة في الطرفيّة.\n[شغّل ملفّ ص الحاليّ](command:mihrab.runSadFile)\n(يتطلّب تثبيت أدوات ص ‹sad-run› على النظام.)",
+            "description": "شغّل الملفّ الحاليّ لترى المخرجات العربيّة في الطرفيّة.\n[شغّل ملفّ ص الحاليّ](command:mihrab.runSadFile)\n(يفتح محراب ‹مرحبا.ص› ويشغّله بمُشغّل ص المدمج — دون تثبيت.)",
             "media": { "markdown": "media/step-run.md" },
             "completionEvents": ["onCommand:mihrab.runSadFile"]
           },

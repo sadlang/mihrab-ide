@@ -528,6 +528,10 @@ def _welcome_ext():
     # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
     assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \
         "مهمّة tasks.json لا تُبنى من المُشغّل المحلول (buildTasksJson/command: runCommand) — خطر تباعد المسارين"
+    # التشغيل يجب أن يصمد حين لا محرّر ص نشط (زرّ الجولة يحتلّ المحرّر فلا نصّ نشط): بحث في
+    #      مساحة العمل عن ملفّ ص وفتحه — وإلّا عاد عطل «لا محرّر نشط» في الجولة. حارس ضدّ انحدار.
+    assert "findWorkspaceSadFile" in js and "resolveSadDoc" in js, \
+        "runSadFile لا يحوي رجوعًا لملفّ مساحة العمل (findWorkspaceSadFile/resolveSadDoc) — زرّ التشغيل في الجولة سيفشل"
 
     # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
     #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
