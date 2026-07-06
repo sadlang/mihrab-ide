@@ -3,8 +3,9 @@
 // الميزة 2 (م2ب): لوحة دردشة نِبراس (webview عربيّة RTL). كلّ رسالة تُشغَّل كمهمّة «اشرح»
 // على الملفّ النشط (سياق حقيقيّ عبر جسرَي القلب) والسؤال تعليمةً، ويُبثّ الجواب حيًّا للّوحة.
 //
-// حدّ معلوم: العقد بلا ذاكرة محادثة خادميّة (كلّ دور مستقلّ) — يُرقّى لاحقًا بطور محادثة.
-// أمان webview: CSP صارم + nonce، بلا موارد خارجيّة، والمحتوى يُمرَّر كنصّ (لا HTML من النموذج).
+// طور المحادثة (م2ب+): يحمل العميل تاريخ الأدوار ويمرّره مع كلّ مهمّة (الخادم عديم الحالة)
+// فيُبقي النموذج السياق عبر الأدوار. أمان webview: CSP صارم + nonce، بلا موارد خارجيّة،
+// والمحتوى يُمرَّر كنصّ (لا HTML من النموذج).
 
 const vscode = require("vscode");
 const path = require("path");
@@ -13,6 +14,15 @@ const crypto = require("crypto");
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
 const TASK_EXPLAIN = "اشرح";
+// أدوار المحادثة — تعكس ROLE_USER/ROLE_ASSISTANT في @nebras/protocol (مصدر الحقيقة)؛ تُعاد
+// إعلانها هنا لأنّ الامتداد CommonJS خارج شجرة بناء TypeScript (كنمط أسماء الطرائق في rpc-client).
+const ROLE_USER = "مستخدم";
+const ROLE_ASSISTANT = "مساعد";
+// سقف أدوار المحادثة المحفوظة محلّيًّا (الخادم يقصّها لنافذته أيضًا؛ نحدّ نموّ الذاكرة هنا كذلك).
+const MAX_LOCAL_HISTORY = 40;
+
+/** @type {{role: string, text: string}[]} تاريخ المحادثة (يُمرَّر مع كلّ مهمّة). */
+let conversation = [];
 
 // معرّف/عنوان اللوحة.
 const PANEL_TYPE = "mihrab.nebras.chat";
@@ -81,13 +91,17 @@ async function onUserMessage(proc, getConfig, text) {
     kind: TASK_EXPLAIN,
     target: file,
     instruction: text,
+    // طور المحادثة: مرّر الأدوار السابقة (لا يشمل الرسالة الحاليّة — هي في instruction).
+    history: conversation.slice(),
     permission: cfg.permissionMode,
     locale: cfg.locale,
   };
+  let answer = "";
   try {
     await proc.runTask(
       params,
       (delta) => {
+        answer += delta;
         if (panel) void panel.webview.postMessage({ type: MSG_DELTA, text: delta });
       },
       (id) => {
@@ -95,6 +109,14 @@ async function onUserMessage(proc, getConfig, text) {
       },
     );
     // الفشل يصل كرفض (JsonRpcError) فيُعالَج في catch — لا فرع ok===false (ميت بعقد الخادم).
+    // دوّن الدورين (المستخدم ثمّ المساعد) للسياق التالي — لكن تجاهل التبادل كلّه إن كان الجواب
+    // فارغًا (بثّ صفريّ) كي لا يبقى سؤالٌ بلا جواب في التاريخ (يطابق حذف الفقاعة الفارغة عرضًا).
+    if (answer.trim()) {
+      conversation.push({ role: ROLE_USER, text }, { role: ROLE_ASSISTANT, text: answer });
+      if (conversation.length > MAX_LOCAL_HISTORY) {
+        conversation = conversation.slice(-MAX_LOCAL_HISTORY);
+      }
+    }
     if (panel) void panel.webview.postMessage({ type: MSG_DONE });
   } catch (err) {
     if (panel) {
@@ -227,13 +249,23 @@ const registerChat = {
         if (activeTaskId !== undefined) proc.cancel(activeTaskId);
       }
     });
-    // حدّث السياق عند تبديل المحرّر النشط.
-    const edSub = vscode.window.onDidChangeActiveTextEditor(() => pushContext());
+    // عند تبديل الملفّ النشط: حدّث السياق **وصفّر المحادثة** — تاريخ أسئلة/أجوبة ملفٍّ سابق
+    // يُربك مهمّة الملفّ الجديد ويسرّب محتواه في طلبه (ق6). كلّ ملفّ محادثةٌ نظيفة.
+    let lastCtxFile = activeSadFile();
+    const edSub = vscode.window.onDidChangeActiveTextEditor(() => {
+      const now = activeSadFile();
+      if (now !== lastCtxFile) {
+        lastCtxFile = now;
+        conversation = [];
+      }
+      pushContext();
+    });
 
     panel.onDidDispose(() => {
       sub.dispose();
       edSub.dispose();
       if (activeTaskId !== undefined) proc.cancel(activeTaskId);
+      conversation = []; // جلسة جديدة عند إعادة الفتح (لا تسرّب سياق قديم).
       panel = null;
     });
     pushContext();
