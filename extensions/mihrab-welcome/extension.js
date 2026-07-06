@@ -34,6 +34,9 @@ const RUN_TASK_LABEL = "تشغيل برنامج ص";
 // نوع مهمّة مخصّص (لا نوع VSCode المدمج «process») لإزالة أيّ لبس مع عقد المهامّ المدمجة.
 const RUN_TASK_TYPE = "mihrab-run";
 const DOCS_URL = "https://github.com/sadlang/s-programming-language";
+// حدّ نتائج البحث عن ملفّات ص في مساحة العمل (أداء على مساحة كبيرة) + استبعاد التبعيّات.
+const SAD_SEARCH_MAX = 50;
+const NODE_MODULES_GLOB = "**/node_modules/**";
 
 // نصوص الواجهة (عربيّة-أوّلًا).
 const COPY = {
@@ -56,6 +59,7 @@ const COPY = {
   createFailed: (e) => `تعذّر إنشاء المشروع: ${e}`,
   runFailed: (e) => `تعذّر تشغيل الملفّ: ${e}`,
   noEditor: "لا يوجد محرّر نشط — افتح ملفّ ص أوّلًا كي تشغّله.",
+  sadFileAmbiguous: `وُجدت عدّة ملفّات ص — افتح الملفّ الذي تريد تشغيله أوّلًا (لا يوجد ‹${MAIN_FILE}› لأختاره تلقائيًّا).`,
   notSadFile: `الملفّ الحاليّ ليس ملفّ ص (‹${SAD_EXT}›).`,
   notOnDisk: "احفظ الملفّ على القرص أوّلًا كي يمكن تشغيله.",
   saveCancelled: "أُلغي الحفظ — لم يُشغَّل الملفّ.",
@@ -294,24 +298,61 @@ function isSadRunAvailable() {
   });
 }
 
-/** أمر: شغّل ملفّ ص الحاليّ عبر sad-run كمهمّة (ProcessExecution — بلا صدفة، فلا حقن). */
-async function runSadFile() {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage(COPY.noEditor);
-    return;
-  }
-  const doc = editor.document;
+/** يتحقّق أنّ المستند ملفّ ص حقيقيّ على القرص؛ يُرجع رسالة خطأ مناسبة أو null (صالح). */
+function sadDocError(doc) {
   // كشف اللغة بالمعرّف (أدقّ من الامتداد)، مع الامتداد احتياطًا.
-  if (doc.languageId !== SAD_LANG_ID && !doc.fileName.endsWith(SAD_EXT)) {
-    vscode.window.showWarningMessage(COPY.notSadFile);
-    return;
-  }
+  if (doc.languageId !== SAD_LANG_ID && !doc.fileName.endsWith(SAD_EXT)) return COPY.notSadFile;
   // يجب أن يكون ملفًّا حقيقيًّا على القرص (لا untitled ولا مخطّط بعيد/افتراضيّ).
-  if (doc.isUntitled || doc.uri.scheme !== "file") {
-    vscode.window.showWarningMessage(COPY.notOnDisk);
+  if (doc.isUntitled || doc.uri.scheme !== "file") return COPY.notOnDisk;
+  return null;
+}
+
+/**
+ * يبحث في مساحة العمل عن ملفّ ص لتشغيله حين لا محرّر ص نشط (مثلًا لوحة الجولة/الترحيب مركَّزة).
+ * مرحلتان: (١) بحث مستهدف عن الملفّ الرئيس (مرحبا.ص) — لا يفوته حدّ النتائج في مساحة كبيرة؛
+ * (٢) وإلا كلّ ملفّات ص: الوحيد ⇒ شغّله، التعدّد ⇒ التباس (لا نخمّن). يُرجع {uri} أو
+ * {ambiguous:true} (تعدّد بلا رئيس) أو null (لا ملفّ ص). يتجاهل node_modules ويحدّ العدد.
+ */
+async function findWorkspaceSadFile() {
+  const mains = await vscode.workspace.findFiles("**/" + MAIN_FILE, NODE_MODULES_GLOB, 1);
+  if (mains.length) return { uri: mains[0] };
+  const uris = await vscode.workspace.findFiles("**/*" + SAD_EXT, NODE_MODULES_GLOB, SAD_SEARCH_MAX);
+  if (uris.length === 1) return { uri: uris[0] };
+  if (uris.length > 1) return { ambiguous: true };
+  return null;
+}
+
+/**
+ * يحلّ مستند ص للتشغيل. المحرّر النشط إن كان ملفّ ص (السلوك الصارم يبقى لمحرّر غير-ص نشط).
+ * وإلا — لا محرّر نصّ نشط، وهو حال زرّ التشغيل داخل لوحة الجولة (تحتلّ المحرّر فلا نصّ نشط):
+ * يجرّب محرّرًا ظاهرًا بجانبها ثمّ ملفّ مساحة العمل الرئيس ويفتحه بجانب الجولة. {doc} أو {error}.
+ */
+async function resolveSadDoc() {
+  const active = vscode.window.activeTextEditor;
+  if (active) {
+    const err = sadDocError(active.document);
+    return err ? { error: err } : { doc: active.document };
+  }
+  // ملفّ ص ظاهر في مجموعة أخرى (مفتوح بجانب الجولة) ⇒ شغّله دون فتح جديد.
+  const visibleSad = vscode.window.visibleTextEditors.find((e) => sadDocError(e.document) === null);
+  if (visibleSad) return { doc: visibleSad.document };
+  // وإلا: ملفّ ص في مساحة العمل (مرحبا.ص أو الوحيد) — افتحه بجانب الجولة ثمّ شغّله.
+  const found = await findWorkspaceSadFile();
+  if (!found) return { error: COPY.noEditor }; // لا ملفّ ص إطلاقًا
+  if (found.ambiguous) return { error: COPY.sadFileAmbiguous }; // تعدّد بلا رئيس ⇒ رسالة صادقة
+  const doc = await vscode.workspace.openTextDocument(found.uri);
+  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+  return { doc };
+}
+
+/** أمر: شغّل ملفّ ص (النشط، أو الرئيس من الجولة حين لا نشط) عبر sad-run كمهمّة (بلا صدفة، فلا حقن). */
+async function runSadFile() {
+  const resolved = await resolveSadDoc();
+  if (resolved.error) {
+    vscode.window.showWarningMessage(resolved.error);
     return;
   }
+  const doc = resolved.doc;
   if (!(await doc.save())) {
     vscode.window.showWarningMessage(COPY.saveCancelled);
     return;
