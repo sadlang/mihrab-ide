@@ -2,7 +2,7 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "mihrab-shell",
   "displayName": "قشرة محراب",
-  "description": "إعدادات قشرة محراب الافتراضيّة (اتّجاه RTL): الشريط الجانبي يمينًا وما يلزم لتجربة عربيّة-أوّلًا. الطبقة 1 (إضافة محزومة) — لا رُقعة نواة.",
+  "description": "إعدادات قشرة محراب الافتراضيّة (اتّجاه RTL): الشريط الجانبي يمينًا، وتلوين أزواج الأقواس وأدلّتها لتوضيح البنية النحويّة في السياق العربيّ ثنائيّ الاتّجاه (BiDi). الطبقة 1 (إضافة محزومة) — لا رُقعة نواة.",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
@@ -10,7 +10,11 @@
   "categories": ["Other"],
   "contributes": {
     "configurationDefaults": {
-      "workbench.sideBar.location": "right"
+      "workbench.sideBar.location": "right",
+      "editor.bracketPairColorization.enabled": true,
+      "editor.guides.bracketPairs": "active",
+      "editor.guides.bracketPairsHorizontal": "active",
+      "editor.matchBrackets": "always"
     }
   },
   "repository": {

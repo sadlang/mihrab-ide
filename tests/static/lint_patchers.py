@@ -11,6 +11,8 @@
 import json
 import os
 import py_compile
+import shutil
+import subprocess
 import sys
 
 for _s in (sys.stdout, sys.stderr):
@@ -483,6 +485,95 @@ def _ext_nls_supplement():
     # الحقن يجب أن يشير إلى اسم الملفّ التكميليّ (وإلّا فالوصل مقطوع).
     inj_src = _read(os.path.join(BUILD, "patch_extension_nls.py"))
     assert "mihrab_ext_nls_ar.json" in inj_src, "patch_extension_nls.py لا يشير إلى الملفّ التكميليّ"
+
+
+# ───────────── L0-15: امتداد ترحيب محراب (الجولة + أوامر الإعداد الأوّل) ─────────────
+@check("امتداد ترحيب محراب: JSON صالح، أوامر ↔ JS متطابقة، خطوات الجولة تشير لوسائط موجودة")
+def _welcome_ext():
+    ext = os.path.join(ROOT, "extensions", "mihrab-welcome")
+    if not os.path.isdir(ext):
+        return  # لا امتداد ترحيب في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    contrib = pkg.get("contributes", {})
+
+    # (١) نقطة الدخول main موجودة فعلًا (وإلّا فالأوامر لن تُفعَّل).
+    main_rel = pkg.get("main")
+    assert main_rel, "لا حقل main في امتداد الترحيب (الأوامر تحتاج نقطة دخول JS)"
+    main_path = os.path.join(ext, *main_rel.lstrip("./").split("/"))
+    assert os.path.isfile(main_path), f"ملفّ main مفقود: {main_rel}"
+    js = _read(main_path)
+    # نقطة الدخول تصدّر activate (وإلّا لن يُفعَّل الامتداد إطلاقًا).
+    assert "module.exports" in js and "function activate" in js, \
+        "نقطة دخول الامتداد لا تصدّر activate (module.exports/function activate)"
+    # صحّة نحو JS إن توفّر node (لا يُفشِل حين غيابه — L0 صالح لـCI بلا اعتماد).
+    node = shutil.which("node")
+    if node:
+        r = subprocess.run([node, "--check", main_path], capture_output=True, text=True)
+        assert r.returncode == 0, f"خطأ نحويّ في {main_rel}:\n{r.stderr.strip()}"
+
+    # (١ب) الفتح التلقائيّ للجولة يعتمد على تنشيط عند اكتمال الإقلاع؛ بدونه لا تظهر لمستخدم عائد.
+    assert "onStartupFinished" in pkg.get("activationEvents", []), \
+        "activationEvents لا يحوي onStartupFinished — الجولة لن تُفتَح تلقائيًّا أوّل مرّة"
+    assert "maybeShowWelcome" in js and "openWalkthrough" in js, \
+        "لا منطق فتح تلقائيّ للجولة (maybeShowWelcome/openWalkthrough) في نقطة الدخول"
+
+    # (١ج) تشغيل ملفّ ص يجب أن يمرّ بالمسار المحلول (المدمج ثمّ PATH) لا باسم ثابت مباشر،
+    #      وإلّا ينكسر ربط الثنائيّ المدمج ولا يعمل التشغيل دون تثبيت على PATH.
+    #      (أنماط متسامحة مع المسافات كي لا تنكسر بإعادة تنسيق. [N1])
+    import re as _re
+    assert "resolveSadRun" in js, "لا دالّة resolveSadRun (حلّ الثنائيّ المدمج) في نقطة الدخول"
+    assert _re.search(r"ProcessExecution\(\s*sadRunCmd", js), \
+        "ProcessExecution لا يستعمل المسار المحلول sadRunCmd — قد يتجاهل الثنائيّ المدمج"
+    # مهمّة tasks.json المولَّدة يجب أن تُبنى من المُشغّل المحلول (buildTasksJson(sadRunCmd)) لا
+    # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
+    assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \
+        "مهمّة tasks.json لا تُبنى من المُشغّل المحلول (buildTasksJson/command: runCommand) — خطر تباعد المسارين"
+
+    # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
+    #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
+    assert _re.search(r'BUNDLED_BIN_DIR\s*=\s*"bin"', js), \
+        "ثابت BUNDLED_BIN_DIR ليس \"bin\" — قد يفترق عن مسار الحقن في build.sh"
+    build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
+    assert "WELCOME_BIN" in build_sh and "sad-run.exe" in build_sh, \
+        "build.sh لا يحوي كتلة حزم sad-run المدمجة (WELCOME_BIN/sad-run.exe)"
+    gitignore = _read(os.path.join(ROOT, ".gitignore"))
+    assert "extensions/mihrab-welcome/bin/" in gitignore, \
+        ".gitignore لا يتجاهل الثنائيّ المدمج extensions/mihrab-welcome/bin/ (خطر إيداعه)"
+
+    # (٢) كلّ أمر معلَن في المانيفست مُسجَّل فعلًا في JS (احتواء لا تطابق تامّ:
+    #     يجوز أن يسجّل JS أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ).
+    manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
+    assert manifest_cmds, "لا أوامر معلَنة في امتداد الترحيب"
+    js_cmds = set(_re.findall(r"registerCommand\(\s*[\"']([^\"']+)[\"']", js))
+    missing = manifest_cmds - js_cmds
+    assert not missing, f"أوامر معلَنة في المانيفست بلا registerCommand في JS: {missing}"
+    # كلّ أمر معلَن له عنوان غير فارغ (يظهر في لوحة الأوامر).
+    for c in contrib.get("commands", []):
+        assert c.get("title"), f"أمر بلا عنوان: {c.get('command')}"
+
+    # (٣) الجولة: خطوات تشير لوسائط ماركداون موجودة، ومعرّفات فريدة، وactivationEvents مربوط.
+    walks = contrib.get("walkthroughs", [])
+    assert walks, "لا جولات (walkthroughs) في امتداد الترحيب"
+    seen_step_ids = set()
+    for w in walks:
+        assert w.get("id") and w.get("title") and w.get("description"), f"عقد جولة ناقص: {w.get('id')}"
+        # activationEvents يجب أن يفعّل الامتداد عند فتح الجولة (وإلّا لن تعمل روابط الأوامر).
+        assert f"onWalkthrough:{w['id']}" in pkg.get("activationEvents", []), \
+            f"activationEvents لا يفعّل الامتداد عند فتح الجولة {w['id']}"
+        steps = w.get("steps", [])
+        assert steps, f"جولة بلا خطوات: {w['id']}"
+        for st in steps:
+            sid = st.get("id")
+            assert sid and sid not in seen_step_ids, f"معرّف خطوة مفقود/مكرّر: {sid}"
+            seen_step_ids.add(sid)
+            assert st.get("title") and st.get("description"), f"خطوة ناقصة: {sid}"
+            md = (st.get("media") or {}).get("markdown")
+            assert md, f"خطوة بلا وسيط ماركداون: {sid}"
+            mp = os.path.join(ext, *md.lstrip("./").split("/"))
+            assert os.path.isfile(mp), f"وسيط جولة مفقود: {md} (للخطوة {sid})"
+            # أيّ رابط command: في وصف الخطوة يجب أن يشير لأمر معلَن (لا رابط ميّت).
+            for cmd in _re.findall(r"command:([A-Za-z0-9_.]+)", st["description"]):
+                assert cmd in manifest_cmds, f"رابط أمر ميّت «{cmd}» في الخطوة {sid}"
 
 
 # ───────────────────────── المشغّل ─────────────────────────
