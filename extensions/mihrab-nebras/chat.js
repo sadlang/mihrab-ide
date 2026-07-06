@@ -23,6 +23,21 @@ const MAX_LOCAL_HISTORY = 40;
 
 /** @type {{role: string, text: string}[]} تاريخ المحادثة (يُمرَّر مع كلّ مهمّة). */
 let conversation = [];
+/**
+ * خطّ أساس فرق المصدر (م2ب+): صورة المصدر المعياريّة التي أرّض عليها الخادم في الدور السابق
+ * (result.sourceEcho، لا نصّ المحرّر — يسدّ تباعد المحرّر/القرص). تُحدَّث كلّ دور ناجح فيصير
+ * الفرق تدرّجيًّا مقابل الدور السابق. تُصفَّر مع المحادثة (تبديل الملفّ/إغلاق اللوحة).
+ * null = لا أساس بعد ⇒ الخادم يرسل المصدر كاملًا (أوّل دور).
+ * @type {string | null}
+ */
+let baselineSource = null;
+/**
+ * عدّاد حِقبة الجلسة: يزداد في كلّ تصفير (تبديل الملفّ/إغلاق اللوحة). تلتقطه المهمّة عند إطلاقها،
+ * ويُفحَص قبل كتابة نتيجتها في الحالة العامّة — فمهمّةٌ تكتمل بعد تصفيرٍ لا تُلوّث جلسةً أخرى
+ * (تمنع سباق الاكتمال-بعد-التبديل: تسريب سياق ق6 + فرق أساسٍ فاسد).
+ * @type {number}
+ */
+let sessionEpoch = 0;
 
 // معرّف/عنوان اللوحة.
 const PANEL_TYPE = "mihrab.nebras.chat";
@@ -86,6 +101,10 @@ async function onUserMessage(proc, getConfig, text) {
     void panel.webview.postMessage({ type: MSG_ERROR, text: COPY.noContext });
     return;
   }
+  // التقط الجلسة والملفّ اللذين تنطلق المهمّة لأجلهما — يُفحَصان بعد الاكتمال (await) قبل كتابة
+  // أيّ حالة عامّة، كي لا تُلوّث مهمّةٌ اكتملت متأخّرةً جلسةً صُفِّرت لملفٍّ آخر (سباق ق6).
+  const epoch = sessionEpoch;
+  const forFile = file;
   const cfg = getConfig();
   const params = {
     kind: TASK_EXPLAIN,
@@ -93,12 +112,14 @@ async function onUserMessage(proc, getConfig, text) {
     instruction: text,
     // طور المحادثة: مرّر الأدوار السابقة (لا يشمل الرسالة الحاليّة — هي في instruction).
     history: conversation.slice(),
+    // تحسين توكنز: بعد أوّل دور مرّر خطّ أساس المصدر ⇒ العقل يرسل الفرق لا المصدر الكامل.
+    ...(baselineSource !== null ? { baselineSource } : {}),
     permission: cfg.permissionMode,
     locale: cfg.locale,
   };
   let answer = "";
   try {
-    await proc.runTask(
+    const result = await proc.runTask(
       params,
       (delta) => {
         answer += delta;
@@ -109,12 +130,19 @@ async function onUserMessage(proc, getConfig, text) {
       },
     );
     // الفشل يصل كرفض (JsonRpcError) فيُعالَج في catch — لا فرع ok===false (ميت بعقد الخادم).
+    // حارس الحِقبة/الملفّ: إن تبدّلت الجلسة (تبديل ملفّ/إغلاق لوحة) أو الملفّ النشط أثناء المهمّة،
+    // لا تكتب حالة هذا الدور في وحدةٍ عامّة صُفِّرت لجلسةٍ أخرى (يمنع تسريب ق6 + فرقًا فاسدًا).
     // دوّن الدورين (المستخدم ثمّ المساعد) للسياق التالي — لكن تجاهل التبادل كلّه إن كان الجواب
     // فارغًا (بثّ صفريّ) كي لا يبقى سؤالٌ بلا جواب في التاريخ (يطابق حذف الفقاعة الفارغة عرضًا).
-    if (answer.trim()) {
+    if (epoch === sessionEpoch && activeSadFile() === forFile && answer.trim()) {
       conversation.push({ role: ROLE_USER, text }, { role: ROLE_ASSISTANT, text: answer });
       if (conversation.length > MAX_LOCAL_HISTORY) {
         conversation = conversation.slice(-MAX_LOCAL_HISTORY);
+      }
+      // خطّ أساس الدور التالي = صورة المصدر التي أرّض عليها الخادم فعلًا (sourceEcho)، لا نصّ
+      // المحرّر — يسدّ تباعد المحرّر/القرص، ويجعل الفرق تدرّجيًّا مقابل الدور السابق (يُحدَّث كلّ دور).
+      if (result && typeof result.sourceEcho === "string") {
+        baselineSource = result.sourceEcho;
       }
     }
     if (panel) void panel.webview.postMessage({ type: MSG_DONE });
@@ -257,6 +285,8 @@ const registerChat = {
       if (now !== lastCtxFile) {
         lastCtxFile = now;
         conversation = [];
+        baselineSource = null; // مصدر جديد ⇒ أرسِله كاملًا أوّل دور.
+        sessionEpoch++; // أبطِل أيّ مهمّة جارية للملفّ السابق (لا تكتب حالتها بعد الاكتمال).
       }
       pushContext();
     });
@@ -266,6 +296,8 @@ const registerChat = {
       edSub.dispose();
       if (activeTaskId !== undefined) proc.cancel(activeTaskId);
       conversation = []; // جلسة جديدة عند إعادة الفتح (لا تسرّب سياق قديم).
+      baselineSource = null;
+      sessionEpoch++; // أبطِل أيّ مهمّة جارية تكتمل بعد الإغلاق (لا ترث جلسةٌ لاحقة حالتها).
       panel = null;
     });
     pushContext();
