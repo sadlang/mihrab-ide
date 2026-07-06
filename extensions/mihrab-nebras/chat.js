@@ -23,6 +23,14 @@ const MAX_LOCAL_HISTORY = 40;
 
 /** @type {{role: string, text: string}[]} تاريخ المحادثة (يُمرَّر مع كلّ مهمّة). */
 let conversation = [];
+/**
+ * خطّ أساس فرق المصدر (م2ب+): صورة المصدر المعياريّة التي أرّض عليها الخادم في الدور السابق
+ * (result.sourceEcho، لا نصّ المحرّر — يسدّ تباعد المحرّر/القرص). تُحدَّث كلّ دور ناجح فيصير
+ * الفرق تدرّجيًّا مقابل الدور السابق. تُصفَّر مع المحادثة (تبديل الملفّ/إغلاق اللوحة).
+ * null = لا أساس بعد ⇒ الخادم يرسل المصدر كاملًا (أوّل دور).
+ * @type {string | null}
+ */
+let baselineSource = null;
 
 // معرّف/عنوان اللوحة.
 const PANEL_TYPE = "mihrab.nebras.chat";
@@ -93,12 +101,14 @@ async function onUserMessage(proc, getConfig, text) {
     instruction: text,
     // طور المحادثة: مرّر الأدوار السابقة (لا يشمل الرسالة الحاليّة — هي في instruction).
     history: conversation.slice(),
+    // تحسين توكنز: بعد أوّل دور مرّر خطّ أساس المصدر ⇒ العقل يرسل الفرق لا المصدر الكامل.
+    ...(baselineSource !== null ? { baselineSource } : {}),
     permission: cfg.permissionMode,
     locale: cfg.locale,
   };
   let answer = "";
   try {
-    await proc.runTask(
+    const result = await proc.runTask(
       params,
       (delta) => {
         answer += delta;
@@ -115,6 +125,11 @@ async function onUserMessage(proc, getConfig, text) {
       conversation.push({ role: ROLE_USER, text }, { role: ROLE_ASSISTANT, text: answer });
       if (conversation.length > MAX_LOCAL_HISTORY) {
         conversation = conversation.slice(-MAX_LOCAL_HISTORY);
+      }
+      // خطّ أساس الدور التالي = صورة المصدر التي أرّض عليها الخادم فعلًا (sourceEcho)، لا نصّ
+      // المحرّر — يسدّ تباعد المحرّر/القرص، ويجعل الفرق تدرّجيًّا مقابل الدور السابق (يُحدَّث كلّ دور).
+      if (result && typeof result.sourceEcho === "string") {
+        baselineSource = result.sourceEcho;
       }
     }
     if (panel) void panel.webview.postMessage({ type: MSG_DONE });
@@ -257,6 +272,7 @@ const registerChat = {
       if (now !== lastCtxFile) {
         lastCtxFile = now;
         conversation = [];
+        baselineSource = null; // مصدر جديد ⇒ أرسِله كاملًا أوّل دور.
       }
       pushContext();
     });
@@ -266,6 +282,7 @@ const registerChat = {
       edSub.dispose();
       if (activeTaskId !== undefined) proc.cancel(activeTaskId);
       conversation = []; // جلسة جديدة عند إعادة الفتح (لا تسرّب سياق قديم).
+      baselineSource = null;
       panel = null;
     });
     pushContext();
