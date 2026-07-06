@@ -18,6 +18,8 @@ const CFG_INLINE = "inlineCompletion";
 
 // سقف أسطر البادئة المُرسَلة كسياق (كي لا نُرسل ملفًّا ضخمًا لكلّ ضغطة).
 const MAX_PREFIX_LINES = 60;
+// سقف أسطر اللاحقة (ما بعد المؤشّر) لـFIM — أصغر من البادئة (اللاحقة سياق مساعِد).
+const MAX_SUFFIX_LINES = 20;
 // تهدئة قبل إطلاق الطلب (ms) — يمنع طلبًا لكلّ حرف.
 const DEBOUNCE_MS = 250;
 
@@ -68,13 +70,22 @@ function registerInlineCompletion(context, proc, getConfig, log) {
       const startLine = Math.max(0, position.line - MAX_PREFIX_LINES);
       const prefixRange = new vscode.Range(startLine, 0, position.line, position.character);
       const prefix = document.getText(prefixRange);
-      if (!prefix.trim()) return undefined;
+
+      // لاحقة محدودة الأسطر من المؤشّر (FIM): تمكّن الخادم من ملء الفراغ لا الإكمال من البادئة وحدها.
+      const lastLine = document.lineCount - 1;
+      const endLine = Math.min(lastLine, position.line + MAX_SUFFIX_LINES);
+      const endChar = document.lineAt(endLine).range.end.character;
+      const suffix = document.getText(new vscode.Range(position.line, position.character, endLine, endChar));
+
+      // يحتاج سياقًا حول المؤشّر: بادئة **أو** لاحقة (FIM رأس الملفّ ببادئة فارغة صالح).
+      if (!prefix.trim() && !suffix.trim()) return undefined;
 
       const cfg = getConfig();
       const params = {
         kind: TASK_COMPLETE,
         target: document.fileName,
         instruction: prefix,
+        suffix, // FIM: نصّ ما بعد المؤشّر (فارغ ⇒ الخادم يتراجع لإكمال البادئة-وحدها).
         permission: cfg.permissionMode,
         locale: cfg.locale,
       };
