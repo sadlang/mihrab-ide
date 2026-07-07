@@ -2,7 +2,7 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "mihrab-nebras",
   "displayName": "نِبراس — ذكاء ص في محراب",
-  "description": "تكامل نِبراس (طبقة الذكاء الرسميّة للغة ص) داخل محراب (م2ب): شرح تحديد، ودردشة، وإكمال سطريّ — عبر عقد nebras-protocol (JSON-RPC 2.0 على stdio) مع خادم نِبراس المقيم. عربيّ أوّلًا، تحت آلة الأذونات (ق5/ق12).",
+  "description": "تكامل نِبراس (طبقة الذكاء الرسميّة للغة ص) داخل محراب (م2ب): شرح تحديد، ووكيل متعدّد الخطوات، ودردشة، وإكمال سطريّ — عبر عقد nebras-protocol (JSON-RPC 2.0 على stdio) مع خادم نِبراس المقيم. عربيّ أوّلًا، تحت آلة الأذونات (ق5/ق12).",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
@@ -19,6 +19,12 @@
         "command": "mihrab.nebras.explainSelection",
         "title": "نِبراس: اشرح التحديد",
         "shortTitle": "اشرح التحديد",
+        "category": "نِبراس"
+      },
+      {
+        "command": "mihrab.nebras.runAgent",
+        "title": "نِبراس: وكيل (حلقة متعدّدة الخطوات)",
+        "shortTitle": "وكيل نِبراس",
         "category": "نِبراس"
       },
       {
@@ -46,6 +52,11 @@
           "command": "mihrab.nebras.explainSelection",
           "when": "editorHasSelection && editorLangId == sad",
           "group": "nebras@1"
+        },
+        {
+          "command": "mihrab.nebras.runAgent",
+          "when": "editorLangId == sad",
+          "group": "nebras@2"
         }
       ]
     },
@@ -95,6 +106,16 @@
           "type": "boolean",
           "default": false,
           "description": "تفعيل الإكمال السطريّ عبر نِبراس (يستهلك توكنات؛ مطفأ افتراضًا)."
+        },
+        "mihrab.nebras.sadBuildPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "مسار مُصرِّف ص (`sad-build`) لتفعيل أداة **«ابنِ»** في الوكيل (يصرّف الهدف للتحقّق). فارغ ⇒ تُسقَط الأداة (يقرأ/يكتب/يكتشف بلا بناء)."
+        },
+        "mihrab.nebras.sadRunPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "مسار مُشغِّل ص (`sad-run`) لتفعيل أداة **«شغّل»** في الوكيل. تُنفّذ كودَ المستخدم المُصرَّف (خارج ضمان ق12) ⇒ **تبقى مُستأذَنةً دائمًا** حتى في «طيّار» (المحرّر لا يعرض إعداد رملة؛ الإجازة الآليّة تتطلّب رملةَ عزلٍ **مُقَرًّا بها** في بيئة الخادم). فارغ ⇒ تُسقَط الأداة."
         }
       }
     }
