@@ -3,6 +3,7 @@
 // امتداد نِبراس في محراب (م2ب): يوصّل عقل نِبراس (طبقة الذكاء الرسميّة للغة ص) بواجهة محراب
 // عبر عقد nebras-protocol (JSON-RPC 2.0 على stdio) مع خادم مقيم. المزايا:
 //   • mihrab.nebras.explainSelection — اشرح التحديد (بثّ حيّ).
+//   • mihrab.nebras.runAgent          — وكيل: الحلقة الوكيليّة الكاملة (اقرأ→نفّذ→تحقّق، بثّ خطوات حيّ).
 //   • mihrab.nebras.openChat          — دردشة (لوحة webview).
 //   • mihrab.nebras.restart           — إعادة تشغيل الخادم.
 //   • mihrab.nebras.toggleInlineCompletion — بدّل الإكمال السطريّ.
@@ -12,11 +13,13 @@ const vscode = require("vscode");
 const { NebrasProcess, readConfig } = require("./nebras-process.js");
 const { makePermissionHandler } = require("./permission.js");
 const { makeExplainCommand } = require("./explain-selection.js");
+const { makeAgentCommand } = require("./agent.js");
 const { registerChat } = require("./chat.js");
 const { registerInlineCompletion } = require("./inline-completion.js");
 
 // معرّفات الأوامر (مصدر حقيقة واحد يطابق package.json).
 const CMD_EXPLAIN = "mihrab.nebras.explainSelection";
+const CMD_AGENT = "mihrab.nebras.runAgent";
 const CMD_CHAT = "mihrab.nebras.openChat";
 const CMD_RESTART = "mihrab.nebras.restart";
 const CMD_TOGGLE_INLINE = "mihrab.nebras.toggleInlineCompletion";
@@ -27,6 +30,7 @@ const CFG_INLINE = "inlineCompletion";
 // أسماء قنوات الإخراج.
 const LOG_CHANNEL = "نِبراس (سجلّ)";
 const EXPLAIN_CHANNEL = "نِبراس";
+const AGENT_CHANNEL = "نِبراس (وكيل)";
 
 // نصوص شريط الحالة والإشعارات.
 const COPY = {
@@ -63,7 +67,8 @@ function updateStatus(ready) {
 function activate(context) {
   const log = vscode.window.createOutputChannel(LOG_CHANNEL);
   const explainChannel = vscode.window.createOutputChannel(EXPLAIN_CHANNEL);
-  context.subscriptions.push(log, explainChannel);
+  const agentChannel = vscode.window.createOutputChannel(AGENT_CHANNEL);
+  context.subscriptions.push(log, explainChannel, agentChannel);
 
   // معالِج الموافقة (ق5/ق12): حوار نمطيّ للكتابة/التشغيل في «اقتراح/آمن».
   const permissionHandler = makePermissionHandler();
@@ -85,6 +90,7 @@ function activate(context) {
   // الأوامر.
   context.subscriptions.push(
     vscode.commands.registerCommand(CMD_EXPLAIN, makeExplainCommand(proc, explainChannel, getConfig)),
+    vscode.commands.registerCommand(CMD_AGENT, makeAgentCommand(proc, agentChannel, getConfig)),
     vscode.commands.registerCommand(CMD_CHAT, () => {
       if (proc) registerChat.open(context, proc, getConfig);
     }),

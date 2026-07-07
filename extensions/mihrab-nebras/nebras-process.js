@@ -34,6 +34,9 @@ const BUNDLED_SERVER_ENTRY = "index.js";
 // متغيّر بيئة احتياطيّ لمسار نقطة دخول CLI (تطوير).
 const ENV_NEBRAS_CLI = "NEBRAS_CLI";
 const ENV_PROXY_URL = "NEBRAS_PROXY_URL";
+// سلسلة أدوات ص: تفعّل أدوات «ابنِ/شغّل» في الحلقة الوكيليّة (بغيابها تُسقَط الأداتان — تدهور رشيق).
+const ENV_SAD_BUILD = "NEBRAS_SAD_BUILD";
+const ENV_SAD_RUN = "NEBRAS_SAD_RUN";
 
 // إعادة التشغيل: تراجع أسّيّ محدود كي لا يدور خادم منهار بلا نهاية.
 const RESTART_BASE_MS = 1000;
@@ -88,6 +91,9 @@ function readConfig() {
     permissionMode: cfg.get("permissionMode") || "آمن",
     locale: cfg.get("locale") || "ar",
     inlineCompletion: cfg.get("inlineCompletion") === true,
+    // مسارا سلسلة أدوات ص (اختياريّان): يفعّلان «ابنِ/شغّل» في الحلقة الوكيليّة عبر بيئة الخادم.
+    sadBuildPath: (cfg.get("sadBuildPath") || "").trim(),
+    sadRunPath: (cfg.get("sadRunPath") || "").trim(),
   };
 }
 
@@ -129,7 +135,7 @@ class NebrasProcess {
     this._ready = false;
     this._restartAttempts = 0;
     this._disposed = false;
-    /** @type {Map<any, (delta: string) => void>} taskId → onDelta لبثّ المهامّ الجارية */
+    /** @type {Map<any, {onDelta?: (delta: string) => void, onToolStep?: (step: any) => void}>} taskId → مستهلكات البثّ (نصّ + خطوات) للمهامّ الجارية */
     this._activeTasks = new Map();
     /** @type {(ready: boolean) => void} */
     this._onReadyChanged = () => {};
@@ -169,6 +175,13 @@ class NebrasProcess {
     // مرّر عنوان الوسيط إن ضُبط (فارغ ⇒ الخادم يستعمل المزوّد الوهميّ Mock).
     if (cfg.proxyUrl) env[ENV_PROXY_URL] = cfg.proxyUrl;
     else delete env[ENV_PROXY_URL];
+    // مسارا سلسلة أدوات ص: الإعداد **مصدر الحقيقة** (كـproxyUrl) — مضبوطٌ ⇒ يفعّل «ابنِ/شغّل»، فارغٌ
+    // ⇒ **يُسقِط** ما ورّثته البيئة كي يطابق السلوكُ التوثيقَ («فارغ ⇒ تُسقَط الأداة») ولا يفعّلها متغيّرٌ
+    // بيئيّ خفيّ. تدهور رشيق: بلا مسارٍ تُسقَط الأداة (الوكيل يقرأ/يكتب/يكتشف بلا بناء/تشغيل).
+    if (cfg.sadBuildPath) env[ENV_SAD_BUILD] = cfg.sadBuildPath;
+    else delete env[ENV_SAD_BUILD];
+    if (cfg.sadRunPath) env[ENV_SAD_RUN] = cfg.sadRunPath;
+    else delete env[ENV_SAD_RUN];
 
     let child;
     try {
@@ -208,11 +221,14 @@ class NebrasProcess {
     const rpc = new RpcClient(child.stdin, child.stdout);
     this._rpc = rpc;
 
-    // وجّه بثّ المهامّ (TaskProgress) لمستهلك المهمّة المطابق لـtaskId.
+    // وجّه بثّ المهامّ (TaskProgress) لمستهلك المهمّة المطابق لـtaskId: قطعة نصّ (delta) أو خطوة
+    // أداةٍ منفَّذة (toolStep، حلقة «وكيل» خطوةً خطوة). قد يحمل الإشعار أحدهما.
     rpc.onNotification(METHOD_TASK_PROGRESS, (params) => {
       if (!params || typeof params !== "object") return;
-      const onDelta = this._activeTasks.get(params.taskId);
-      if (onDelta && typeof params.delta === "string") onDelta(params.delta);
+      const consumer = this._activeTasks.get(params.taskId);
+      if (!consumer) return;
+      if (typeof params.delta === "string" && consumer.onDelta) consumer.onDelta(params.delta);
+      if (params.toolStep && consumer.onToolStep) consumer.onToolStep(params.toolStep);
     });
     // وجّه طلبات الموافقة خادم→عميل للمعالِج المحقون (fail-safe: رفض عند غياب/خطأ).
     rpc.onRequest(METHOD_REQUEST_PERMISSION, async (params) => {
@@ -273,15 +289,21 @@ class NebrasProcess {
   }
 
   /**
-   * يشغّل مهمّة نِبراس ويبثّ القطع عبر onDelta. يُرجع TaskResult أو يرمي.
+   * يشغّل مهمّة نِبراس ويبثّ القطع عبر onDelta والخطوات عبر onToolStep. يُرجع TaskResult أو يرمي.
    * onStart(id) اختياريّ: يُستدعى بمعرّف المهمّة فور إرسالها (يتيح الإلغاء أثناء البثّ).
+   * onToolStep(step) اختياريّ: يُستدعى لكلّ خطوةِ أداةٍ منفَّذة في مهمّة «وكيل» (بثّ حيّ).
    */
-  async runTask(params, onDelta, onStart) {
+  async runTask(params, onDelta, onStart, onToolStep) {
     if (!this._rpc || !this._ready) {
       throw new Error("خادم نِبراس غير جاهز");
     }
     const { id, promise } = this._rpc.sendRequest(METHOD_TASK, params);
-    if (typeof onDelta === "function") this._activeTasks.set(id, onDelta);
+    if (typeof onDelta === "function" || typeof onToolStep === "function") {
+      this._activeTasks.set(id, {
+        onDelta: typeof onDelta === "function" ? onDelta : undefined,
+        onToolStep: typeof onToolStep === "function" ? onToolStep : undefined,
+      });
+    }
     if (typeof onStart === "function") {
       try {
         onStart(id);
