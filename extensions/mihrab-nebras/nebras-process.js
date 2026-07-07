@@ -175,10 +175,13 @@ class NebrasProcess {
     // مرّر عنوان الوسيط إن ضُبط (فارغ ⇒ الخادم يستعمل المزوّد الوهميّ Mock).
     if (cfg.proxyUrl) env[ENV_PROXY_URL] = cfg.proxyUrl;
     else delete env[ENV_PROXY_URL];
-    // مرّر مسارَي سلسلة أدوات ص إن ضُبطا (يفعّلان «ابنِ/شغّل» الوكيليّتين)؛ وإلّا لا تُحقَن الأداتان
-    // (تدهور رشيق — الوكيل يقرأ/يكتب/يكتشف بلا بناء/تشغيل). لا نلمس ما ورّثته البيئة إن كان الإعداد فارغًا.
+    // مسارا سلسلة أدوات ص: الإعداد **مصدر الحقيقة** (كـproxyUrl) — مضبوطٌ ⇒ يفعّل «ابنِ/شغّل»، فارغٌ
+    // ⇒ **يُسقِط** ما ورّثته البيئة كي يطابق السلوكُ التوثيقَ («فارغ ⇒ تُسقَط الأداة») ولا يفعّلها متغيّرٌ
+    // بيئيّ خفيّ. تدهور رشيق: بلا مسارٍ تُسقَط الأداة (الوكيل يقرأ/يكتب/يكتشف بلا بناء/تشغيل).
     if (cfg.sadBuildPath) env[ENV_SAD_BUILD] = cfg.sadBuildPath;
+    else delete env[ENV_SAD_BUILD];
     if (cfg.sadRunPath) env[ENV_SAD_RUN] = cfg.sadRunPath;
+    else delete env[ENV_SAD_RUN];
 
     let child;
     try {

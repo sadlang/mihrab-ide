@@ -30,6 +30,11 @@ const COPY = {
   noEditor: "لا يوجد محرّر نشط — افتح ملفّ ص أوّلًا.",
   notSadFile: `الملفّ الحاليّ ليس ملفّ ص (‹${SAD_EXT}›).`,
   notOnDisk: "احفظ الملفّ على القرص أوّلًا كي يعمل الوكيل على سياقه.",
+  dirtyTitle: "الملفّ به تعديلاتٌ غير محفوظة",
+  dirtyDetail: "الوكيل يقرأ ويكتب من القرص — سيعمل على النسخة المحفوظة وقد يدوس تعديلاتك غير المحفوظة.",
+  dirtySave: "احفظ وتابع",
+  dirtyCancel: "ألغِ",
+  saveFailed: "تعذّر حفظ الملفّ — أُلغيَ.",
   notReady: "خادم نِبراس غير جاهز بعد — انتظر لحظة ثمّ أعِد المحاولة.",
   goalPrompt: "صف الهدف الذي تريد أن يحقّقه وكيل نِبراس",
   goalPlaceholder: "مثال: أصلِح أخطاء الصياغة في هذا الملفّ ثمّ ابنِه للتأكّد.",
@@ -72,6 +77,20 @@ function makeAgentCommand(proc, channel, getConfig) {
     if (doc.isUntitled || doc.uri.scheme !== "file") {
       vscode.window.showWarningMessage(COPY.notOnDisk);
       return;
+    }
+    // الوكيل يعمل على القرص (يقرأ/يكتب): تعديلاتٌ غير محفوظة ⇒ يعمل على نسخةٍ قديمة وقد يدوسها.
+    // اعرِض حفظًا صريحًا قبل المتابعة (fail-safe: أيّ إغلاقٍ للحوار ⇒ إلغاء).
+    if (doc.isDirty) {
+      const choice = await vscode.window.showWarningMessage(
+        COPY.dirtyTitle,
+        { modal: true, detail: COPY.dirtyDetail },
+        COPY.dirtySave,
+      );
+      if (choice !== COPY.dirtySave) return;
+      if (!(await doc.save())) {
+        vscode.window.showWarningMessage(COPY.saveFailed);
+        return;
+      }
     }
     if (!proc.isReady()) {
       vscode.window.showWarningMessage(COPY.notReady);
@@ -132,7 +151,8 @@ function makeAgentCommand(proc, channel, getConfig) {
           );
           // نجاح: الخادم يبثّ الخطوات ثمّ الجواب ويعيد نتيجةً. الفشل يصل كرفض (JsonRpcError) لا كـresult،
           // فيُعالَج في catch (لا فرع ok===false — ميتٌ بحكم عقد الخادم).
-          if (!cancelled) channel.append(COPY.done);
+          // إن حُسِم الوعد بنجاحٍ ثمّ وصل الإلغاء في النافذة الدقيقة بعده، اطبع سطر الإلغاء (لا «تمّ»).
+          channel.append(cancelled ? COPY.cancelled : COPY.done);
         } catch (err) {
           if (cancelled) channel.append(COPY.cancelled);
           else channel.append(COPY.failed(String(err && err.message ? err.message : err)));
