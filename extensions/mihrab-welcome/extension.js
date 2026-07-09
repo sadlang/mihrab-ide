@@ -34,6 +34,14 @@ const RUN_TASK_LABEL = "تشغيل برنامج ص";
 // نوع مهمّة مخصّص (لا نوع VSCode المدمج «process») لإزالة أيّ لبس مع عقد المهامّ المدمجة.
 const RUN_TASK_TYPE = "mihrab-run";
 const DOCS_URL = "https://github.com/sadlang/s-programming-language";
+// معرّفا أمرَي هذا الامتداد (مصدر حقيقة واحد؛ يطابقان contributes.commands في package.json).
+const NEW_PROJECT_CMD = "mihrab.newSadProject";
+const RUN_FILE_CMD = "mihrab.runSadFile";
+// أوامر النواة المدمجة المُستدعاة (لا سلاسل حرفيّة موضعيّة — أسوة بـOPEN_WALKTHROUGH_CMD).
+const OPEN_FOLDER_CMD = "vscode.openFolder";
+const OPEN_CMD = "vscode.open";
+// معرّف الامتداد الاحتياطيّ إن غابت هوية التشغيل (publisher.name — يطابق package.json).
+const DEFAULT_EXTENSION_ID = "sadlang.mihrab-welcome";
 // حدّ نتائج البحث عن ملفّات ص في مساحة العمل (أداء على مساحة كبيرة) + استبعاد التبعيّات.
 const SAD_SEARCH_MAX = 50;
 const NODE_MODULES_GLOB = "**/node_modules/**";
@@ -235,7 +243,7 @@ async function newSadProject() {
     await vscode.window.showTextDocument(doc, { preview: false });
     const action = await vscode.window.showInformationMessage(COPY.createdInfo(projectName), COPY.openFolder);
     if (action === COPY.openFolder) {
-      await vscode.commands.executeCommand("vscode.openFolder", targetUri, { forceNewWindow: false });
+      await vscode.commands.executeCommand(OPEN_FOLDER_CMD, targetUri, { forceNewWindow: false });
     }
   } catch (err) {
     vscode.window.showErrorMessage(COPY.createFailed(String(err && err.message ? err.message : err)));
@@ -364,7 +372,7 @@ async function runSadFile() {
       COPY.toolMissingLearn
     );
     if (pick === COPY.toolMissingLearn) {
-      vscode.commands.executeCommand("vscode.open", vscode.Uri.parse(DOCS_URL));
+      vscode.commands.executeCommand(OPEN_CMD, vscode.Uri.parse(DOCS_URL));
     }
     return;
   }
@@ -396,7 +404,7 @@ async function maybeShowWelcome(context) {
   if (context.globalState.get(WELCOME_SHOWN_KEY)) return;
   // المعرّف الكامل يُشتَقّ من هوية الامتداد وقت التشغيل (لا يُثبَّت publisher حرفيًّا). [M4]
   const ext = context.extension;
-  const fullId = (ext && ext.id ? ext.id : "sadlang.mihrab-welcome") +
+  const fullId = (ext && ext.id ? ext.id : DEFAULT_EXTENSION_ID) +
     WALKTHROUGH_ID_SEP + WALKTHROUGH_LOCAL_ID;
   try {
     await vscode.commands.executeCommand(OPEN_WALKTHROUGH_CMD, fullId, false);
@@ -412,8 +420,8 @@ function activate(context) {
   // حلّ مسار sad-run مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
   sadRunCmd = resolveSadRun(context);
   context.subscriptions.push(
-    vscode.commands.registerCommand("mihrab.newSadProject", newSadProject),
-    vscode.commands.registerCommand("mihrab.runSadFile", runSadFile)
+    vscode.commands.registerCommand(NEW_PROJECT_CMD, newSadProject),
+    vscode.commands.registerCommand(RUN_FILE_CMD, runSadFile)
   );
   // عند اكتمال الإقلاع (onStartupFinished) اعرض الجولة أوّل مرّة فقط (رفض الوعد مُبتلَع). [L5]
   void maybeShowWelcome(context).catch(() => {});

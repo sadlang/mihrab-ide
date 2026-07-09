@@ -252,9 +252,6 @@ function buildHtml(webview) {
 }
 
 const registerChat = {
-  /** تهيئة (لا حالة عامّة تحتاج تسجيلًا حاليًّا — محجوز للتوسّع). */
-  init(_context) {},
-
   /** يفتح لوحة الدردشة (أو يكشف القائمة). */
   open(context, proc, getConfig) {
     if (panel) {
