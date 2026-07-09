@@ -606,6 +606,12 @@ def _welcome_ext():
         "أمر البناء لا يُوجَّه للّوحة بالمسار المحلول sadBuildCmd (resolveSadBuild) — قد يتجاهل الثنائيّ المدمج [SAD-04]"
     assert "registerCodeLensProvider" in js and "SadMainCodeLensProvider" in js, \
         "لا موفّر عدسات كود (registerCodeLensProvider/SadMainCodeLensProvider) فوق دالّة رئيسية [SAD-04]"
+    # [تدقيق #1] خطوة «شغّل» تصف لوحة ص العربيّة (وجهة AR-01) لا «طرفيّة في الأسفل» (تشوّه bidi).
+    _step_run = os.path.join(ext, "media", "step-run.md")
+    if os.path.isfile(_step_run):
+        _sr = _read(_step_run)
+        assert "لوحة" in _sr and "طرفيّة في الأسفل" not in _sr, \
+            "media/step-run.md لا يصف لوحة المخرجات العربيّة (أو ما زال يَعِد بطرفيّة في الأسفل) — يناقض AR-01 [تدقيق #1]"
     # مهمّة tasks.json المولَّدة يجب أن تُبنى من المُشغّل المحلول (buildTasksJson(sadRunCmd)) لا
     # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
     assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \
@@ -617,8 +623,12 @@ def _welcome_ext():
 
     # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
     #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
-    assert _re.search(r'BUNDLED_BIN_DIR\s*=\s*"bin"', js), \
-        "ثابت BUNDLED_BIN_DIR ليس \"bin\" — قد يفترق عن مسار الحقن في build.sh"
+    # ثابت مجلّد الثنائيّات المدمجة صار في tool-resolve.js (مصدر واحد يتشاركه run/check/build). [تدقيق #2]
+    tool_resolve = _read(os.path.join(ext, "tool-resolve.js"))
+    assert _re.search(r'BUNDLED_BIN_DIR\s*=\s*"bin"', tool_resolve), \
+        "ثابت BUNDLED_BIN_DIR ليس \"bin\" في tool-resolve.js — قد يفترق عن مسار الحقن في build.sh"
+    assert "resolveBundledTool" in tool_resolve and "probeTool" in tool_resolve, \
+        "tool-resolve.js لا يصدّر محلّل الأدوات المشترك (resolveBundledTool/probeTool) [تدقيق #2]"
     build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
     assert "WELCOME_BIN" in build_sh and "sad-run.exe" in build_sh, \
         "build.sh لا يحوي كتلة حزم sad-run المدمجة (WELCOME_BIN/sad-run.exe)"
@@ -659,9 +669,9 @@ def _welcome_ext():
     seen_step_ids = set()
     for w in walks:
         assert w.get("id") and w.get("title") and w.get("description"), f"عقد جولة ناقص: {w.get('id')}"
-        # activationEvents يجب أن يفعّل الامتداد عند فتح الجولة (وإلّا لن تعمل روابط الأوامر).
-        assert f"onWalkthrough:{w['id']}" in pkg.get("activationEvents", []), \
-            f"activationEvents لا يفعّل الامتداد عند فتح الجولة {w['id']}"
+        # ملاحظة: onWalkthrough:<id> يولّده VS Code تلقائيًّا من contributes.walkthroughs (≥1.74)،
+        # فلا نُلزِمه صراحةً في activationEvents (كان زائدًا يحذّر منه المحرّر). التنشيط مضمون بـ
+        # onStartupFinished (يُفحَص أعلاه) + التوليد التلقائيّ. [تدقيق #6]
         steps = w.get("steps", [])
         assert steps, f"جولة بلا خطوات: {w['id']}"
         for st in steps:

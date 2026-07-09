@@ -85,6 +85,7 @@ const COPY = {
   exitSignal: (s) => `أُنهي التشغيل بالإشارة ${s}.`,
   exitError: "توقّف التشغيل بخطأ.",
   stopped: "أُوقِف التشغيل.",
+  replacedPrev: "(أُوقِف التشغيل السابق)",
   spawnFail: (e) => `تعذّر بدء التشغيل: ${e}`,
   procError: (e) => `خطأ في التشغيل: ${e}`,
   notStarted: "لم يبدأ التشغيل.",
@@ -345,11 +346,13 @@ class SadOutputPanel {
   run(cmd, args, cwd, fileLabel, action) {
     if (this._disposed) return;
     const isBuild = action === ACTION_BUILD;
+    const hadLive = !!this._proc; // كان تشغيلٌ جارٍ سيُستبدَل ⇒ نُعلِم بدل مسح/قتل صامت [تدقيق #3]
     this._killProc(); // استبدل أيّ تشغيل سابق قبل بدء الجديد
     const panel = this._ensurePanel();
     panel.reveal(vscode.ViewColumn.Beside, true);
     this._post({ type: MSG_CLEAR });
     this._post({ type: MSG_START, label: (isBuild ? COPY.building : COPY.running)(fileLabel) });
+    if (hadLive) this._post({ type: MSG_LINES, stream: STREAM_OUT, lines: [COPY.replacedPrev] });
 
     let proc;
     try {

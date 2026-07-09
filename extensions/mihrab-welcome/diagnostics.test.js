@@ -235,6 +235,25 @@ test("checkNow: الأداة غير موجودة (ENOENT) ⇒ تحذير «غي�
   d.dispose();
 });
 
+test("scheduleCheck (حفظ): أداة غائبة ⇒ تحذير مرّة واحدة في الجلسة لا صمت تامّ [تدقيق #4]", async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const e = new Error("spawn ENOENT");
+  // @ts-ignore
+  e.code = "ENOENT";
+  CP.spawnErr = e;
+  const d = new SadDiagnostics(fakeCtx, { isSadFile: () => true });
+  d.scheduleCheck(fakeDoc("a.ص"));
+  t.mock.timers.tick(400);
+  await tick();
+  d.scheduleCheck(fakeDoc("b.ص"));
+  t.mock.timers.tick(400);
+  await tick();
+  assert.equal(S.warnings.length, 1, "تحذير واحد رغم حفظين (لا صمت، ولا إزعاج كلّ حفظ)");
+  assert.equal(S.warnings[0], COPY.checkUnavailable);
+  d.dispose();
+});
+
 test("checkNow: ناتج غير صالح ⇒ لا يمسّ المجموعة (لا يمسح تشخيصات سابقة)", async () => {
   resetState();
   CP.stdout = "Regular map literal\n{not json";

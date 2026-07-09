@@ -7,11 +7,10 @@
 // مقبول لقاعدة منع السلاسل الحرفيّة، متّسق مع قرار جملة الترحيب في patch_welcome_rtl.py).
 
 const vscode = require("vscode");
-const cp = require("child_process");
-const fs = require("fs");
 const path = require("path");
 const { SadDiagnostics } = require("./diagnostics.js");
 const { SadOutputPanel, ACTION_RUN, ACTION_BUILD } = require("./output-panel.js");
+const { resolveBundledTool, probeTool } = require("./tool-resolve.js");
 
 // اسم أداتَي تشغيل/بناء ص (مصدر حقيقة واحد داخل هذا الامتداد). sad-run يفسّر ويشغّل مباشرةً؛
 // sad-build يترجم إلى تنفيذيّ فقط (لا يشغّل) — «ابنِ» [SAD-04].
@@ -19,8 +18,6 @@ const SAD_RUN = "sad-run";
 const SAD_BUILD = "sad-build";
 // وسيط مخرَج الترجمة في sad-build: «sad-build <ملفّ> -o <مخرَج>» (راجع tools/build).
 const BUILD_OUT_FLAG = "-o";
-// مجلّد سلسلة الأدوات المدمجة داخل الامتداد (يُحقَن وقت البناء إن توفّرت الثنائيّات).
-const BUNDLED_BIN_DIR = "bin";
 // معرّف الجولة المحلّيّ (id في contributes.walkthroughs)؛ المعرّف الكامل يُشتَقّ وقت
 // التشغيل من context.extension.id (publisher.name) كي لا ينكسر لو تغيّرت الهوية. [M4]
 const WALKTHROUGH_LOCAL_ID = "mihrab.gettingStarted";
@@ -109,14 +106,16 @@ const TEMPLATE_MAIN =
  * وإلا اسم مجرّد ⇒ تتطلّب توفّره على PATH.
  */
 function buildReadme(projectName, runnerReady) {
+  // ملاحظة المهمّة تُشغَّل في الطرفيّة (xterm لا يدعم bidi فقد لا تُعرَض العربيّة باتّجاهها الصحيح)؛
+  // لذا نقدّم أمر التشغيل (لوحة ص العربيّة) أوّلًا كالمسار الموصى به، والمهمّة بديلٌ طرفيّ صريح. [تدقيق #1]
   const taskNote = runnerReady
-    ? "- أو شغّل المهمّة **«" + RUN_TASK_LABEL + "»** (تعمل مباشرةً بمُشغّل ص المحلول).\n"
-    : "- أو شغّل المهمّة **«" + RUN_TASK_LABEL + "»** (تتطلّب تثبيت أدوات ص ‹" + SAD_RUN + "› على PATH).\n";
+    ? "- أو المهمّة **«" + RUN_TASK_LABEL + "»** — تُشغَّل في الطرفيّة (قد لا تُعرَض العربيّة باتّجاهها الصحيح).\n"
+    : "- أو المهمّة **«" + RUN_TASK_LABEL + "»** — تُشغَّل في الطرفيّة، وتتطلّب تثبيت أدوات ص ‹" + SAD_RUN + "› على PATH.\n";
   return (
     "# " + projectName + "\n\n" +
     "أوّل مشروع لك بلغة ص داخل محراب.\n\n" +
     "## التشغيل\n\n" +
-    "- افتح ‹" + MAIN_FILE + "› ثمّ نفّذ أمر **«محراب: شغّل ملفّ ص الحاليّ»**.\n" +
+    "- افتح ‹" + MAIN_FILE + "› ثمّ نفّذ أمر **«محراب: شغّل ملفّ ص الحاليّ»** — تظهر المخرجات في لوحة ص العربيّة (باتّجاهها الصحيح).\n" +
     taskNote
   );
 }
@@ -136,7 +135,8 @@ function buildTasksJson(runCommand) {
         type: "process",
         command: runCommand,
         args: ["${file}"],
-        group: { kind: "build", isDefault: true },
+        // ليست مهمّة البناء الافتراضيّة (لا group): كي لا يشغّلها Ctrl+Shift+B تلقائيًّا في الطرفيّة
+        // (تشوّه العربيّة). المسار الموصى به للعربيّة الصحيحة = أمر «شغّل ملفّ ص» ⇒ لوحة ص. [تدقيق #1]
         problemMatcher: [],
       },
     ],
@@ -278,63 +278,15 @@ let sadOutput;
 // اسم ثنائيّ ص المدمج حسب المنصّة (البناء ويندوزيّ ويحزم .exe؛ نطابقه هنا). [L1]
 const SAD_RUN_EXE = process.platform === "win32" ? SAD_RUN + ".exe" : SAD_RUN;
 const SAD_BUILD_EXE = process.platform === "win32" ? SAD_BUILD + ".exe" : SAD_BUILD;
-// أداة فحص مسار النظام (where على ويندوز، which على غيره).
-const PATH_PROBE = process.platform === "win32" ? "where" : "which";
 
-/** يحلّ مسار أداة ص المدمجة: bin/<exe> المدمج مع محراب أوّلًا (يعمل دون تثبيت)، ثمّ اسم PATH احتياطًا. */
-function resolveBundledTool(context, exeName, fallbackName) {
-  const bundled = path.join(context.extensionPath, BUNDLED_BIN_DIR, exeName);
-  try {
-    // ملفّ فعليّ لا مجلّد (accessSync/X_OK على ويندوز = وجود فقط، ينجح على مجلّد أيضًا). [L8]
-    if (fs.statSync(bundled).isFile()) {
-      fs.accessSync(bundled, fs.constants.X_OK);
-      return bundled; // مسار مطلق للثنائيّ المدمج
-    }
-  } catch {
-    // لا ثنائيّ مدمج — يسقط إلى PATH.
-  }
-  return fallbackName; // اسم PATH (يُرقّى لمسار مطلق في probeTool). [M1]
-}
-
+// حلّ المسار (المدمج ثمّ PATH) وفحص التوفّر مشتركان في tool-resolve.js مع جسر التشخيص (sad-check)
+// كي لا يتباعد سلوك أدوات ص المتطابقة الدور. هنا أغلفة رفيعة تحقن اسم الأداة وترقّي المتغيّر. [تدقيق #2]
 /** يحلّ sad-run/sad-build المدمج ثمّ PATH (ثوابت مسمّاة، يحرسها L0). */
 function resolveSadRun(context) {
   return resolveBundledTool(context, SAD_RUN_EXE, SAD_RUN);
 }
 function resolveSadBuild(context) {
   return resolveBundledTool(context, SAD_BUILD_EXE, SAD_BUILD);
-}
-
-/**
- * هل الأداة متاحة؟ مسار مطلق ⇒ تحقّق وجود (يمسك حذفًا بين التنشيط والتشغيل [N3]). وإلا فحص PATH
- * عبر where/which ⇒ يُرجع المسار المطلق الأوّل (لترقية الاسم لمسار محلول فلا يفشل spawn بحلّ لاحقة
- * .exe على ويندوز [M1]) أو null. نقيّ: لا يمسّ حالة عامّة (المُستدعِي يرقّي). @returns {Promise<string|null>}
- */
-function probeTool(cmd) {
-  if (path.isAbsolute(cmd)) {
-    try {
-      return Promise.resolve(fs.statSync(cmd).isFile() ? cmd : null);
-    } catch {
-      return Promise.resolve(null);
-    }
-  }
-  return new Promise((resolve) => {
-    try {
-      const child = cp.execFile(PATH_PROBE, [cmd], { timeout: 4000 }, (err, stdout) => {
-        if (err) {
-          resolve(null);
-          return;
-        }
-        const first = String(stdout || "")
-          .split(/\r?\n/)
-          .map((s) => s.trim())
-          .filter(Boolean)[0];
-        resolve(first || null);
-      });
-      child.on("error", () => resolve(null));
-    } catch {
-      resolve(null);
-    }
-  });
 }
 
 /** يتحقّق توفّر sad-run ويرقّي sadRunCmd إلى المسار المحلول عند النجاح. */
@@ -397,9 +349,22 @@ async function resolveSadDoc() {
   return { doc };
 }
 
-/** أمر: شغّل ملفّ ص (النشط، أو الرئيس من الجولة حين لا نشط) عبر sad-run في لوحة المخرجات العربيّة (bidi صحيح، spawn بلا صدفة فلا حقن). [AR-01] */
-async function runSadFile() {
-  const resolved = await resolveSadDoc();
+/**
+ * يحلّ مستند ص من وسيط الأمر (Uri تمرّره عدسة الكود لوثيقتها) إن وُجِد — فيعمل الأمر على تلك
+ * الوثيقة تحديدًا لا المحرّر النشط [تدقيق #5] — وإلا المسار المعتاد (النشط/الجولة). {doc} أو {error}.
+ */
+async function resolveSadDocArg(arg) {
+  if (arg && arg.scheme === "file") {
+    const doc = await vscode.workspace.openTextDocument(arg);
+    const err = sadDocError(doc);
+    return err ? { error: err } : { doc };
+  }
+  return resolveSadDoc();
+}
+
+/** أمر: شغّل ملفّ ص (وثيقة العدسة إن مُرِّرت، أو النشط/الرئيس) عبر sad-run في لوحة المخرجات العربيّة (bidi صحيح، spawn بلا صدفة فلا حقن). [AR-01] */
+async function runSadFile(arg) {
+  const resolved = await resolveSadDocArg(arg);
   if (resolved.error) {
     vscode.window.showWarningMessage(resolved.error);
     return;
@@ -433,9 +398,9 @@ function outputPath(file) {
   return path.join(path.dirname(file), path.basename(file, path.extname(file)));
 }
 
-/** أمر: ابنِ (ترجِم) ملفّ ص الحاليّ عبر sad-build إلى تنفيذيّ (لا يشغّل)، وتُبثّ نتيجة الترجمة للّوحة. [SAD-04] */
-async function buildSadFile() {
-  const resolved = await resolveSadDoc();
+/** أمر: ابنِ (ترجِم) ملفّ ص (وثيقة العدسة إن مُرِّرت، أو النشط/الرئيس) عبر sad-build إلى تنفيذيّ (لا يشغّل)، وتُبثّ نتيجة الترجمة للّوحة. [SAD-04] */
+async function buildSadFile(arg) {
+  const resolved = await resolveSadDocArg(arg);
   if (resolved.error) {
     vscode.window.showWarningMessage(resolved.error);
     return;
@@ -477,11 +442,14 @@ class SadMainCodeLensProvider {
   /** @param {vscode.TextDocument} document @returns {vscode.CodeLens[]} */
   provideCodeLenses(document) {
     const lenses = [];
+    // نمرّر uri وثيقة العدسة كوسيط: الأمر يشغّل/يبني هذه الوثيقة تحديدًا لا المحرّر النشط
+    // (يصمد في مجموعات المحرّر المنقسمة حيث قد يختلفان). [تدقيق #5]
+    const arg = [document.uri];
     for (let i = 0; i < document.lineCount; i++) {
       if (MAIN_FN_RE.test(document.lineAt(i).text)) {
         const range = new vscode.Range(i, 0, i, 0);
-        lenses.push(new vscode.CodeLens(range, { title: COPY.lensRun, command: RUN_FILE_CMD }));
-        lenses.push(new vscode.CodeLens(range, { title: COPY.lensBuild, command: BUILD_FILE_CMD }));
+        lenses.push(new vscode.CodeLens(range, { title: COPY.lensRun, command: RUN_FILE_CMD, arguments: arg }));
+        lenses.push(new vscode.CodeLens(range, { title: COPY.lensBuild, command: BUILD_FILE_CMD, arguments: arg }));
         break; // نقطة دخول واحدة تكفي
       }
     }
