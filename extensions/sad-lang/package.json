@@ -2,7 +2,7 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "sad-lang",
   "displayName": "لغة ص",
-  "description": "دعم لغة ص المدمج في محراب: إبراز الصياغة وتهيئة اللغة. النحو مولَّد من مصدر الحقيقة (language-truth).",
+  "description": "دعم لغة ص المدمج في محراب: إبراز الصياغة وتهيئة اللغة ومقتطفات البُنى. النحو والمقتطفات مولَّدان من مصدر الحقيقة (language-truth).",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
@@ -22,6 +22,12 @@
         "language": "sad",
         "scopeName": "source.sad",
         "path": "./syntaxes/sad.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "sad",
+        "path": "./snippets/sad.code-snippets"
       }
     ]
   },
