@@ -10,13 +10,11 @@
 
 const vscode = require("vscode");
 const cp = require("child_process");
-const fs = require("fs");
-const path = require("path");
+const { resolveBundledTool } = require("./tool-resolve.js");
 
 // اسم أداة الفحص (المدمجة داخل الامتداد أوّلًا ثمّ على PATH) ولاحقة المنصّة.
 const SAD_CHECK = "sad-check";
 const SAD_CHECK_EXE = process.platform === "win32" ? SAD_CHECK + ".exe" : SAD_CHECK;
-const BUNDLED_BIN_DIR = "bin";
 // وسيط الإخراج الآليّ لـsad-check.
 const JSON_FLAG = "--json";
 // اسم مجموعة التشخيص (يظهر مصدرًا في لوحة المشاكل).
@@ -120,18 +118,9 @@ function mapCheckOutput(jsonText) {
 
 // ───────────────────────── طبقة vscode ─────────────────────────
 
-/** يحلّ مسار sad-check: المدمج داخل الامتداد أوّلًا (يعمل دون تثبيت)، ثمّ اسم PATH احتياطًا. */
+/** يحلّ مسار sad-check المدمج ثمّ PATH عبر المحلّل المشترك (نفس سلوك sad-run/sad-build). [تدقيق #2] */
 function resolveCheckCmd(context) {
-  const bundled = path.join(context.extensionPath, BUNDLED_BIN_DIR, SAD_CHECK_EXE);
-  try {
-    if (fs.statSync(bundled).isFile()) {
-      fs.accessSync(bundled, fs.constants.X_OK);
-      return bundled;
-    }
-  } catch {
-    // لا ثنائيّ مدمج — يسقط إلى PATH.
-  }
-  return SAD_CHECK;
+  return resolveBundledTool(context, SAD_CHECK_EXE, SAD_CHECK);
 }
 
 /** يبني vscode.Diagnostic من تشخيص محايد. */
@@ -159,6 +148,9 @@ class SadDiagnostics {
     this._log = opts.log || (() => {});
     /** @type {Map<string, NodeJS.Timeout>} fsPath → مؤقّت التهدئة */
     this._timers = new Map();
+    // نُنبّه مرّةً واحدة في الجلسة إن غابت الأداة عند فحص الحفظ (غير تفاعليّ) — كي لا يبقى
+    // التشخيص صامتًا تمامًا (لا تموّجات ولا إشارة) دون علم المستخدم، ولا نُزعجه كلّ حفظ. [تدقيق #4]
+    this._warnedUnavailable = false;
     this._disposed = false;
   }
 
@@ -209,11 +201,11 @@ class SadDiagnostics {
         );
         child.on("error", (e) => {
           if (!settle()) return;
-          // ENOENT (الأداة غير موجودة) وغيره — لا نمسّ تشخيصات سابقة صالحة.
-          if (interactive) {
-            vscode.window.showWarningMessage(
-              e && e.code === "ENOENT" ? COPY.checkUnavailable : COPY.checkFailed(e && e.message ? e.message : e),
-            );
+          // مسار احتياطيّ لو سبق حدث 'error' ردَّ النداء (ترتيب Node قد يختلف). ENOENT ⇒ تنبيه
+          // موحّد (تفاعليّ/حفظ-مرّة) عبر المُساعِد؛ غيره ⇒ رسالة فشل تفاعليّة. [تدقيق #4]
+          if (e && e.code === "ENOENT") this._warnUnavailable(interactive);
+          else if (interactive) {
+            vscode.window.showWarningMessage(COPY.checkFailed(e && e.message ? e.message : e));
           }
           this._log(`[ص-فحص] فشل تشغيل الأداة: ${e}`);
           resolve();
@@ -235,10 +227,10 @@ class SadDiagnostics {
       mapped = mapCheckOutput(stdout);
     } catch (e) {
       // ناتج غير صالح (أداة غائبة/غير متوقّعة): لا نمسح تشخيصات صالحة سابقة — نكتفي بالسجلّ.
+      // على ENOENT (الأداة غائبة) ننبّه (تفاعليًّا دائمًا، وعند الحفظ مرّةً واحدة). هذا هو المسار
+      // الحيّ للتنبيه: حارس settle يجعل ردّ النداء (execFile) يسبق حدث 'error' فيُعالِج هنا. [تدقيق #4]
       this._log(`[ص-فحص] ناتج JSON غير صالح: ${e}`);
-      if (interactive && err && err.code === "ENOENT") {
-        vscode.window.showWarningMessage(COPY.checkUnavailable);
-      }
+      if (err && err.code === "ENOENT") this._warnUnavailable(interactive);
       return;
     }
     // شغّلنا الأداة على ملفّ واحد ⇒ نأخذ نتيجته الأولى (إن وُجدت).
@@ -248,6 +240,18 @@ class SadDiagnostics {
     if (interactive && diags.length === 0) {
       vscode.window.showInformationMessage(COPY.clean);
     }
+  }
+
+  /**
+   * ينبّه أنّ أداة الفحص غائبة: تفاعليًّا (أمر يدويّ) دائمًا، وعند الحفظ (غير تفاعليّ) **مرّةً واحدة**
+   * في الجلسة كي لا يبقى التشخيص صامتًا تمامًا دون علم المستخدم ولا يُزعجه كلّ حفظ. [تدقيق #4]
+   */
+  _warnUnavailable(interactive) {
+    if (!interactive) {
+      if (this._warnedUnavailable) return;
+      this._warnedUnavailable = true;
+    }
+    vscode.window.showWarningMessage(COPY.checkUnavailable);
   }
 
   /** إغلاق: يلغي المؤقّتات ويفكّك المجموعة. */

@@ -14,12 +14,7 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onWalkthrough:mihrab.gettingStarted",
-    "onLanguage:sad",
-    "onCommand:mihrab.newSadProject",
-    "onCommand:mihrab.runSadFile",
-    "onCommand:mihrab.buildSadFile",
-    "onCommand:mihrab.checkSadFile"
+    "onLanguage:sad"
   ],
   "contributes": {
     "commands": [
@@ -67,7 +62,7 @@
           {
             "id": "mihrab.step.run",
             "title": "شغّل برنامجك",
-            "description": "شغّل الملفّ الحاليّ لترى المخرجات العربيّة في الطرفيّة.\n[شغّل ملفّ ص الحاليّ](command:mihrab.runSadFile)\n(يفتح محراب ‹مرحبا.ص› ويشغّله بمُشغّل ص المدمج — دون تثبيت.)",
+            "description": "شغّل الملفّ الحاليّ لترى المخرجات العربيّة في لوحة مخرجات ص (باتّجاهها الصحيح، بجانب المحرّر).\n[شغّل ملفّ ص الحاليّ](command:mihrab.runSadFile)\n(يفتح محراب ‹مرحبا.ص› ويشغّله بمُشغّل ص المدمج — دون تثبيت.)",
             "media": { "markdown": "media/step-run.md" },
             "completionEvents": ["onCommand:mihrab.runSadFile"]
           },

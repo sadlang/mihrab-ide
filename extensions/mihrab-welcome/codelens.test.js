@@ -34,9 +34,10 @@ Module._load = function (request, ...rest) {
 
 const { SadMainCodeLensProvider, MAIN_FN_RE, outputPath, COPY } = require("./extension.js");
 
-// مستند وهميّ من أسطر نصّيّة.
-function fakeDoc(lines) {
+// مستند وهميّ من أسطر نصّيّة (بـuri ملفّ لاختبار تمرير وسيط العدسة).
+function fakeDoc(lines, uri) {
   return {
+    uri: uri || { scheme: "file", fsPath: "/doc.ص" },
     lineCount: lines.length,
     lineAt(i) {
       return { text: lines[i] };
@@ -71,6 +72,13 @@ test("provideCodeLenses: مستند فيه دالّة رئيسية ⇒ عدست�
   // كلتاهما على سطر دالّة رئيسية (الفهرس 1).
   assert.equal(lenses[0].range.startLine, 1);
   assert.equal(lenses[1].range.startLine, 1);
+});
+
+test("provideCodeLenses: تمرّر uri وثيقة العدسة كوسيط للأمر [تدقيق #5]", () => {
+  const uri = { scheme: "file", fsPath: "/x/مرحبا.ص" };
+  const lenses = new SadMainCodeLensProvider().provideCodeLenses(fakeDoc(["دالة رئيسية()", "نهاية"], uri));
+  assert.deepEqual(lenses[0].command.arguments, [uri]);
+  assert.deepEqual(lenses[1].command.arguments, [uri]);
 });
 
 test("provideCodeLenses: بلا دالّة رئيسية ⇒ لا عدسات", () => {
