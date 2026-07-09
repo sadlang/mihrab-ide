@@ -462,6 +462,23 @@ test("run: تشغيل ثانٍ يقتل الأوّل ويعيد استعمال �
   panel.dispose();
 });
 
+test("استبدال تشغيل جارٍ ⇒ سطر «أُوقِف التشغيل السابق» (لا مسح صامت) [تدقيق #3]", () => {
+  reset();
+  const panel = new SadOutputPanel();
+  panel.run("sad-run", ["/a.ص"], "/dir", "a.ص");
+  panel.run("sad-run", ["/b.ص"], "/dir", "b.ص"); // الأوّل ما زال حيًّا ⇒ استبدال
+  assert.ok(lineTexts(lastPanel(), "out").includes(COPY.replacedPrev), "أُعلِم المستخدم بالاستبدال");
+  panel.dispose();
+});
+
+test("أوّل تشغيل (لا سابق حيّ) ⇒ بلا «أُوقِف التشغيل السابق»", () => {
+  reset();
+  const panel = new SadOutputPanel();
+  panel.run("sad-run", ["/f.ص"], "/dir", "f.ص");
+  assert.ok(!lineTexts(lastPanel(), "out").includes(COPY.replacedPrev));
+  panel.dispose();
+});
+
 test("سباق: أسطر عمليّة مستبدَلة تصل متأخّرةً ⇒ تُتجاهَل (لا تلوّث التشغيل الجديد)", () => {
   reset();
   const panel = new SadOutputPanel();

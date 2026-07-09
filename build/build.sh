@@ -204,7 +204,7 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   fi
   # لا تشحن دليلًا فارغًا إن غابت كلّ الأدوات (يُبقي السلوك كما لو لم يُنشأ bin/).
   rmdir "$WELCOME_BIN" 2>/dev/null || true
-  # (ج) [AR-02] الخطّ العربيّ المحزوم في media/ لوحة الترحيب: تُضمّنه لوحة المخرجات (AR-01) كـdata:URI
+  # (د) [AR-02] الخطّ العربيّ المحزوم في media/ لوحة الترحيب: تُضمّنه لوحة المخرجات (AR-01) كـdata:URI
   # كي تعرض المخرجات بالخطّ المحزوم عينه (الـwebview معزول عن @font-face الـworkbench). سقوط رشيق.
   if [[ -f "$ARABIC_FONT_SRC" ]]; then
     WELCOME_MEDIA="$STAGE_EXT/mihrab-welcome/media"
