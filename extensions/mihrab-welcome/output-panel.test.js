@@ -402,6 +402,40 @@ test("run: إشارة إنهاء ⇒ exit بوسم الإشارة (لا نجاح
   panel.dispose();
 });
 
+test("run(build): عنوان «يبني» + exit «تمّت الترجمة» عند النجاح [SAD-04]", () => {
+  reset();
+  const panel = new SadOutputPanel();
+  panel.run("sad-build", ["/f.ص", "-o", "/f"], "/dir", "f.ص", "build");
+  const p = lastPanel();
+  assert.equal(messagesOfType(p, "start")[0].label, COPY.building("f.ص"));
+  lastProc().emit("close", 0, null);
+  const exit = messagesOfType(p, "exit")[0];
+  assert.equal(exit.label, COPY.buildOk);
+  assert.equal(exit.ok, true);
+  panel.dispose();
+});
+
+test("run(build): فشل الترجمة (رمز≠0) ⇒ exit «فشلت الترجمة» [SAD-04]", () => {
+  reset();
+  const panel = new SadOutputPanel();
+  panel.run("sad-build", ["/f.ص"], "/dir", "f.ص", "build");
+  lastProc().emit("close", 3, null);
+  const exit = messagesOfType(lastPanel(), "exit")[0];
+  assert.equal(exit.label, COPY.buildFail(3));
+  assert.equal(exit.ok, false);
+  panel.dispose();
+});
+
+test("run(بلا action): يبقى «يشغّل»/«انتهى البرنامج» (توافق خلفيّ)", () => {
+  reset();
+  const panel = new SadOutputPanel();
+  panel.run("sad-run", ["/f.ص"], "/dir", "f.ص"); // لا action ⇒ تشغيل
+  assert.equal(messagesOfType(lastPanel(), "start")[0].label, COPY.running("f.ص"));
+  lastProc().emit("close", 0, null);
+  assert.equal(messagesOfType(lastPanel(), "exit")[0].label, COPY.exitOk);
+  panel.dispose();
+});
+
 test("run: السطر الأخير بلا فاصل يُبثّ عند الإغلاق (flush)", () => {
   reset();
   const panel = new SadOutputPanel();

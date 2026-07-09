@@ -600,6 +600,12 @@ def _welcome_ext():
         "لوحة المخرجات غير مُدرَجة في context.subscriptions — لن تُغلَق/تُقتَل عند التعطيل [AR-01]"
     assert _re.search(r"sadOutput\.run\(\s*sadRunCmd", js), \
         "لوحة المخرجات لا تُشغَّل بالمسار المحلول sadRunCmd — قد تتجاهل الثنائيّ المدمج [AR-01]"
+    # [SAD-04] أمر «ابنِ» يُوجَّه للّوحة بالمسار المحلول sadBuildCmd، وعدسات الكود «شغّل/ابنِ»
+    #          مسجَّلة فوق «دالة رئيسية». حرّاس ضدّ انحدار (المسار المحلول + وجود الميزة).
+    assert "resolveSadBuild" in js and _re.search(r"sadOutput\.run\(\s*sadBuildCmd", js), \
+        "أمر البناء لا يُوجَّه للّوحة بالمسار المحلول sadBuildCmd (resolveSadBuild) — قد يتجاهل الثنائيّ المدمج [SAD-04]"
+    assert "registerCodeLensProvider" in js and "SadMainCodeLensProvider" in js, \
+        "لا موفّر عدسات كود (registerCodeLensProvider/SadMainCodeLensProvider) فوق دالّة رئيسية [SAD-04]"
     # مهمّة tasks.json المولَّدة يجب أن تُبنى من المُشغّل المحلول (buildTasksJson(sadRunCmd)) لا
     # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
     assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \
@@ -619,6 +625,9 @@ def _welcome_ext():
     # جسر التشخيص [SAD-02] يحلّ sad-check المدمج من bin/ قبل PATH ⇒ يجب أن يحزمه البناء أيضًا.
     assert "sad-check.exe" in build_sh, \
         "build.sh لا يحزم sad-check.exe المدمج — جسر التشخيص عند الحفظ سيسقط دومًا إلى PATH"
+    # أمر البناء [SAD-04] يحلّ sad-build المدمج من bin/ قبل PATH ⇒ يجب أن يحزمه البناء أيضًا.
+    assert "sad-build.exe" in build_sh, \
+        "build.sh لا يحزم sad-build.exe المدمج — أمر «ابنِ» سيسقط دومًا إلى PATH [SAD-04]"
     gitignore = _read(os.path.join(ROOT, ".gitignore"))
     assert "extensions/mihrab-welcome/bin/" in gitignore, \
         ".gitignore لا يتجاهل الثنائيّ المدمج extensions/mihrab-welcome/bin/ (خطر إيداعه)"

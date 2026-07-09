@@ -170,6 +170,8 @@ shopt -u nullglob
 SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
 # [SAD-02] مصدر أداة الفحص المدمجة (تشخيص عند الحفظ عبر sad-check --json). نفس اصطلاح sad-run.
 SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check.exe}"
+# [SAD-04] مصدر أداة البناء المدمجة (أمر «ابنِ» عبر sad-build). نفس اصطلاح sad-run/sad-check.
+SAD_BUILD_SRC="${MIHRAB_SAD_BUILD:-$ROOT/../sad-engines-dev/sad-build.exe}"
 # [AR-02] مصدر خطّ ص العربيّ المحزوم (Kawkab Mono، OFL). يُستهلَك مرّتين: (١) media/ لوحة الترحيب
 # (AR-01 تُضمّنه data:URI)، (٢) @font-face وثيقة الـworkbench (تجهيز أدناه). MIHRAB_ARABIC_FONT أو الافتراضيّ.
 ARABIC_FONT_SRC="${MIHRAB_ARABIC_FONT:-$ROOT/patches/fonts/kawkab-mono.woff2}"
@@ -192,6 +194,13 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
     log "حُزِمت أداة الفحص المدمجة: sad-check.exe ($(du -h "$WELCOME_BIN/sad-check.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_CHECK_SRC"
   else
     log "⚠️ لا sad-check.exe في $SAD_CHECK_SRC — تشخيص الحفظ يسقط إلى PATH. اضبط MIHRAB_SAD_CHECK للحزم."
+  fi
+  # (ج) sad-build — أمر «ابنِ» [SAD-04]. سقوط رشيق كذلك: غيابه ⇒ أمر البناء يسقط إلى PATH.
+  if [[ -f "$SAD_BUILD_SRC" ]]; then
+    cp -f "$SAD_BUILD_SRC" "$WELCOME_BIN/sad-build.exe"
+    log "حُزِمت أداة البناء المدمجة: sad-build.exe ($(du -h "$WELCOME_BIN/sad-build.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_BUILD_SRC"
+  else
+    log "⚠️ لا sad-build.exe في $SAD_BUILD_SRC — أمر البناء يسقط إلى PATH. اضبط MIHRAB_SAD_BUILD للحزم."
   fi
   # لا تشحن دليلًا فارغًا إن غابت كلّ الأدوات (يُبقي السلوك كما لو لم يُنشأ bin/).
   rmdir "$WELCOME_BIN" 2>/dev/null || true
