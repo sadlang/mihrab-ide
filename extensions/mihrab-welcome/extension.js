@@ -10,6 +10,7 @@ const vscode = require("vscode");
 const cp = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { SadDiagnostics } = require("./diagnostics.js");
 
 // اسم أداة تشغيل ص (مصدر حقيقة واحد داخل هذا الامتداد).
 const SAD_RUN = "sad-run";
@@ -37,6 +38,8 @@ const DOCS_URL = "https://github.com/sadlang/s-programming-language";
 // معرّفا أمرَي هذا الامتداد (مصدر حقيقة واحد؛ يطابقان contributes.commands في package.json).
 const NEW_PROJECT_CMD = "mihrab.newSadProject";
 const RUN_FILE_CMD = "mihrab.runSadFile";
+// أمر فحص ملفّ ص الحاليّ يدويًّا (يكمّل الفحص التلقائيّ عند الحفظ). [SAD-02]
+const CHECK_FILE_CMD = "mihrab.checkSadFile";
 // أوامر النواة المدمجة المُستدعاة (لا سلاسل حرفيّة موضعيّة — أسوة بـOPEN_WALKTHROUGH_CMD).
 const OPEN_FOLDER_CMD = "vscode.openFolder";
 const OPEN_CMD = "vscode.open";
@@ -419,10 +422,28 @@ async function maybeShowWelcome(context) {
 function activate(context) {
   // حلّ مسار sad-run مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
   sadRunCmd = resolveSadRun(context);
+
+  // جسر التشخيص [SAD-02]: يفحص ملفّ ص عند الحفظ (مهدّأ) وبأمر يدويّ عبر sad-check --json.
+  // مُعامل ملفّ ص = مستند ص صالح على القرص (sadDocError == null): يمنع فحص ملفّات غير-ص/غير محفوظة.
+  const sadDiag = new SadDiagnostics(context, {
+    isSadFile: (doc) => !!doc && sadDocError(doc) === null,
+  });
+
   context.subscriptions.push(
+    sadDiag,
     vscode.commands.registerCommand(NEW_PROJECT_CMD, newSadProject),
-    vscode.commands.registerCommand(RUN_FILE_CMD, runSadFile)
+    vscode.commands.registerCommand(RUN_FILE_CMD, runSadFile),
+    vscode.commands.registerCommand(CHECK_FILE_CMD, () => {
+      const ed = vscode.window.activeTextEditor;
+      return sadDiag.checkNow(ed && ed.document);
+    }),
+    vscode.workspace.onDidSaveTextDocument((doc) => sadDiag.scheduleCheck(doc))
   );
+
+  // افحص الملفّ النشط عند التنشيط (إن كان ملفّ ص محفوظًا) كي تظهر التشخيصات فورًا لا بعد أوّل حفظ.
+  const activeEditor = vscode.window.activeTextEditor;
+  if (activeEditor) sadDiag.scheduleCheck(activeEditor.document);
+
   // عند اكتمال الإقلاع (onStartupFinished) اعرض الجولة أوّل مرّة فقط (رفض الوعد مُبتلَع). [L5]
   void maybeShowWelcome(context).catch(() => {});
 }
