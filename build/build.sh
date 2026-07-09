@@ -168,18 +168,30 @@ shopt -u nullglob
 #         الهدف المستقبليّ (الخيار ٣، موثَّق في docs/toolchain-delivery.md): أمر «ثبّت أدوات ص»
 #         يُنزّل أحدث إصدار عند الطلب فوق هذا المدمج. (راجع resolveSadRun في extension.js.)
 SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
+# [SAD-02] مصدر أداة الفحص المدمجة (تشخيص عند الحفظ عبر sad-check --json). نفس اصطلاح sad-run.
+SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check.exe}"
 if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   WELCOME_BIN="$STAGE_EXT/mihrab-welcome/bin"
   # نظّف أيّ bin/ منسوخ من الشجرة المصدريّة (قد يوجد على جهاز مطوّر رغم تجاهله في git):
-  # لا نشحن إلّا الثنائيّ من المصدر المعتمَد، أو لا شيء — فلا نسخة بائتة تُشحن صامتًا. [H1]
+  # لا نشحن إلّا الثنائيّات من المصدر المعتمَد، أو لا شيء — فلا نسخة بائتة تُشحن صامتًا. [H1]
   rm -rf "$WELCOME_BIN"
+  mkdir -p "$WELCOME_BIN"
+  # (أ) sad-run — «شغّل ملفّ ص» المدمج.
   if [[ -f "$SAD_RUN_SRC" ]]; then
-    mkdir -p "$WELCOME_BIN"
     cp -f "$SAD_RUN_SRC" "$WELCOME_BIN/sad-run.exe"
     log "حُزِمت أداة ص المدمجة: sad-run.exe ($(du -h "$WELCOME_BIN/sad-run.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_RUN_SRC"
   else
     log "⚠️ لا sad-run.exe في $SAD_RUN_SRC — بناء بلا تشغيل مدمج (يسقط الامتداد إلى PATH). اضبط MIHRAB_SAD_RUN للحزم."
   fi
+  # (ب) sad-check — جسر التشخيص عند الحفظ [SAD-02]. سقوط رشيق كذلك: غيابه ⇒ الجسر يسقط إلى PATH.
+  if [[ -f "$SAD_CHECK_SRC" ]]; then
+    cp -f "$SAD_CHECK_SRC" "$WELCOME_BIN/sad-check.exe"
+    log "حُزِمت أداة الفحص المدمجة: sad-check.exe ($(du -h "$WELCOME_BIN/sad-check.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_CHECK_SRC"
+  else
+    log "⚠️ لا sad-check.exe في $SAD_CHECK_SRC — تشخيص الحفظ يسقط إلى PATH. اضبط MIHRAB_SAD_CHECK للحزم."
+  fi
+  # لا تشحن دليلًا فارغًا إن غابت كلّ الأدوات (يُبقي السلوك كما لو لم يُنشأ bin/).
+  rmdir "$WELCOME_BIN" 2>/dev/null || true
 fi
 
 # جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).

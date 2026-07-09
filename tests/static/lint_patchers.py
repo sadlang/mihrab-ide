@@ -540,6 +540,9 @@ def _welcome_ext():
     build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
     assert "WELCOME_BIN" in build_sh and "sad-run.exe" in build_sh, \
         "build.sh لا يحوي كتلة حزم sad-run المدمجة (WELCOME_BIN/sad-run.exe)"
+    # جسر التشخيص [SAD-02] يحلّ sad-check المدمج من bin/ قبل PATH ⇒ يجب أن يحزمه البناء أيضًا.
+    assert "sad-check.exe" in build_sh, \
+        "build.sh لا يحزم sad-check.exe المدمج — جسر التشخيص عند الحفظ سيسقط دومًا إلى PATH"
     gitignore = _read(os.path.join(ROOT, ".gitignore"))
     assert "extensions/mihrab-welcome/bin/" in gitignore, \
         ".gitignore لا يتجاهل الثنائيّ المدمج extensions/mihrab-welcome/bin/ (خطر إيداعه)"

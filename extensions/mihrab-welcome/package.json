@@ -16,7 +16,8 @@
     "onStartupFinished",
     "onWalkthrough:mihrab.gettingStarted",
     "onCommand:mihrab.newSadProject",
-    "onCommand:mihrab.runSadFile"
+    "onCommand:mihrab.runSadFile",
+    "onCommand:mihrab.checkSadFile"
   ],
   "contributes": {
     "commands": [
@@ -29,6 +30,11 @@
         "command": "mihrab.runSadFile",
         "title": "محراب: شغّل ملفّ ص الحاليّ",
         "shortTitle": "تشغيل"
+      },
+      {
+        "command": "mihrab.checkSadFile",
+        "title": "محراب: افحص ملفّ ص الحاليّ",
+        "shortTitle": "افحص"
       }
     ],
     "walkthroughs": [
