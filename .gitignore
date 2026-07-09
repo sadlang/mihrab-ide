@@ -11,6 +11,17 @@
 
 # سلسلة أدوات ص المدمجة (تُحقَن وقت البناء من sad-engines-dev — لا تُتعقَّب)
 /extensions/mihrab-welcome/bin/
+# [AR-01↔AR-02] خطّ media المحقون وقت البناء (كـbin/): media/ نفسه متعقَّب لوسائط الجولة،
+# لكنّ الخطّ ثنائيّ يُحقَن (يقرؤه output-panel من extensionPath/media) فيُتجاهَل كي لا يُودَع
+# لو أسقطه مطوّر هناك للتجربة المحلّيّة (يورَّد من ARABIC_FONT_SRC وقت البناء لا يُتعقَّب).
+/extensions/mihrab-welcome/media/kawkab-mono.woff2
+
+# [AR-02] ثنائيّ الخطّ العربيّ المحزوم (Kawkab Mono، OFL) — يُورَّد وقت البناء لا يُتعقَّب هنا
+# (يودِعه المالك عمدًا مع نصّ رخصة OFL عند اعتماده — انظر patches/fonts/README.md).
+/patches/fonts/*.woff2
+/patches/fonts/*.woff
+/patches/fonts/*.ttf
+/patches/fonts/*.otf
 
 # اعتماديّات
 node_modules/

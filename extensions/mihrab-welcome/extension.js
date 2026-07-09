@@ -2,7 +2,7 @@
 "use strict";
 // امتداد ترحيب محراب (الطبقة 1) — أمرا الإعداد الأوّل:
 //   • mihrab.newSadProject — ينشئ مجلّد مشروع ص بقالب حيّ مشروح بالعربية (الفكرة أ-٢).
-//   • mihrab.runSadFile     — يشغّل ملفّ ص الحاليّ عبر أدوات ص (sad-run) كمهمّة (بلا صدفة).
+//   • mihrab.runSadFile     — يشغّل ملفّ ص الحاليّ عبر أدوات ص (sad-run) في لوحة مخرجات عربيّة (bidi صحيح، spawn بلا صدفة). [AR-01]
 // كلّ نصّ ظاهر للمستخدم ثابت مسمّى في COPY (نسخة عربيّة-أوّلًا = بيانات واجهة، استثناء
 // مقبول لقاعدة منع السلاسل الحرفيّة، متّسق مع قرار جملة الترحيب في patch_welcome_rtl.py).
 
@@ -11,6 +11,7 @@ const cp = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { SadDiagnostics } = require("./diagnostics.js");
+const { SadOutputPanel } = require("./output-panel.js");
 
 // اسم أداة تشغيل ص (مصدر حقيقة واحد داخل هذا الامتداد).
 const SAD_RUN = "sad-run";
@@ -32,8 +33,6 @@ const README_FILE = "اقرأني.md";
 const VSCODE_DIR = ".vscode";
 const TASKS_FILE = "tasks.json";
 const RUN_TASK_LABEL = "تشغيل برنامج ص";
-// نوع مهمّة مخصّص (لا نوع VSCode المدمج «process») لإزالة أيّ لبس مع عقد المهامّ المدمجة.
-const RUN_TASK_TYPE = "mihrab-run";
 const DOCS_URL = "https://github.com/sadlang/s-programming-language";
 // معرّفا أمرَي هذا الامتداد (مصدر حقيقة واحد؛ يطابقان contributes.commands في package.json).
 const NEW_PROJECT_CMD = "mihrab.newSadProject";
@@ -68,7 +67,6 @@ const COPY = {
   createdInfo: (n) => `أُنشئ مشروع «${n}». بالتوفيق في أوّل برنامج!`,
   openFolder: "افتح المجلّد",
   createFailed: (e) => `تعذّر إنشاء المشروع: ${e}`,
-  runFailed: (e) => `تعذّر تشغيل الملفّ: ${e}`,
   noEditor: "لا يوجد محرّر نشط — افتح ملفّ ص أوّلًا كي تشغّله.",
   sadFileAmbiguous: `وُجدت عدّة ملفّات ص — افتح الملفّ الذي تريد تشغيله أوّلًا (لا يوجد ‹${MAIN_FILE}› لأختاره تلقائيًّا).`,
   notSadFile: `الملفّ الحاليّ ليس ملفّ ص (‹${SAD_EXT}›).`,
@@ -256,6 +254,10 @@ async function newSadProject() {
 // أمر التشغيل المحلول: يُضبَط عند التنشيط إلى الثنائيّ المدمج (إن وُجِد) وإلا اسم PATH.
 let sadRunCmd = SAD_RUN;
 
+// لوحة المخرجات العربيّة [AR-01]: تُنشأ عند التنشيط وتُبثّ إليها مخرجات sad-run بـbidi صحيح.
+/** @type {import("./output-panel.js").SadOutputPanel} */
+let sadOutput;
+
 // اسم ثنائيّ ص المدمج حسب المنصّة (البناء ويندوزيّ ويحزم sad-run.exe؛ نطابقه هنا). [L1]
 const SAD_RUN_EXE = process.platform === "win32" ? SAD_RUN + ".exe" : SAD_RUN;
 
@@ -277,7 +279,7 @@ function resolveSadRun(context) {
 /**
  * هل sad-run متاح للتشغيل؟ الثنائيّ المدمج بمسار مطلق ⇒ إعادة تحقّق من الوجود (يمسك حذفًا
  * بين التنشيط والتشغيل [N3]). وإلا فحص PATH عبر where/which، ومع النجاح نرقّي sadRunCmd إلى
- * المسار المطلق الأوّل الذي يُرجعه where — فلا يفشل ProcessExecution بحلّ لاحقة .exe على ويندوز. [M1]
+ * المسار المطلق الأوّل الذي يُرجعه where — فلا يفشل spawn بحلّ لاحقة .exe على ويندوز. [M1]
  */
 function isSadRunAvailable() {
   if (path.isAbsolute(sadRunCmd)) {
@@ -356,7 +358,7 @@ async function resolveSadDoc() {
   return { doc };
 }
 
-/** أمر: شغّل ملفّ ص (النشط، أو الرئيس من الجولة حين لا نشط) عبر sad-run كمهمّة (بلا صدفة، فلا حقن). */
+/** أمر: شغّل ملفّ ص (النشط، أو الرئيس من الجولة حين لا نشط) عبر sad-run في لوحة المخرجات العربيّة (bidi صحيح، spawn بلا صدفة فلا حقن). [AR-01] */
 async function runSadFile() {
   const resolved = await resolveSadDoc();
   if (resolved.error) {
@@ -380,23 +382,11 @@ async function runSadFile() {
     return;
   }
 
-  // ProcessExecution: البرنامج ووسيطته مفصولان — لا صدفة ولا تأويل، فلا حقن عبر اسم المسار.
-  // نستعمل المسار المحلول (الثنائيّ المدمج إن وُجِد، وإلا اسم PATH)، ومجلّد عمل = مجلّد
-  // الملفّ كي تُحلّ المسارات النسبيّة داخل برنامج ص صوابًا (لا مجلّد عمل غير محدَّد). [M5]
-  const task = new vscode.Task(
-    { type: RUN_TASK_TYPE },
-    vscode.TaskScope.Workspace,
-    RUN_TASK_LABEL,
-    "mihrab",
-    new vscode.ProcessExecution(sadRunCmd, [doc.fileName], { cwd: path.dirname(doc.fileName) }),
-    []
-  );
-  task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, clear: true };
-  try {
-    await vscode.tasks.executeTask(task);
-  } catch (err) {
-    vscode.window.showErrorMessage(COPY.runFailed(String(err && err.message ? err.message : err)));
-  }
+  // AR-01: بدل مهمّة الطرفيّة (xterm بلا bidi ⇒ يشوّه مخرجات ص العربيّة)، نبثّ المخرجات إلى
+  // لوحة مخرجات عربيّة واعية بالاتّجاه (كلّ سطر يأخذ اتّجاهه من محتواه). العربيّة تُقرأ صحيحةً.
+  // المسار المحلول (المدمج ثمّ PATH) والوسيط مفصولان (spawn بلا صدفة، فلا حقن)، ومجلّد العمل =
+  // مجلّد الملفّ كي تُحلّ المسارات النسبيّة داخل برنامج ص صوابًا. [M5]
+  sadOutput.run(sadRunCmd, [doc.fileName], path.dirname(doc.fileName), path.basename(doc.fileName));
 }
 
 // أمر النواة لفتح جولة، ووسيط «لا عمود جانبيّ» (تُملأ منطقة المحرّر الرئيسة).
@@ -429,8 +419,13 @@ function activate(context) {
     isSadFile: (doc) => !!doc && sadDocError(doc) === null,
   });
 
+  // لوحة المخرجات العربيّة [AR-01]: وجهة تشغيل ملفّ ص (بديل الطرفيّة، bidi صحيح). نمرّر context
+  // كي تقرأ الخطّ العربيّ المحزوم [AR-02] من media/ وتعرض المخرجات به عينه (webview معزول).
+  sadOutput = new SadOutputPanel(context);
+
   context.subscriptions.push(
     sadDiag,
+    sadOutput,
     vscode.commands.registerCommand(NEW_PROJECT_CMD, newSadProject),
     vscode.commands.registerCommand(RUN_FILE_CMD, runSadFile),
     vscode.commands.registerCommand(CHECK_FILE_CMD, () => {

@@ -170,6 +170,9 @@ shopt -u nullglob
 SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
 # [SAD-02] مصدر أداة الفحص المدمجة (تشخيص عند الحفظ عبر sad-check --json). نفس اصطلاح sad-run.
 SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check.exe}"
+# [AR-02] مصدر خطّ ص العربيّ المحزوم (Kawkab Mono، OFL). يُستهلَك مرّتين: (١) media/ لوحة الترحيب
+# (AR-01 تُضمّنه data:URI)، (٢) @font-face وثيقة الـworkbench (تجهيز أدناه). MIHRAB_ARABIC_FONT أو الافتراضيّ.
+ARABIC_FONT_SRC="${MIHRAB_ARABIC_FONT:-$ROOT/patches/fonts/kawkab-mono.woff2}"
 if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   WELCOME_BIN="$STAGE_EXT/mihrab-welcome/bin"
   # نظّف أيّ bin/ منسوخ من الشجرة المصدريّة (قد يوجد على جهاز مطوّر رغم تجاهله في git):
@@ -192,6 +195,14 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   fi
   # لا تشحن دليلًا فارغًا إن غابت كلّ الأدوات (يُبقي السلوك كما لو لم يُنشأ bin/).
   rmdir "$WELCOME_BIN" 2>/dev/null || true
+  # (ج) [AR-02] الخطّ العربيّ المحزوم في media/ لوحة الترحيب: تُضمّنه لوحة المخرجات (AR-01) كـdata:URI
+  # كي تعرض المخرجات بالخطّ المحزوم عينه (الـwebview معزول عن @font-face الـworkbench). سقوط رشيق.
+  if [[ -f "$ARABIC_FONT_SRC" ]]; then
+    WELCOME_MEDIA="$STAGE_EXT/mihrab-welcome/media"
+    mkdir -p "$WELCOME_MEDIA"
+    cp -f "$ARABIC_FONT_SRC" "$WELCOME_MEDIA/kawkab-mono.woff2"
+    log "حُزِم الخطّ العربيّ في لوحة الترحيب: media/kawkab-mono.woff2 من $ARABIC_FONT_SRC"
+  fi
 fi
 
 # جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).
@@ -206,6 +217,10 @@ fi
 [[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
 [[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
+# [AR-02] جهّز خطّ ص العربيّ المحزوم لوثيقة الـworkbench: patch_bundle يشتقّ منه base64 ويحقن
+# @font-face بمصدر data: URI في نسخة media من mihrab-rtl.css (لا url() نسبيّ: يكسر بناء esbuild —
+# لا loader لـ.woff2). المصدر ARABIC_FONT_SRC معرَّف أعلى الملفّ. سقوط رشيق: غيابه ⇒ لا حقن.
+[[ -f "$ARABIC_FONT_SRC" ]] && cp -f "$ARABIC_FONT_SRC" "$UP/.mihrab-kawkab-mono.woff2"
 # جهّز أصول هوية محراب البصريّة (أيقونة التطبيق + بلاطتا ويندوز) في مجلّد ينجو من reset،
 # ليحقنها build.sh المنبع فوق resources/win32/ بعد cd vscode (تستبدل هوية VSCodium).
 BRAND_SRC="$ROOT/assets/branding"

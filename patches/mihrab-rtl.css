@@ -11,6 +11,16 @@
  *  قلبها يكسر قراءة البرامج — لذا نُجبرها LTR صراحةً.
  *-------------------------------------------------------------------------------------------*/
 
+/* ── AR-02) خطّ ص العربيّ المحزوم: Kawkab Mono — خطّ OFL أحاديّ العرض مُصمَّم للبرمجة بالعربيّة،
+   هو أوّل مكدّس editor.fontFamily/terminal في mihrab-shell. **قاعدة @font-face ليست في هذه الورقة
+   الساكنة عمدًا:** مُجمِّع esbuild (build/lib/optimize.ts) يحلّ url() في الـCSS المحزوم زمن البناء،
+   و.woff2 بلا loader مُهيّأ (ttf/svg/png/sh فقط) ⇒ url("./kawkab-mono.woff2") يُفشِل البناء
+   («No loader is configured for .woff2»)، وغيابُ الملفّ يُفشِله («Could not resolve»)؛ كلاهما
+   مثبَت تجريبيًّا بـesbuild 0.27.2. لذا يحقن build/patch_bundle_extensions.py قاعدة @font-face
+   بمصدر **data: URI (base64)** — يتركه esbuild حرفيًّا بلا loader ولا رُقعة نواة — مُقدَّمةً إلى
+   نسخة media من هذه الورقة، وفقط حين تُورَّد بايتات الخطّ. سقوط رشيق: لا خطّ ⇒ لا @font-face ⇒
+   بناء نظيف والعرض يسقط لبقيّة المكدّس (Cascadia/Consolas/Segoe/Noto). ── */
+
 /* ── 1) محرّر الكود RTL (مشروع Monaco RTL م1 — إعادة تصميم صحيحة): **الحاوية تبقى LTR**.
    درسٌ مثبَت بـCDP: بنية Monaco مبنيّة على إحداثيّات LTR فيزيائيّة؛ قلب `.monaco-editor` بـ
    `dir=rtl` يرسي عناصرها المُطلَقة (`view-lines`، أبناء `.margin`) يمينًا خارج حاوياتها ⇒ النصّ
