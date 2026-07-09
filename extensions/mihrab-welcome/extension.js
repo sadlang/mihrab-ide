@@ -429,4 +429,5 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+// validateProjectName مُصدَّرة للاختبار الوحدويّ (منطق نقيّ بلا vscode).
+module.exports = { activate, deactivate, validateProjectName };
