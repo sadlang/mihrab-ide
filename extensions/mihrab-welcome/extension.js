@@ -429,5 +429,15 @@ function activate(context) {
 
 function deactivate() {}
 
-// validateProjectName مُصدَّرة للاختبار الوحدويّ (منطق نقيّ بلا vscode).
-module.exports = { activate, deactivate, validateProjectName };
+// دوالّ مُصدَّرة للاختبار الوحدويّ: validateProjectName وsadDocError نقيّتان (بلا vscode)،
+// وfindWorkspaceSadFile/resolveSadDoc تُختبَران ببديل vscode متحكَّم (Module._load). COPY مُصدَّر
+// كي تقابل الاختبارات رسائل الخطأ العائدة بمصدرها لا بحرفيّة مكرَّرة.
+module.exports = {
+  activate,
+  deactivate,
+  validateProjectName,
+  sadDocError,
+  findWorkspaceSadFile,
+  resolveSadDoc,
+  COPY,
+};
