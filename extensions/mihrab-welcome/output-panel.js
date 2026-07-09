@@ -44,6 +44,10 @@ const MSG_READY = "ready"; // web→ext: الـwebview حمّل واستمع (م
 const STREAM_OUT = "out";
 const STREAM_ERR = "err";
 
+// نوعا الإجراء (يحدّدان عنوان البدء ووسم الانتهاء: تشغيل مقابل بناء) [SAD-04].
+const ACTION_RUN = "run";
+const ACTION_BUILD = "build";
+
 // إشارة إنهاء العمليّة عند الإيقاف أو الاستبدال بتشغيل أحدث. (ملاحظة منصّة: على ويندوز يقتل
 // TerminateProcess العمليّة لا أحفادها — لو أطلق sad-run عمليّات فرعيّة قد تُيتَّم؛ قيد مقبول.)
 const KILL_SIGNAL = "SIGTERM";
@@ -73,9 +77,12 @@ const SCROLL_STICK_PX = 4;
 // نصوص الواجهة (عربيّة-أوّلًا = بيانات واجهة).
 const COPY = {
   running: (f) => `يشغّل: ${f}`,
+  building: (f) => `يبني: ${f}`,
   exitOk: "انتهى البرنامج بنجاح (رمز الخروج ٠).",
   exitFail: (c) => `انتهى البرنامج برمز خروج ${c}.`,
-  exitSignal: (s) => `أُنهي البرنامج بالإشارة ${s}.`,
+  buildOk: "تمّت الترجمة بنجاح.",
+  buildFail: (c) => `فشلت الترجمة برمز ${c}.`,
+  exitSignal: (s) => `أُنهي التشغيل بالإشارة ${s}.`,
   exitError: "توقّف التشغيل بخطأ.",
   stopped: "أُوقِف التشغيل.",
   spawnFail: (e) => `تعذّر بدء التشغيل: ${e}`,
@@ -331,15 +338,18 @@ class SadOutputPanel {
   /**
    * يشغّل الأمر ويبثّ مخرجاته للّوحة (بديل الطرفيّة، bidi صحيح لكلّ سطر). يستبدل أيّ تشغيل
    * سابق. يفكّ ترميز UTF-8 عبر حدود الدفعات (StringDecoder) ويقطّع الأسطر نقيًّا (takeLines).
+   * action ∈ {run, build} يحدّد عنوان البدء ووسم الانتهاء (تشغيل مقابل ترجمة) [SAD-04].
    * @param {string} cmd @param {string[]} args @param {string} cwd @param {string} fileLabel
+   * @param {"run"|"build"} [action]
    */
-  run(cmd, args, cwd, fileLabel) {
+  run(cmd, args, cwd, fileLabel, action) {
     if (this._disposed) return;
+    const isBuild = action === ACTION_BUILD;
     this._killProc(); // استبدل أيّ تشغيل سابق قبل بدء الجديد
     const panel = this._ensurePanel();
     panel.reveal(vscode.ViewColumn.Beside, true);
     this._post({ type: MSG_CLEAR });
-    this._post({ type: MSG_START, label: COPY.running(fileLabel) });
+    this._post({ type: MSG_START, label: (isBuild ? COPY.building : COPY.running)(fileLabel) });
 
     let proc;
     try {
@@ -391,7 +401,10 @@ class SadOutputPanel {
       if (this._proc !== proc) return; // استُبدل بتشغيل أحدث أو أُوقِف يدويًّا ⇒ تجاهل
       flushTail(outDec, STREAM_OUT, outRef);
       flushTail(errDec, STREAM_ERR, errRef);
-      const label = signal ? COPY.exitSignal(signal) : code === 0 ? COPY.exitOk : COPY.exitFail(code);
+      let label;
+      if (signal) label = COPY.exitSignal(signal);
+      else if (isBuild) label = code === 0 ? COPY.buildOk : COPY.buildFail(code);
+      else label = code === 0 ? COPY.exitOk : COPY.exitFail(code);
       this._post({ type: MSG_EXIT, label, ok: code === 0 && !signal });
       this._proc = null;
     });
@@ -422,4 +435,6 @@ module.exports = {
   FONT_FAMILY,
   FONT_FILE,
   BUNDLED_MEDIA_DIR,
+  ACTION_RUN,
+  ACTION_BUILD,
 };

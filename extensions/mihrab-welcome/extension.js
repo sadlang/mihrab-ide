@@ -11,10 +11,14 @@ const cp = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { SadDiagnostics } = require("./diagnostics.js");
-const { SadOutputPanel } = require("./output-panel.js");
+const { SadOutputPanel, ACTION_RUN, ACTION_BUILD } = require("./output-panel.js");
 
-// اسم أداة تشغيل ص (مصدر حقيقة واحد داخل هذا الامتداد).
+// اسم أداتَي تشغيل/بناء ص (مصدر حقيقة واحد داخل هذا الامتداد). sad-run يفسّر ويشغّل مباشرةً؛
+// sad-build يترجم إلى تنفيذيّ فقط (لا يشغّل) — «ابنِ» [SAD-04].
 const SAD_RUN = "sad-run";
+const SAD_BUILD = "sad-build";
+// وسيط مخرَج الترجمة في sad-build: «sad-build <ملفّ> -o <مخرَج>» (راجع tools/build).
+const BUILD_OUT_FLAG = "-o";
 // مجلّد سلسلة الأدوات المدمجة داخل الامتداد (يُحقَن وقت البناء إن توفّرت الثنائيّات).
 const BUNDLED_BIN_DIR = "bin";
 // معرّف الجولة المحلّيّ (id في contributes.walkthroughs)؛ المعرّف الكامل يُشتَقّ وقت
@@ -26,6 +30,12 @@ const WELCOME_SHOWN_KEY = "mihrab.welcome.shown";
 // معرّف لغة ص (يطابق contributes.languages في sad-lang) وامتدادها (حرف الصاد).
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
+// كلمتا «دالة رئيسية» المفتاحيّتان (تعكسان KEYWORD_FUNCTION/KEYWORD_MAIN في language-truth؛ النحو
+// والمقتطفات مرآتها المولَّدة). تُستعملان لكشف نقطة الدخول وعرض عدسات الكود فوقها. [SAD-04]
+const SAD_KW_FUNCTION = "دالة";
+const SAD_KW_MAIN = "رئيسية";
+// نمط سطر تصريح الدالّة الرئيسيّة «دالة [نوع] رئيسية(» — نوع الإرجاع اختياريّ قبل الاسم (grammar).
+const MAIN_FN_RE = new RegExp("(?:^|\\s)" + SAD_KW_FUNCTION + "\\s+(?:\\S+\\s+)?" + SAD_KW_MAIN + "\\s*\\(");
 // اسم المشروع الافتراضيّ واسم الملفّ الرئيس والمجلّدات.
 const DEFAULT_PROJECT_NAME = "مشروع-ص";
 const MAIN_FILE = "مرحبا" + SAD_EXT;
@@ -39,6 +49,8 @@ const NEW_PROJECT_CMD = "mihrab.newSadProject";
 const RUN_FILE_CMD = "mihrab.runSadFile";
 // أمر فحص ملفّ ص الحاليّ يدويًّا (يكمّل الفحص التلقائيّ عند الحفظ). [SAD-02]
 const CHECK_FILE_CMD = "mihrab.checkSadFile";
+// أمر بناء (ترجمة) ملفّ ص الحاليّ عبر sad-build. [SAD-04]
+const BUILD_FILE_CMD = "mihrab.buildSadFile";
 // أوامر النواة المدمجة المُستدعاة (لا سلاسل حرفيّة موضعيّة — أسوة بـOPEN_WALKTHROUGH_CMD).
 const OPEN_FOLDER_CMD = "vscode.openFolder";
 const OPEN_CMD = "vscode.open";
@@ -73,8 +85,12 @@ const COPY = {
   notOnDisk: "احفظ الملفّ على القرص أوّلًا كي يمكن تشغيله.",
   saveCancelled: "أُلغي الحفظ — لم يُشغَّل الملفّ.",
   toolMissingTitle: `لم يُعثَر على أداة تشغيل ص (‹${SAD_RUN}›) في مسار النظام.`,
+  buildToolMissingTitle: `لم يُعثَر على أداة بناء ص (‹${SAD_BUILD}›) في مسار النظام.`,
   toolMissingHint: "ثبّت أدوات ص وأضِفها إلى PATH ثمّ أعِد المحاولة.",
   toolMissingLearn: "كيف أثبّت أدوات ص؟",
+  // عناوين عدسات الكود (CodeLens) فوق دالّة رئيسية [SAD-04].
+  lensRun: "▶ شغّل",
+  lensBuild: "🔨 ابنِ",
 };
 
 // قالب البرنامج الحيّ: برنامج ص صغير يعمل فورًا، مشروح بالعربية سطرًا سطرًا.
@@ -251,19 +267,23 @@ async function newSadProject() {
   }
 }
 
-// أمر التشغيل المحلول: يُضبَط عند التنشيط إلى الثنائيّ المدمج (إن وُجِد) وإلا اسم PATH.
+// أمرا التشغيل/البناء المحلولان: يُضبَطان عند التنشيط إلى الثنائيّ المدمج (إن وُجِد) وإلا اسم PATH.
 let sadRunCmd = SAD_RUN;
+let sadBuildCmd = SAD_BUILD;
 
 // لوحة المخرجات العربيّة [AR-01]: تُنشأ عند التنشيط وتُبثّ إليها مخرجات sad-run بـbidi صحيح.
 /** @type {import("./output-panel.js").SadOutputPanel} */
 let sadOutput;
 
-// اسم ثنائيّ ص المدمج حسب المنصّة (البناء ويندوزيّ ويحزم sad-run.exe؛ نطابقه هنا). [L1]
+// اسم ثنائيّ ص المدمج حسب المنصّة (البناء ويندوزيّ ويحزم .exe؛ نطابقه هنا). [L1]
 const SAD_RUN_EXE = process.platform === "win32" ? SAD_RUN + ".exe" : SAD_RUN;
+const SAD_BUILD_EXE = process.platform === "win32" ? SAD_BUILD + ".exe" : SAD_BUILD;
+// أداة فحص مسار النظام (where على ويندوز، which على غيره).
+const PATH_PROBE = process.platform === "win32" ? "where" : "which";
 
-/** يحلّ مسار sad-run: الثنائيّ المدمج مع محراب أوّلًا (يعمل دون تثبيت)، ثمّ اسم PATH احتياطًا. */
-function resolveSadRun(context) {
-  const bundled = path.join(context.extensionPath, BUNDLED_BIN_DIR, SAD_RUN_EXE);
+/** يحلّ مسار أداة ص المدمجة: bin/<exe> المدمج مع محراب أوّلًا (يعمل دون تثبيت)، ثمّ اسم PATH احتياطًا. */
+function resolveBundledTool(context, exeName, fallbackName) {
+  const bundled = path.join(context.extensionPath, BUNDLED_BIN_DIR, exeName);
   try {
     // ملفّ فعليّ لا مجلّد (accessSync/X_OK على ويندوز = وجود فقط، ينجح على مجلّد أيضًا). [L8]
     if (fs.statSync(bundled).isFile()) {
@@ -273,42 +293,61 @@ function resolveSadRun(context) {
   } catch {
     // لا ثنائيّ مدمج — يسقط إلى PATH.
   }
-  return SAD_RUN; // يسقط إلى اسم PATH (يُرقّى لمسار مطلق في isSadRunAvailable). [M1]
+  return fallbackName; // اسم PATH (يُرقّى لمسار مطلق في probeTool). [M1]
+}
+
+/** يحلّ sad-run/sad-build المدمج ثمّ PATH (ثوابت مسمّاة، يحرسها L0). */
+function resolveSadRun(context) {
+  return resolveBundledTool(context, SAD_RUN_EXE, SAD_RUN);
+}
+function resolveSadBuild(context) {
+  return resolveBundledTool(context, SAD_BUILD_EXE, SAD_BUILD);
 }
 
 /**
- * هل sad-run متاح للتشغيل؟ الثنائيّ المدمج بمسار مطلق ⇒ إعادة تحقّق من الوجود (يمسك حذفًا
- * بين التنشيط والتشغيل [N3]). وإلا فحص PATH عبر where/which، ومع النجاح نرقّي sadRunCmd إلى
- * المسار المطلق الأوّل الذي يُرجعه where — فلا يفشل spawn بحلّ لاحقة .exe على ويندوز. [M1]
+ * هل الأداة متاحة؟ مسار مطلق ⇒ تحقّق وجود (يمسك حذفًا بين التنشيط والتشغيل [N3]). وإلا فحص PATH
+ * عبر where/which ⇒ يُرجع المسار المطلق الأوّل (لترقية الاسم لمسار محلول فلا يفشل spawn بحلّ لاحقة
+ * .exe على ويندوز [M1]) أو null. نقيّ: لا يمسّ حالة عامّة (المُستدعِي يرقّي). @returns {Promise<string|null>}
  */
-function isSadRunAvailable() {
-  if (path.isAbsolute(sadRunCmd)) {
+function probeTool(cmd) {
+  if (path.isAbsolute(cmd)) {
     try {
-      return Promise.resolve(fs.statSync(sadRunCmd).isFile());
+      return Promise.resolve(fs.statSync(cmd).isFile() ? cmd : null);
     } catch {
-      return Promise.resolve(false);
+      return Promise.resolve(null);
     }
   }
-  const probe = process.platform === "win32" ? "where" : "which";
   return new Promise((resolve) => {
     try {
-      const child = cp.execFile(probe, [sadRunCmd], { timeout: 4000 }, (err, stdout) => {
+      const child = cp.execFile(PATH_PROBE, [cmd], { timeout: 4000 }, (err, stdout) => {
         if (err) {
-          resolve(false);
+          resolve(null);
           return;
         }
         const first = String(stdout || "")
           .split(/\r?\n/)
           .map((s) => s.trim())
           .filter(Boolean)[0];
-        if (first) sadRunCmd = first; // ارفع إلى المسار المطلق المحلول
-        resolve(true);
+        resolve(first || null);
       });
-      child.on("error", () => resolve(false));
+      child.on("error", () => resolve(null));
     } catch {
-      resolve(false);
+      resolve(null);
     }
   });
+}
+
+/** يتحقّق توفّر sad-run ويرقّي sadRunCmd إلى المسار المحلول عند النجاح. */
+async function isSadRunAvailable() {
+  const resolved = await probeTool(sadRunCmd);
+  if (resolved) sadRunCmd = resolved;
+  return !!resolved;
+}
+/** يتحقّق توفّر sad-build ويرقّي sadBuildCmd إلى المسار المحلول عند النجاح. */
+async function isSadBuildAvailable() {
+  const resolved = await probeTool(sadBuildCmd);
+  if (resolved) sadBuildCmd = resolved;
+  return !!resolved;
 }
 
 /** يتحقّق أنّ المستند ملفّ ص حقيقيّ على القرص؛ يُرجع رسالة خطأ مناسبة أو null (صالح). */
@@ -386,7 +425,68 @@ async function runSadFile() {
   // لوحة مخرجات عربيّة واعية بالاتّجاه (كلّ سطر يأخذ اتّجاهه من محتواه). العربيّة تُقرأ صحيحةً.
   // المسار المحلول (المدمج ثمّ PATH) والوسيط مفصولان (spawn بلا صدفة، فلا حقن)، ومجلّد العمل =
   // مجلّد الملفّ كي تُحلّ المسارات النسبيّة داخل برنامج ص صوابًا. [M5]
-  sadOutput.run(sadRunCmd, [doc.fileName], path.dirname(doc.fileName), path.basename(doc.fileName));
+  sadOutput.run(sadRunCmd, [doc.fileName], path.dirname(doc.fileName), path.basename(doc.fileName), ACTION_RUN);
+}
+
+/** يشتقّ مسار المخرَج التنفيذيّ من ملفّ المصدر: بجواره باسمه دون لاحقة ص (sad-build يضيف لاحقة المنصّة). */
+function outputPath(file) {
+  return path.join(path.dirname(file), path.basename(file, path.extname(file)));
+}
+
+/** أمر: ابنِ (ترجِم) ملفّ ص الحاليّ عبر sad-build إلى تنفيذيّ (لا يشغّل)، وتُبثّ نتيجة الترجمة للّوحة. [SAD-04] */
+async function buildSadFile() {
+  const resolved = await resolveSadDoc();
+  if (resolved.error) {
+    vscode.window.showWarningMessage(resolved.error);
+    return;
+  }
+  const doc = resolved.doc;
+  if (!(await doc.save())) {
+    vscode.window.showWarningMessage(COPY.saveCancelled);
+    return;
+  }
+
+  if (!(await isSadBuildAvailable())) {
+    const pick = await vscode.window.showErrorMessage(
+      COPY.buildToolMissingTitle + " " + COPY.toolMissingHint,
+      COPY.toolMissingLearn
+    );
+    if (pick === COPY.toolMissingLearn) {
+      vscode.commands.executeCommand(OPEN_CMD, vscode.Uri.parse(DOCS_URL));
+    }
+    return;
+  }
+
+  // sad-build يترجم فقط (لا يشغّل): «sad-build <ملفّ> -o <مخرَج>». المسار المحلول والوسائط مفصولة
+  // (spawn بلا صدفة، فلا حقن)، ومجلّد العمل = مجلّد الملفّ. نتيجة الترجمة (نجاح/أخطاء) تظهر باللوحة.
+  sadOutput.run(
+    sadBuildCmd,
+    [doc.fileName, BUILD_OUT_FLAG, outputPath(doc.fileName)],
+    path.dirname(doc.fileName),
+    path.basename(doc.fileName),
+    ACTION_BUILD
+  );
+}
+
+/**
+ * موفّر عدسات كود [SAD-04]: يعرض فوق «دالة رئيسية» عدستَي «شغّل» و«ابنِ» (زرّا تشغيل/بناء في
+ * السياق). منطق كشف نقيّ (MAIN_FN_RE)؛ الأمران المرتبطان يعملان على المحرّر النشط (نفس مسار
+ * الأوامر). يكتفي بأوّل نقطة دخول (دالّة رئيسية واحدة للبرنامج).
+ */
+class SadMainCodeLensProvider {
+  /** @param {vscode.TextDocument} document @returns {vscode.CodeLens[]} */
+  provideCodeLenses(document) {
+    const lenses = [];
+    for (let i = 0; i < document.lineCount; i++) {
+      if (MAIN_FN_RE.test(document.lineAt(i).text)) {
+        const range = new vscode.Range(i, 0, i, 0);
+        lenses.push(new vscode.CodeLens(range, { title: COPY.lensRun, command: RUN_FILE_CMD }));
+        lenses.push(new vscode.CodeLens(range, { title: COPY.lensBuild, command: BUILD_FILE_CMD }));
+        break; // نقطة دخول واحدة تكفي
+      }
+    }
+    return lenses;
+  }
 }
 
 // أمر النواة لفتح جولة، ووسيط «لا عمود جانبيّ» (تُملأ منطقة المحرّر الرئيسة).
@@ -410,8 +510,9 @@ async function maybeShowWelcome(context) {
 }
 
 function activate(context) {
-  // حلّ مسار sad-run مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
+  // حلّ مساري sad-run/sad-build مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
   sadRunCmd = resolveSadRun(context);
+  sadBuildCmd = resolveSadBuild(context);
 
   // جسر التشخيص [SAD-02]: يفحص ملفّ ص عند الحفظ (مهدّأ) وبأمر يدويّ عبر sad-check --json.
   // مُعامل ملفّ ص = مستند ص صالح على القرص (sadDocError == null): يمنع فحص ملفّات غير-ص/غير محفوظة.
@@ -428,10 +529,16 @@ function activate(context) {
     sadOutput,
     vscode.commands.registerCommand(NEW_PROJECT_CMD, newSadProject),
     vscode.commands.registerCommand(RUN_FILE_CMD, runSadFile),
+    vscode.commands.registerCommand(BUILD_FILE_CMD, buildSadFile),
     vscode.commands.registerCommand(CHECK_FILE_CMD, () => {
       const ed = vscode.window.activeTextEditor;
       return sadDiag.checkNow(ed && ed.document);
     }),
+    // عدسات كود «شغّل/ابنِ» فوق دالّة رئيسية في ملفّات ص [SAD-04].
+    vscode.languages.registerCodeLensProvider(
+      { language: SAD_LANG_ID, scheme: "file" },
+      new SadMainCodeLensProvider()
+    ),
     vscode.workspace.onDidSaveTextDocument((doc) => sadDiag.scheduleCheck(doc))
   );
 
@@ -455,5 +562,8 @@ module.exports = {
   sadDocError,
   findWorkspaceSadFile,
   resolveSadDoc,
+  outputPath,
+  SadMainCodeLensProvider,
+  MAIN_FN_RE,
   COPY,
 };

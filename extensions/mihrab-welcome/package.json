@@ -15,8 +15,10 @@
   "activationEvents": [
     "onStartupFinished",
     "onWalkthrough:mihrab.gettingStarted",
+    "onLanguage:sad",
     "onCommand:mihrab.newSadProject",
     "onCommand:mihrab.runSadFile",
+    "onCommand:mihrab.buildSadFile",
     "onCommand:mihrab.checkSadFile"
   ],
   "contributes": {
@@ -30,6 +32,11 @@
         "command": "mihrab.runSadFile",
         "title": "محراب: شغّل ملفّ ص الحاليّ",
         "shortTitle": "تشغيل"
+      },
+      {
+        "command": "mihrab.buildSadFile",
+        "title": "محراب: ابنِ ملفّ ص الحاليّ",
+        "shortTitle": "بناء"
       },
       {
         "command": "mihrab.checkSadFile",
