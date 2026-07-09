@@ -3,11 +3,22 @@
 // اختبار وحدة لعميل RPC المحرابيّ (node --test) — نقيّ بلا vscode. يغطّي: جولة تأطير
 // Content-Length، حسم الطلب بالردّ، توجيه الإشعارات، معالجة طلب خادم→عميل والردّ عليه،
 // MethodNotFound عند غياب المعالِج، ورفض المعلَّقات عند dispose.
+//
+// أسماء الطرائق ورموز JSON-RPC تُستورَد من مصدر الحقيقة المولَّد (لا حرفيّة) كي يمسك الاختبار
+// أيّ تباعد عن العقد: إعادة تسمية طريقة في المصدر ⇒ يفشل الاختبار بدل مروره صامتًا (F6).
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { RpcClient, encodeFrame, FrameDecoder } = require("./rpc-client.js");
+const {
+  JSONRPC_VERSION,
+  JSONRPC_METHOD_NOT_FOUND,
+  METHOD_INITIALIZE,
+  METHOD_TASK,
+  METHOD_TASK_PROGRESS,
+  METHOD_REQUEST_PERMISSION,
+} = require("./contract/protocol-contract.generated.js");
 
 /** مجرى كتابة وهميّ يلتقط الأطر المكتوبة ويفكّكها لرسائل. */
 function fakeWritable() {
@@ -36,7 +47,7 @@ function fakeReadable() {
 test("جولة تأطير: encodeFrame ثمّ FrameDecoder تعيد الرسالة", () => {
   const out = [];
   const dec = new FrameDecoder((m) => out.push(m));
-  dec.push(encodeFrame({ jsonrpc: "2.0", id: 1, method: "س", params: { ن: "قيمة عربيّة" } }));
+  dec.push(encodeFrame({ jsonrpc: JSONRPC_VERSION, id: 1, method: "س", params: { ن: "قيمة عربيّة" } }));
   assert.equal(out.length, 1);
   assert.equal(out[0].params.ن, "قيمة عربيّة");
 });
@@ -45,10 +56,10 @@ test("request: يُحسَم بالردّ المطابق للمعرّف", async (
   const w = fakeWritable();
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
-  const p = rpc.request("nebras/initialize", { x: 1 });
+  const p = rpc.request(METHOD_INITIALIZE, { x: 1 });
   const sent = w.messages[0];
-  assert.equal(sent.method, "nebras/initialize");
-  r.feed({ jsonrpc: "2.0", id: sent.id, result: { ok: true } });
+  assert.equal(sent.method, METHOD_INITIALIZE);
+  r.feed({ jsonrpc: JSONRPC_VERSION, id: sent.id, result: { ok: true } });
   assert.deepEqual(await p, { ok: true });
 });
 
@@ -56,9 +67,10 @@ test("request: يُرفَض بخطأ يحمل الرمز الدلاليّ", asyn
   const w = fakeWritable();
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
-  const p = rpc.request("nebras/task", {});
+  const p = rpc.request(METHOD_TASK, {});
   const id = w.messages[0].id;
-  r.feed({ jsonrpc: "2.0", id, error: { code: -32001, message: "غير مصرَّح" } });
+  // -32001 رمز خطأ خادم مخصّص (بيانات اختبار عشوائيّة، لا ثابت عقديّ).
+  r.feed({ jsonrpc: JSONRPC_VERSION, id, error: { code: -32001, message: "غير مصرَّح" } });
   await assert.rejects(p, (e) => e.message === "غير مصرَّح" && e.code === -32001);
 });
 
@@ -67,8 +79,8 @@ test("notify + onNotification: توجيه إشعار بثّ", () => {
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
   const seen = [];
-  rpc.onNotification("nebras/taskProgress", (p) => seen.push(p));
-  r.feed({ jsonrpc: "2.0", method: "nebras/taskProgress", params: { taskId: 5, delta: "ن" } });
+  rpc.onNotification(METHOD_TASK_PROGRESS, (p) => seen.push(p));
+  r.feed({ jsonrpc: JSONRPC_VERSION, method: METHOD_TASK_PROGRESS, params: { taskId: 5, delta: "ن" } });
   assert.deepEqual(seen, [{ taskId: 5, delta: "ن" }]);
 });
 
@@ -76,8 +88,8 @@ test("onRequest: يعالج طلب خادم→عميل ويردّ result", async
   const w = fakeWritable();
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
-  rpc.onRequest("nebras/requestPermission", () => ({ approved: true }));
-  r.feed({ jsonrpc: "2.0", id: -1, method: "nebras/requestPermission", params: {} });
+  rpc.onRequest(METHOD_REQUEST_PERMISSION, () => ({ approved: true }));
+  r.feed({ jsonrpc: JSONRPC_VERSION, id: -1, method: METHOD_REQUEST_PERMISSION, params: {} });
   // الردّ غير متزامن (Promise.resolve) — انتظر دورة.
   await new Promise((res) => setImmediate(res));
   const reply = w.messages.find((m) => m.id === -1);
@@ -89,18 +101,19 @@ test("طلب خادم بلا معالِج ⇒ MethodNotFound (لا يعلّق ا
   const w = fakeWritable();
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
-  r.feed({ jsonrpc: "2.0", id: -2, method: "nebras/غير-معروف", params: {} });
+  // طريقة غير مسجَّلة عمدًا (بيانات اختبار) ⇒ يجب أن يردّ العميل MethodNotFound العقديّ.
+  r.feed({ jsonrpc: JSONRPC_VERSION, id: -2, method: "nebras/غير-معروف", params: {} });
   await new Promise((res) => setImmediate(res));
   const reply = w.messages.find((m) => m.id === -2);
   assert.ok(reply && reply.error, "ردّ خطأ");
-  assert.equal(reply.error.code, -32601);
+  assert.equal(reply.error.code, JSONRPC_METHOD_NOT_FOUND);
 });
 
 test("dispose: يرفض كلّ طلب معلّق", async () => {
   const w = fakeWritable();
   const r = fakeReadable();
   const rpc = new RpcClient(w, r.stream);
-  const p = rpc.request("nebras/task", {});
+  const p = rpc.request(METHOD_TASK, {});
   rpc.dispose("أُغلق");
   await assert.rejects(p, (e) => /أُغلق/.test(e.message));
 });
