@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v19"
+CORE_PATCH_VERSION = "v20"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,7 +38,7 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v19 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v20 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
@@ -76,6 +76,25 @@ INJECT = """
   # رُقعة الاتّجاه RTL-0: انسخ ورقة الأنماط إلى media/ ثمّ رقّع workbench.ts ليستوردها ويضبط dir=rtl.
   if [ -f ../.mihrab-patch-workbench-rtl.py ] && [ -f ../.mihrab-rtl.css ]; then
     cp -f ../.mihrab-rtl.css src/vs/workbench/browser/media/mihrab-rtl.css
+    # [AR-02] خطّ ص العربيّ المحزوم (Kawkab Mono): يُحقَن كـ@font-face بمصدر **data: URI (base64)**
+    # مُقدَّمًا إلى نسخة media من الورقة. **لا url() نسبيّ**: esbuild (optimize.ts) يحلّ url() في CSS
+    # المحزوم زمن البناء و.woff2 بلا loader (ttf/svg/png/sh فقط) ⇒ يفشل البناء «No loader…»، وغيابُ
+    # الملفّ يفشل «Could not resolve» (كلاهما مثبَت تجريبيًّا). data: URI يتركه esbuild حرفيًّا فلا
+    # loader ولا رُقعة نواة. سقوط رشيق: غياب الخطّ ⇒ لا حقن ⇒ لا @font-face ⇒ بناء نظيف والسقوط لبقيّة المكدّس.
+    if [ -f ../.mihrab-kawkab-mono.woff2 ]; then
+      _mfont_b64="$( base64 -w0 ../.mihrab-kawkab-mono.woff2 2>/dev/null || base64 ../.mihrab-kawkab-mono.woff2 | tr -d '\\n' )"
+      if [ -n "${_mfont_b64}" ]; then
+        _mfont_css="src/vs/workbench/browser/media/mihrab-rtl.css"
+        printf '@font-face{font-family:"Kawkab Mono";font-style:normal;font-weight:400;font-display:swap;src:url("data:font/woff2;base64,%s") format("woff2");}\\n' "${_mfont_b64}" > "${_mfont_css}.font"
+        cat "${_mfont_css}" >> "${_mfont_css}.font"
+        mv -f "${_mfont_css}.font" "${_mfont_css}"
+        echo "محراب: حُقِن الخطّ العربيّ Kawkab Mono (@font-face بـdata: URI)"
+      else
+        echo "محراب: تعذّر ترميز base64 للخطّ العربيّ — السقوط لبقيّة مكدّس editor.fontFamily"
+      fi
+    else
+      echo "محراب: لا خطّ عربيّ محزوم (kawkab-mono.woff2) — السقوط لبقيّة مكدّس editor.fontFamily"
+    fi
     python ../.mihrab-patch-workbench-rtl.py src/vs/workbench/browser/workbench.ts || { echo "محراب: فشلت رُقعة اتّجاه RTL" >&2; exit 1; }
   fi
   # رُقعة RTL-2: محاذاة منسدلة شريط القوائم يمينًا في RTL (لا تخرج من حافّة النافذة).
