@@ -548,7 +548,17 @@ def _welcome_ext():
     #     يجوز أن يسجّل JS أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ).
     manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
     assert manifest_cmds, "لا أوامر معلَنة في امتداد الترحيب"
-    js_cmds = set(_re.findall(r"registerCommand\(\s*[\"']([^\"']+)[\"']", js))
+    # الوسيط الأوّل لـregisterCommand قد يكون سلسلة حرفيّة أو ثابتًا مسمّى (منع السلاسل الخام)؛
+    # نحلّ الثابت من إعلانه `const NAME = "..";` كي لا ينكسر الحارس برفع المعرّف إلى ثابت.
+    _const_str = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', js))
+    js_cmds = set()
+    for arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", js):
+        arg = arg.strip()
+        lit = _re.fullmatch(r"""["']([^"']+)["']""", arg)
+        if lit:
+            js_cmds.add(lit.group(1))
+        elif arg in _const_str:
+            js_cmds.add(_const_str[arg])
     missing = manifest_cmds - js_cmds
     assert not missing, f"أوامر معلَنة في المانيفست بلا registerCommand في JS: {missing}"
     # كلّ أمر معلَن له عنوان غير فارغ (يظهر في لوحة الأوامر).

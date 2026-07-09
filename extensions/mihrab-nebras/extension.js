@@ -108,8 +108,7 @@ function activate(context) {
     }),
   );
 
-  // الدردشة (لوحة webview) — تُسجَّل مصنعها.
-  registerChat.init(context);
+  // الدردشة (لوحة webview) تُفتح كسولًا عبر أمرها (registerChat.open) — لا تهيئة عند التنشيط.
   // الإكمال السطريّ (مطفأ افتراضًا؛ يُفعَّل بالإعداد).
   registerInlineCompletion(context, proc, getConfig, log);
 
