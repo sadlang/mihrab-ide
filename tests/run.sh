@@ -19,14 +19,18 @@ echo
 "$PY" "$HERE/bundle/check_injected.py" || rc=1
 echo
 
-# ── نِبراس: حارس تطابق عقد السلك (المصدر ⇄ المولَّد) + اختبار وحدة RPC ──
+# ── نِبراس: حارس تطابق عقد السلك (المصدر ⇄ المولَّد) ──
 NEBRAS="$HERE/../extensions/mihrab-nebras"
 "$PY" "$NEBRAS/contract/gen_contract.py" --check || rc=1
 echo
+
+# ── اختبارات وحدة الامتدادات (نِبراس: RPC/توافق · الترحيب: تحقّق الاسم) ──
 if command -v node >/dev/null 2>&1; then
-  ( cd "$NEBRAS" && node --test ) || rc=1
+  for _ext in "$NEBRAS" "$HERE/../extensions/mihrab-welcome"; do
+    ( cd "$_ext" && node --test ) || rc=1
+  done
 else
-  echo "⚠️ node غير متوفّر — تخطّي اختبار وحدة نِبراس"
+  echo "⚠️ node غير متوفّر — تخطّي اختبارات وحدة الامتدادات"
 fi
 echo
 

@@ -22,23 +22,8 @@ const {
 // سقف أدوار المحادثة المحفوظة محلّيًّا (الخادم يقصّها لنافذته أيضًا؛ نحدّ نموّ الذاكرة هنا كذلك).
 const MAX_LOCAL_HISTORY = 40;
 
-/** @type {{role: string, text: string}[]} تاريخ المحادثة (يُمرَّر مع كلّ مهمّة). */
-let conversation = [];
-/**
- * خطّ أساس فرق المصدر (م2ب+): صورة المصدر المعياريّة التي أرّض عليها الخادم في الدور السابق
- * (result.sourceEcho، لا نصّ المحرّر — يسدّ تباعد المحرّر/القرص). تُحدَّث كلّ دور ناجح فيصير
- * الفرق تدرّجيًّا مقابل الدور السابق. تُصفَّر مع المحادثة (تبديل الملفّ/إغلاق اللوحة).
- * null = لا أساس بعد ⇒ الخادم يرسل المصدر كاملًا (أوّل دور).
- * @type {string | null}
- */
-let baselineSource = null;
-/**
- * عدّاد حِقبة الجلسة: يزداد في كلّ تصفير (تبديل الملفّ/إغلاق اللوحة). تلتقطه المهمّة عند إطلاقها،
- * ويُفحَص قبل كتابة نتيجتها في الحالة العامّة — فمهمّةٌ تكتمل بعد تصفيرٍ لا تُلوّث جلسةً أخرى
- * (تمنع سباق الاكتمال-بعد-التبديل: تسريب سياق ق6 + فرق أساسٍ فاسد).
- * @type {number}
- */
-let sessionEpoch = 0;
+// حالة الجلسة (التاريخ/خطّ الأساس/الحِقبة/اللوحة/المهمّة الجارية) مُغلَّفة في صنف ChatSession
+// أدناه (لا حالة عامّة على مستوى الوحدة) — يتيح لوحاتٍ مستقلّة مستقبلًا واختبارًا وحدويًّا.
 
 // معرّف/عنوان اللوحة.
 const PANEL_TYPE = "mihrab.nebras.chat";
@@ -59,11 +44,6 @@ const COPY = {
   notReady: "خادم نِبراس غير جاهز بعد.",
 };
 
-/** @type {vscode.WebviewPanel | null} */
-let panel = null;
-/** آخر معرّف مهمّة جارية في اللوحة (للإلغاء). */
-let activeTaskId;
-
 /** يولّد nonce تشفيريًّا لسياسة CSP (لا يُخمَّن). */
 function makeNonce() {
   return crypto.randomBytes(16).toString("base64");
@@ -79,85 +59,7 @@ function activeSadFile() {
   return doc.fileName;
 }
 
-/** يحدّث سطر السياق في اللوحة من الملفّ النشط. */
-function pushContext() {
-  if (!panel) return;
-  const file = activeSadFile();
-  void panel.webview.postMessage({
-    type: MSG_CONTEXT,
-    text: file ? COPY.contextFile(path.basename(file)) : COPY.noContext,
-  });
-}
-
-/** يعالج رسالة مستخدم: يشغّل «اشرح» ويبثّ للّوحة. */
-async function onUserMessage(proc, getConfig, text) {
-  if (!panel) return;
-  if (!proc.isReady()) {
-    void panel.webview.postMessage({ type: MSG_ERROR, text: COPY.notReady });
-    void proc.start();
-    return;
-  }
-  const file = activeSadFile();
-  if (!file) {
-    void panel.webview.postMessage({ type: MSG_ERROR, text: COPY.noContext });
-    return;
-  }
-  // التقط الجلسة والملفّ اللذين تنطلق المهمّة لأجلهما — يُفحَصان بعد الاكتمال (await) قبل كتابة
-  // أيّ حالة عامّة، كي لا تُلوّث مهمّةٌ اكتملت متأخّرةً جلسةً صُفِّرت لملفٍّ آخر (سباق ق6).
-  const epoch = sessionEpoch;
-  const forFile = file;
-  const cfg = getConfig();
-  const params = {
-    kind: TASK_EXPLAIN,
-    target: file,
-    instruction: text,
-    // طور المحادثة: مرّر الأدوار السابقة (لا يشمل الرسالة الحاليّة — هي في instruction).
-    history: conversation.slice(),
-    // تحسين توكنز: بعد أوّل دور مرّر خطّ أساس المصدر ⇒ العقل يرسل الفرق لا المصدر الكامل.
-    ...(baselineSource !== null ? { baselineSource } : {}),
-    permission: cfg.permissionMode,
-    locale: cfg.locale,
-  };
-  let answer = "";
-  try {
-    const result = await proc.runTask(
-      params,
-      (delta) => {
-        answer += delta;
-        if (panel) void panel.webview.postMessage({ type: MSG_DELTA, text: delta });
-      },
-      (id) => {
-        activeTaskId = id;
-      },
-    );
-    // الفشل يصل كرفض (JsonRpcError) فيُعالَج في catch — لا فرع ok===false (ميت بعقد الخادم).
-    // حارس الحِقبة/الملفّ: إن تبدّلت الجلسة (تبديل ملفّ/إغلاق لوحة) أو الملفّ النشط أثناء المهمّة،
-    // لا تكتب حالة هذا الدور في وحدةٍ عامّة صُفِّرت لجلسةٍ أخرى (يمنع تسريب ق6 + فرقًا فاسدًا).
-    // دوّن الدورين (المستخدم ثمّ المساعد) للسياق التالي — لكن تجاهل التبادل كلّه إن كان الجواب
-    // فارغًا (بثّ صفريّ) كي لا يبقى سؤالٌ بلا جواب في التاريخ (يطابق حذف الفقاعة الفارغة عرضًا).
-    if (epoch === sessionEpoch && activeSadFile() === forFile && answer.trim()) {
-      conversation.push({ role: ROLE_USER, text }, { role: ROLE_ASSISTANT, text: answer });
-      if (conversation.length > MAX_LOCAL_HISTORY) {
-        conversation = conversation.slice(-MAX_LOCAL_HISTORY);
-      }
-      // خطّ أساس الدور التالي = صورة المصدر التي أرّض عليها الخادم فعلًا (sourceEcho)، لا نصّ
-      // المحرّر — يسدّ تباعد المحرّر/القرص، ويجعل الفرق تدرّجيًّا مقابل الدور السابق (يُحدَّث كلّ دور).
-      if (result && typeof result.sourceEcho === "string") {
-        baselineSource = result.sourceEcho;
-      }
-    }
-    if (panel) void panel.webview.postMessage({ type: MSG_DONE });
-  } catch (err) {
-    if (panel) {
-      void panel.webview.postMessage({
-        type: MSG_ERROR,
-        text: COPY.failed(String(err && err.message ? err.message : err)),
-      });
-    }
-  } finally {
-    activeTaskId = undefined;
-  }
-}
+// (سطر السياق ومعالجة رسالة المستخدم صارا طريقتَي ChatSession أدناه.)
 
 /** يبني HTML اللوحة (RTL، CSP صارم، nonce). */
 function buildHtml(webview) {
@@ -251,55 +153,180 @@ function buildHtml(webview) {
 </html>`;
 }
 
-const registerChat = {
-  /** يفتح لوحة الدردشة (أو يكشف القائمة). */
-  open(context, proc, getConfig) {
-    if (panel) {
-      panel.reveal(vscode.ViewColumn.Beside);
-      pushContext();
-      return;
-    }
-    panel = vscode.window.createWebviewPanel(
+/**
+ * جلسة دردشة نِبراس: تغلّف حالة لوحةٍ واحدة (تاريخ الأدوار، خطّ أساس فرق المصدر، عدّاد الحِقبة،
+ * المهمّة الجارية) بدل حالةٍ عامّة على مستوى الوحدة. تُفتح لوحةً كسولًا، وتُصفَّر عند تبديل الملفّ
+ * أو الإغلاق. عدّاد الحِقبة يُلتقَط عند إطلاق المهمّة ويُفحَص بعد اكتمالها قبل كتابة أيّ حالة —
+ * فمهمّةٌ تكتمل بعد تصفيرٍ لا تُلوّث جلسةً أخرى (يمنع سباق الاكتمال-بعد-التبديل: تسريب ق6 + فرق فاسد).
+ */
+class ChatSession {
+  /**
+   * @param {any} proc خادم نِبراس المقيم
+   * @param {() => any} getConfig قارئ الإعدادات الحاليّة
+   * @param {() => void} onDispose يُستدعى عند إغلاق اللوحة (لتصفير المرجع المفرد)
+   */
+  constructor(proc, getConfig, onDispose) {
+    this._proc = proc;
+    this._getConfig = getConfig;
+    /** @type {{role: string, text: string}[]} تاريخ المحادثة (يُمرَّر مع كلّ مهمّة). */
+    this._conversation = [];
+    /** خطّ أساس فرق المصدر (sourceEcho الدور السابق)؛ null = أرسِل المصدر كاملًا. @type {string|null} */
+    this._baselineSource = null;
+    /** عدّاد حِقبة الجلسة (يزداد كلّ تصفير). @type {number} */
+    this._sessionEpoch = 0;
+    /** آخر معرّف مهمّة جارية (للإلغاء). */
+    this._activeTaskId = undefined;
+    this._disposed = false;
+
+    this._panel = vscode.window.createWebviewPanel(
       PANEL_TYPE,
       PANEL_TITLE,
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    panel.webview.html = buildHtml(panel.webview);
+    this._panel.webview.html = buildHtml(this._panel.webview);
 
-    const sub = panel.webview.onDidReceiveMessage((m) => {
+    this._sub = this._panel.webview.onDidReceiveMessage((m) => {
       if (!m || typeof m !== "object") return;
       if (m.type === MSG_SEND && typeof m.text === "string") {
-        void onUserMessage(proc, getConfig, m.text);
+        void this.onUserMessage(m.text);
       } else if (m.type === MSG_CANCEL) {
-        if (activeTaskId !== undefined) proc.cancel(activeTaskId);
+        if (this._activeTaskId !== undefined) this._proc.cancel(this._activeTaskId);
       }
     });
-    // عند تبديل الملفّ النشط: حدّث السياق **وصفّر المحادثة** — تاريخ أسئلة/أجوبة ملفٍّ سابق
-    // يُربك مهمّة الملفّ الجديد ويسرّب محتواه في طلبه (ق6). كلّ ملفّ محادثةٌ نظيفة.
-    let lastCtxFile = activeSadFile();
-    const edSub = vscode.window.onDidChangeActiveTextEditor(() => {
+    // عند تبديل الملفّ النشط: حدّث السياق **وصفّر المحادثة** — تاريخ أسئلة/أجوبة ملفٍّ سابق يُربك
+    // مهمّة الملفّ الجديد ويسرّب محتواه في طلبه (ق6). كلّ ملفّ محادثةٌ نظيفة.
+    this._lastCtxFile = activeSadFile();
+    this._edSub = vscode.window.onDidChangeActiveTextEditor(() => {
       const now = activeSadFile();
-      if (now !== lastCtxFile) {
-        lastCtxFile = now;
-        conversation = [];
-        baselineSource = null; // مصدر جديد ⇒ أرسِله كاملًا أوّل دور.
-        sessionEpoch++; // أبطِل أيّ مهمّة جارية للملفّ السابق (لا تكتب حالتها بعد الاكتمال).
+      if (now !== this._lastCtxFile) {
+        this._lastCtxFile = now;
+        this._resetSession(); // مصدر جديد ⇒ أرسِله كاملًا، وأبطِل أيّ مهمّة جارية للملفّ السابق.
       }
-      pushContext();
+      this.pushContext();
     });
 
-    panel.onDidDispose(() => {
-      sub.dispose();
-      edSub.dispose();
-      if (activeTaskId !== undefined) proc.cancel(activeTaskId);
-      conversation = []; // جلسة جديدة عند إعادة الفتح (لا تسرّب سياق قديم).
-      baselineSource = null;
-      sessionEpoch++; // أبطِل أيّ مهمّة جارية تكتمل بعد الإغلاق (لا ترث جلسةٌ لاحقة حالتها).
-      panel = null;
+    this._panel.onDidDispose(() => {
+      this._disposed = true;
+      this._sub.dispose();
+      this._edSub.dispose();
+      if (this._activeTaskId !== undefined) this._proc.cancel(this._activeTaskId);
+      // أبطِل أيّ مهمّة جارية تكتمل بعد الإغلاق (لا ترث جلسةٌ لاحقة حالتها).
+      this._resetSession();
+      onDispose();
     });
-    pushContext();
+    this.pushContext();
+  }
+
+  /** يكشف اللوحة القائمة ويحدّث سياقها. */
+  reveal() {
+    this._panel.reveal(vscode.ViewColumn.Beside);
+    this.pushContext();
+  }
+
+  /** يصفّر حالة الجلسة ويقدّم الحِقبة (تبديل ملفّ/إغلاق). */
+  _resetSession() {
+    this._conversation = [];
+    this._baselineSource = null;
+    this._sessionEpoch++;
+  }
+
+  /** يرسل رسالةً للّوحة ما لم تكن مُغلَقة (يقابل حرّاس `if (panel)` السابقة). */
+  _post(message) {
+    if (this._disposed) return;
+    void this._panel.webview.postMessage(message);
+  }
+
+  /** يحدّث سطر السياق في اللوحة من الملفّ النشط. */
+  pushContext() {
+    const file = activeSadFile();
+    this._post({
+      type: MSG_CONTEXT,
+      text: file ? COPY.contextFile(path.basename(file)) : COPY.noContext,
+    });
+  }
+
+  /** يعالج رسالة مستخدم: يشغّل «اشرح» ويبثّ للّوحة. */
+  async onUserMessage(text) {
+    if (!this._proc.isReady()) {
+      this._post({ type: MSG_ERROR, text: COPY.notReady });
+      void this._proc.start();
+      return;
+    }
+    const file = activeSadFile();
+    if (!file) {
+      this._post({ type: MSG_ERROR, text: COPY.noContext });
+      return;
+    }
+    // التقط الجلسة والملفّ اللذين تنطلق المهمّة لأجلهما — يُفحَصان بعد الاكتمال (await) قبل كتابة
+    // أيّ حالة، كي لا تُلوّث مهمّةٌ اكتملت متأخّرةً جلسةً صُفِّرت لملفٍّ آخر (سباق ق6).
+    const epoch = this._sessionEpoch;
+    const forFile = file;
+    const cfg = this._getConfig();
+    const params = {
+      kind: TASK_EXPLAIN,
+      target: file,
+      instruction: text,
+      // طور المحادثة: مرّر الأدوار السابقة (لا يشمل الرسالة الحاليّة — هي في instruction).
+      history: this._conversation.slice(),
+      // تحسين توكنز: بعد أوّل دور مرّر خطّ أساس المصدر ⇒ العقل يرسل الفرق لا المصدر الكامل.
+      ...(this._baselineSource !== null ? { baselineSource: this._baselineSource } : {}),
+      permission: cfg.permissionMode,
+      locale: cfg.locale,
+    };
+    let answer = "";
+    try {
+      const result = await this._proc.runTask(
+        params,
+        (delta) => {
+          answer += delta;
+          this._post({ type: MSG_DELTA, text: delta });
+        },
+        (id) => {
+          this._activeTaskId = id;
+        },
+      );
+      // الفشل يصل كرفض (JsonRpcError) فيُعالَج في catch — لا فرع ok===false (ميت بعقد الخادم).
+      // حارس الحِقبة/الملفّ: إن تبدّلت الجلسة (تبديل ملفّ/إغلاق لوحة) أو الملفّ النشط أثناء المهمّة،
+      // لا تكتب حالة هذا الدور في جلسةٍ صُفِّرت (يمنع تسريب ق6 + فرقًا فاسدًا). تجاهل التبادل كلّه إن
+      // كان الجواب فارغًا (بثّ صفريّ) كي لا يبقى سؤالٌ بلا جواب في التاريخ.
+      if (epoch === this._sessionEpoch && activeSadFile() === forFile && answer.trim()) {
+        this._conversation.push({ role: ROLE_USER, text }, { role: ROLE_ASSISTANT, text: answer });
+        if (this._conversation.length > MAX_LOCAL_HISTORY) {
+          this._conversation = this._conversation.slice(-MAX_LOCAL_HISTORY);
+        }
+        // خطّ أساس الدور التالي = صورة المصدر التي أرّض عليها الخادم فعلًا (sourceEcho)، لا نصّ
+        // المحرّر — يسدّ تباعد المحرّر/القرص، ويجعل الفرق تدرّجيًّا مقابل الدور السابق.
+        if (result && typeof result.sourceEcho === "string") {
+          this._baselineSource = result.sourceEcho;
+        }
+      }
+      this._post({ type: MSG_DONE });
+    } catch (err) {
+      this._post({
+        type: MSG_ERROR,
+        text: COPY.failed(String(err && err.message ? err.message : err)),
+      });
+    } finally {
+      this._activeTaskId = undefined;
+    }
+  }
+}
+
+/** @type {ChatSession | null} اللوحة المفردة الحاليّة (تصميم لوحة واحدة). */
+let current = null;
+
+const registerChat = {
+  /** يفتح لوحة الدردشة (أو يكشف القائمة القائمة). */
+  open(context, proc, getConfig) {
+    if (current) {
+      current.reveal();
+      return;
+    }
+    current = new ChatSession(proc, getConfig, () => {
+      current = null;
+    });
   },
 };
 
-module.exports = { registerChat, COPY };
+module.exports = { registerChat, ChatSession, COPY };

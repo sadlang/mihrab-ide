@@ -590,6 +590,47 @@ def _welcome_ext():
                 assert cmd in manifest_cmds, f"رابط أمر ميّت «{cmd}» في الخطوة {sid}"
 
 
+@check("هوية لغة ص متّسقة (SAD_LANG_ID/SAD_EXT ↔ contributes.languages في sad-lang)")
+def _lang_identity():
+    # مصدر الحقيقة لهوية لغة ص = مساهمة اللغة في امتداد sad-lang (لا سلسلة مُختلَقة). كلّ مرآة
+    # SAD_LANG_ID/SAD_EXT مكرَّرة في امتدادات محراب يجب أن تطابقه — يمنع التباعد الصامت.
+    import re
+    sad_lang_pkg = os.path.join(ROOT, "extensions", "sad-lang", "package.json")
+    if not os.path.isfile(sad_lang_pkg):
+        return  # لا امتداد لغة في هذا الفرع — تخطٍّ
+    pkg = json.load(open(sad_lang_pkg, encoding="utf-8"))
+    langs = pkg.get("contributes", {}).get("languages", [])
+    assert langs, "امتداد sad-lang بلا contributes.languages (مصدر هوية اللغة)"
+    lang = langs[0]
+    lang_id = lang.get("id")
+    exts = lang.get("extensions") or []
+    assert lang_id and exts, "تعريف لغة ص ناقص (id/extensions) في sad-lang"
+    sad_ext = exts[0]
+
+    mirrors = [
+        os.path.join(ROOT, "extensions", "mihrab-nebras", n)
+        for n in ("chat.js", "agent.js", "explain-selection.js", "inline-completion.js")
+    ] + [os.path.join(ROOT, "extensions", "mihrab-welcome", "extension.js")]
+    id_re = re.compile(r'const\s+SAD_LANG_ID\s*=\s*"([^"]*)"')
+    ext_re = re.compile(r'const\s+SAD_EXT\s*=\s*"([^"]*)"')
+    seen_id = seen_ext = 0
+    for f in mirrors:
+        if not os.path.isfile(f):
+            continue
+        js = _read(f)
+        for m in id_re.finditer(js):
+            seen_id += 1
+            assert m.group(1) == lang_id, \
+                f"SAD_LANG_ID «{m.group(1)}» في {os.path.basename(f)} ≠ هوية sad-lang «{lang_id}»"
+        for m in ext_re.finditer(js):
+            seen_ext += 1
+            assert m.group(1) == sad_ext, \
+                f"SAD_EXT «{m.group(1)}» في {os.path.basename(f)} ≠ امتداد sad-lang «{sad_ext}»"
+    # حارس ضدّ التحوّل إلى no-op لو تغيّرت البنية (نقل الملفّات/إعادة تسمية الثابت).
+    assert seen_id and seen_ext, \
+        "لم يُعثَر على أيّ تصريح SAD_LANG_ID/SAD_EXT في المرايا — تحقّق من بنية الامتدادات"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
