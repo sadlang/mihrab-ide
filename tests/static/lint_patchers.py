@@ -213,6 +213,69 @@ def _css_lint():
                 f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…»")
 
 
+@check("خطّ ص العربيّ المحزوم [AR-02]: config ↔ حقن data:URI ↔ لا url() كاسر للبناء")
+def _arabic_font():
+    # قيم متوقَّعة (بيانات فحص تطابق مصدر الإعداد؛ استثناء literal مقبول للاختبارات).
+    BUNDLED_FONT_FAMILY = "Kawkab Mono"  # الخطّ المحزوم (OFL)، أوّل المكدّس
+    STAGED_FONT = ".mihrab-kawkab-mono.woff2"  # المُجهَّز في .upstream/ لاشتقاق base64
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return  # لا قشرة في هذا الفرع — تخطٍّ
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
+    ff = defaults.get("editor.fontFamily")
+    assert ff, "لا editor.fontFamily افتراضيّ في mihrab-shell [AR-02]"
+    # الخطّ المحزوم أوّل المكدّس (وإلّا لا يُفضَّل عند توفّره)، والمكدّس ينتهي بـmonospace،
+    # وفيه احتياطيّ عربيّ لأنظمةٍ بلا الخطّ المحزوم (وإلّا عربيّة رديئة في السقوط الرشيق).
+    first = ff.split(",")[0].strip().strip("'\"")
+    assert first == BUNDLED_FONT_FAMILY, \
+        f"«{BUNDLED_FONT_FAMILY}» ليس أوّل مكدّس editor.fontFamily (لن يُفضَّل عند توفّره): «{first}» [AR-02]"
+    assert ff.rstrip().endswith("monospace"), "مكدّس editor.fontFamily لا ينتهي بـmonospace [AR-02]"
+    assert ("Segoe UI" in ff) or ("Noto Sans Arabic" in ff), \
+        "مكدّس editor.fontFamily بلا احتياطيّ عربيّ (Segoe UI/Noto Sans Arabic) — عربيّة رديئة بلا الخطّ المحزوم [AR-02]"
+    assert defaults.get("terminal.integrated.fontFamily") == ff, \
+        "terminal.integrated.fontFamily لا يطابق editor.fontFamily (اتّساق أسطح الخطّ) [AR-02]"
+
+    # **حارس الانحدار الحرِج:** الورقة الساكنة يجب ألّا تحوي url() نسبيًّا لـ.woff2 — esbuild
+    # (optimize.ts) يحلّ url() في الـCSS المحزوم زمن البناء، و.woff2 بلا loader ⇒ يفشل البناء
+    # («No loader…») وغيابُ الملفّ يفشله («Could not resolve»). الحقن الآمن data: URI فقط.
+    css_body = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    assert "woff2" not in css_body, \
+        f"مرجع woff2 عاد إلى {M.CSS_PATCH} الساكنة — url() نسبيّ يكسر بناء esbuild؛ استعمل حقن data:URI [AR-02]"
+
+    # وصل البناء: build.sh يجهّز المصدر (MIHRAB_ARABIC_FONT→staged)، وpatch_bundle يحقن @font-face
+    # بمصدر data: URI (base64) مشتقّ من الملفّ المُجهَّز — لا loader ولا رُقعة نواة (يتركه esbuild حرفيًّا).
+    build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
+    assert "MIHRAB_ARABIC_FONT" in build_sh and STAGED_FONT in build_sh, \
+        f"build.sh لا يجهّز الخطّ العربيّ المحزوم (MIHRAB_ARABIC_FONT/{STAGED_FONT}) [AR-02]"
+    bundle_py = _read(os.path.join(ROOT, "build", "patch_bundle_extensions.py"))
+    assert STAGED_FONT in bundle_py, \
+        f"patch_bundle_extensions لا يشتقّ الخطّ من الملفّ المُجهَّز ({STAGED_FONT}) [AR-02]"
+    for needle in ("@font-face", BUNDLED_FONT_FAMILY, "data:font/woff2", "base64"):
+        assert needle in bundle_py, \
+            f"patch_bundle_extensions لا يحقن @font-face بـdata:URI base64 (ينقص «{needle}») — قد يعود url() الكاسر [AR-02]"
+
+    # [AR-01↔AR-02] لوحة المخرجات (webview معزول) تُضمِّن الخطّ المحزوم data:URI من media/ لتعرض
+    # به عينه لا بخطّ نظاميّ: build.sh ينسخه إلى welcome/media، وoutput-panel.js يقرؤه ويبنيه.
+    welcome = os.path.join(ROOT, "extensions", "mihrab-welcome")
+    if os.path.isdir(welcome):
+        # نفحص أمر cp **الفعليّ** لا مجرّد ظهور «media/kawkab-mono.woff2» نصًّا (يظهر في سطر
+        # log أيضًا) كي لا يمرّ الحارس أخضر لو حُذف النسخ وبقي التسجيل — نجاح كاذب (أسوة بحرّاس
+        # أصول الهوية التي تجرّد غير-الكود وتفحص سطر cp حقيقيًّا).
+        bsh_code = [ln for ln in build_sh.splitlines() if not ln.lstrip().startswith("#")]
+        assert 'WELCOME_MEDIA="$STAGE_EXT/mihrab-welcome/media"' in "\n".join(bsh_code), \
+            "build.sh لا يعرّف WELCOME_MEDIA لمجلّد media لوحة الترحيب [AR-01↔AR-02]"
+        assert any("cp -f" in ln and "WELCOME_MEDIA/kawkab-mono.woff2" in ln for ln in bsh_code), \
+            "build.sh لا ينسخ الخطّ فعلًا إلى media/ لوحة الترحيب (سطر cp لا سطر log) [AR-01↔AR-02]"
+        panel_js = _read(os.path.join(welcome, "output-panel.js"))
+        assert "loadBundledFontDataUri" in panel_js and "data:font/woff2" in panel_js, \
+            "output-panel.js لا يُضمِّن الخطّ المحزوم كـdata:URI في اللوحة [AR-01↔AR-02]"
+        # الخطّ ثنائيّ يُحقَن وقت البناء (كـbin/) ويُقرأ من extensionPath/media؛ يجب تجاهله في git
+        # كي لا يُودَع لو أسقطه مطوّر في media/ (المتعقَّب لوسائط الجولة) للتجربة المحلّيّة.
+        gitignore = _read(os.path.join(ROOT, ".gitignore"))
+        assert "extensions/mihrab-welcome/media/kawkab-mono.woff2" in gitignore, \
+            ".gitignore لا يتجاهل خطّ media المحقون (extensions/mihrab-welcome/media/kawkab-mono.woff2) — خطر إيداعه [AR-01↔AR-02]"
+
+
 # ───────────── L0-8: سمتا محراب (خريطة الرموز ↔ نحو ص) ─────────────
 def _grammar_scopes():
     """كلّ نطاقات (scopes) نحو ص الفعليّة من sad.tmLanguage.json."""
@@ -522,8 +585,21 @@ def _welcome_ext():
     #      (أنماط متسامحة مع المسافات كي لا تنكسر بإعادة تنسيق. [N1])
     import re as _re
     assert "resolveSadRun" in js, "لا دالّة resolveSadRun (حلّ الثنائيّ المدمج) في نقطة الدخول"
-    assert _re.search(r"ProcessExecution\(\s*sadRunCmd", js), \
-        "ProcessExecution لا يستعمل المسار المحلول sadRunCmd — قد يتجاهل الثنائيّ المدمج"
+    # [AR-01] التشغيل يُوجَّه إلى لوحة المخرجات العربيّة (bidi صحيح) بدل مهمّة طرفيّة تشوّه العربيّة،
+    #         ويجب أن يمرّر المسار المحلول sadRunCmd — وإلّا يتجاهل الثنائيّ المدمج. حارس ضدّ انحدار.
+    assert "output-panel" in js and "SadOutputPanel" in js, \
+        "runSadFile لا يوجّه إلى لوحة المخرجات العربيّة (output-panel/SadOutputPanel) [AR-01]"
+    # اللوحة تُنشأ فعلًا وتُدفَع إلى subscriptions (وإلّا يبقى sadOutput غير مُهيّأ ⇒ runSadFile
+    # يرمي زمن التشغيل بينما L0/node --check أخضران — نجاح كاذب). وتُشغَّل بالمسار المحلول sadRunCmd.
+    assert _re.search(r"new\s+SadOutputPanel\(", js), \
+        "لا إنشاء فعليّ للوحة (new SadOutputPanel) — sadOutput يبقى غير مُهيّأ [AR-01]"
+    # اللوحة مُدرَجة في context.subscriptions (وإلّا لا تُغلَق/تُقتَل العمليّة عند التعطيل). نفحص
+    # نافذةً بعد push( تغطّي قائمة الوسائط كاملةً (لا regex [^)] الذي يتوقّف عند أوّل قوس مغلق).
+    _push_idx = js.find("subscriptions.push(")
+    assert _push_idx != -1 and "sadOutput" in js[_push_idx:_push_idx + 600], \
+        "لوحة المخرجات غير مُدرَجة في context.subscriptions — لن تُغلَق/تُقتَل عند التعطيل [AR-01]"
+    assert _re.search(r"sadOutput\.run\(\s*sadRunCmd", js), \
+        "لوحة المخرجات لا تُشغَّل بالمسار المحلول sadRunCmd — قد تتجاهل الثنائيّ المدمج [AR-01]"
     # مهمّة tasks.json المولَّدة يجب أن تُبنى من المُشغّل المحلول (buildTasksJson(sadRunCmd)) لا
     # باسم ثابت — وإلّا عاد تباعد المسارين (المهمّة تفشل رغم توفّر المدمج). حارس ضدّ انحدار.
     assert "buildTasksJson" in js and _re.search(r"command:\s*runCommand", js), \

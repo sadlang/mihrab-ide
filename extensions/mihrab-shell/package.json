@@ -2,7 +2,7 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "mihrab-shell",
   "displayName": "قشرة محراب",
-  "description": "إعدادات قشرة محراب الافتراضيّة (اتّجاه RTL): الشريط الجانبي يمينًا، وتلوين أزواج الأقواس وأدلّتها لتوضيح البنية النحويّة في السياق العربيّ ثنائيّ الاتّجاه (BiDi). الطبقة 1 (إضافة محزومة) — لا رُقعة نواة.",
+  "description": "إعدادات قشرة محراب الافتراضيّة (اتّجاه RTL): الشريط الجانبي يمينًا، وتلوين أزواج الأقواس وأدلّتها لتوضيح البنية النحويّة في السياق العربيّ ثنائيّ الاتّجاه (BiDi)، وخطّ برمجيّ عربيّ افتراضيّ (Kawkab Mono المحزوم). الطبقة 1 (إضافة محزومة) — لا رُقعة نواة.",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
@@ -14,7 +14,9 @@
       "editor.bracketPairColorization.enabled": true,
       "editor.guides.bracketPairs": "active",
       "editor.guides.bracketPairsHorizontal": "active",
-      "editor.matchBrackets": "always"
+      "editor.matchBrackets": "always",
+      "editor.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
+      "terminal.integrated.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace"
     }
   },
   "repository": {

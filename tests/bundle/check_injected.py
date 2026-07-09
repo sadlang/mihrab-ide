@@ -177,6 +177,23 @@ def _icons_shipped():
     assert default in ids, "سمة الأيقونات الافتراضيّة لا تطابق أيّ id في حزمة المخرَج"
 
 
+@check("خطّ AR-02: @font-face بـdata:URI في CSS المشحون (مشروط بتوريد الخطّ)")
+def _arabic_font_shipped():
+    # الحقن مشروط بتوريد بايتات الخطّ (سقوط رشيق)؛ لا يمكن جعله غير مشروط وإلّا فشل حين لا خطّ.
+    # الإشارة: الملفّ المُجهَّز في .upstream/ (ما نسخه build.sh فعلًا حين وُجد المصدر).
+    if not os.path.isfile(CSS):
+        return  # لا حزمة — يتخطّى الإطار العامّ أصلًا، وهذا احتياط
+    staged = os.path.join(ROOT, ".upstream", ".mihrab-kawkab-mono.woff2")
+    src_default = os.path.join(ROOT, "patches", "fonts", "kawkab-mono.woff2")
+    if not (os.path.isfile(staged) or os.path.isfile(src_default) or os.environ.get("MIHRAB_ARABIC_FONT")):
+        print("  ⏭️  خطّ Kawkab Mono غير مورَّد — @font-face غير محقون (سقوط رشيق مقصود؛ L0 يضمن الوصل).")
+        return
+    css = _readtext(CSS)
+    # الخطّ مورَّد ⇒ يجب أن يكون الحقن زمن البناء وصل CSS المشحون: @font-face + data:font/woff2 + العائلة.
+    assert "@font-face" in css and "data:font/woff2" in css and "Kawkab Mono" in css, \
+        "الخطّ مورَّد لكن @font-face/data:font/woff2 غائب عن CSS المشحون (فشل الحقن زمن البناء؟)"
+
+
 @check("product.json المبنيّ: عربيّ افتراضيّ (defaultLocale=ar)")
 def _built_locale():
     pj = os.path.join(APP, "product.json")
