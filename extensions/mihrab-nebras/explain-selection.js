@@ -9,8 +9,8 @@ const path = require("path");
 // معرّف لغة ص وامتدادها (يطابق sad-lang + mihrab-welcome).
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
-// صنف المهمّة (يطابق TaskKind في العقد).
-const TASK_EXPLAIN = "اشرح";
+// صنف المهمّة من مصدر الحقيقة المولَّد (يعكس TaskKind في @nebras/protocol).
+const { TASK_EXPLAIN } = require("./contract/protocol-contract.generated.js");
 
 const COPY = {
   noEditor: "لا يوجد محرّر نشط — افتح ملفّ ص أوّلًا.",

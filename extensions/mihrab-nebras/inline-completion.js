@@ -10,8 +10,8 @@ const vscode = require("vscode");
 
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
-// صنف مهمّة الإكمال (طبقة خفيفة). ليست في SHIPPED_TASKS الحاليّة — تُشحَن خادميًّا لاحقًا.
-const TASK_COMPLETE = "أكمل";
+// صنف مهمّة الإكمال من مصدر الحقيقة المولَّد (طبقة خفيفة — تُشحَن خادميًّا لاحقًا).
+const { TASK_COMPLETE } = require("./contract/protocol-contract.generated.js");
 
 const CFG_SECTION = "mihrab.nebras";
 const CFG_INLINE = "inlineCompletion";

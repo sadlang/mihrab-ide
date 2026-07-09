@@ -5,19 +5,21 @@
 // يدعم: طلب/ردّ (client→server)، إشعارات بثّ (server→client TaskProgress)، وطلبات
 // خادم→عميل (RequestPermission بمعرّفات سالبة) نردّ عليها بموافقة/رفض.
 //
-// لا سلاسل حرفيّة منطقيّة: أسماء الطرائق/الترويسات ثوابت مسمّاة (عقد السلك مصدر حقيقته
-// nebras-protocol؛ نعيد إعلانه هنا لأنّ الامتداد CommonJS خارج شجرة بناء TypeScript).
+// لا سلاسل حرفيّة منطقيّة: ثوابت عقد السلك (الترويسات/الرموز/الحدود) تُستورَد من مصدر
+// الحقيقة المولَّد `contract/protocol-contract.generated.js` (يعكس @nebras/protocol).
 
-const HEADER_SEP = "\r\n\r\n";
-const CONTENT_LENGTH = "Content-Length";
+const {
+  HEADER_SEP,
+  CONTENT_LENGTH,
+  MAX_FRAME_BYTES,
+  JSONRPC_VERSION,
+  JSONRPC_METHOD_NOT_FOUND,
+  JSONRPC_INTERNAL_ERROR,
+} = require("./contract/protocol-contract.generated.js");
+
+// مشتقّات/ثوابت محلّيّة غير عقديّة (خاصّة بتطبيق العميل).
 const CONTENT_LENGTH_RE = new RegExp(`${CONTENT_LENGTH}:\\s*(\\d+)`, "i");
-// سقف حجم الإطار الواحد (بايت) — حماية ذاكرة من طول ضخم (يطابق MAX_FRAME_BYTES في الخادم).
-const MAX_FRAME_BYTES = 8 * 1024 * 1024;
-const JSONRPC_VERSION = "2.0";
 const ENC = "utf8";
-// رموز أخطاء JSON-RPC القياسيّة (تطابق ErrorCode في @nebras/protocol) — لا أرقام سحريّة.
-const JSONRPC_METHOD_NOT_FOUND = -32601;
-const JSONRPC_INTERNAL_ERROR = -32603;
 // معرّف حارس يُعاد عند طلب على عميل مُغلَق (الوعد يُرفَض فورًا، لا يُوجَّه — قيمة لا تصطدم بمعرّفات حيّة).
 const DISPOSED_SENTINEL_ID = -1;
 

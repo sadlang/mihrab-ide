@@ -13,11 +13,12 @@ const crypto = require("crypto");
 
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
-const TASK_EXPLAIN = "اشرح";
-// أدوار المحادثة — تعكس ROLE_USER/ROLE_ASSISTANT في @nebras/protocol (مصدر الحقيقة)؛ تُعاد
-// إعلانها هنا لأنّ الامتداد CommonJS خارج شجرة بناء TypeScript (كنمط أسماء الطرائق في rpc-client).
-const ROLE_USER = "مستخدم";
-const ROLE_ASSISTANT = "مساعد";
+// عقد السلك (صنف المهمّة + الأدوار) من مصدر الحقيقة المولَّد (يعكس @nebras/protocol).
+const {
+  TASK_EXPLAIN,
+  ROLE_USER,
+  ROLE_ASSISTANT,
+} = require("./contract/protocol-contract.generated.js");
 // سقف أدوار المحادثة المحفوظة محلّيًّا (الخادم يقصّها لنافذته أيضًا؛ نحدّ نموّ الذاكرة هنا كذلك).
 const MAX_LOCAL_HISTORY = 40;
 
