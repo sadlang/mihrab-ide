@@ -14,19 +14,19 @@ const fs = require("fs");
 const path = require("path");
 const { RpcClient } = require("./rpc-client.js");
 
-// ── عقد السلك (يعكس @nebras/protocol) — الامتداد CommonJS خارج شجرة بناء TypeScript ──
-const PROTOCOL_VERSION = "0.1.0";
-const METHOD_INITIALIZE = "nebras/initialize";
-const METHOD_TASK = "nebras/task";
-const METHOD_TASK_PROGRESS = "nebras/taskProgress";
-const METHOD_REQUEST_PERMISSION = "nebras/requestPermission";
-const METHOD_CANCEL = "nebras/cancel";
-const METHOD_SHUTDOWN = "nebras/shutdown";
-
-// وسائط تشغيل الخادم المرجعيّ (يطابق CLI: `nebras خادم --نقل stdio`).
-const SERVE_COMMAND = "خادم";
-const TRANSPORT_FLAG = "--نقل";
-const TRANSPORT_STDIO = "stdio";
+// ── عقد السلك — يُستورَد من مصدر الحقيقة المولَّد (يعكس @nebras/protocol) ──
+const {
+  PROTOCOL_VERSION,
+  METHOD_INITIALIZE,
+  METHOD_TASK,
+  METHOD_TASK_PROGRESS,
+  METHOD_REQUEST_PERMISSION,
+  METHOD_CANCEL,
+  METHOD_SHUTDOWN,
+  SERVE_COMMAND,
+  TRANSPORT_FLAG,
+  TRANSPORT_STDIO,
+} = require("./contract/protocol-contract.generated.js");
 
 // مجلّد الخادم المدمج (يُحقَن وقت البناء إن توفّر) ونقطة الدخول.
 const BUNDLED_SERVER_DIR = "server";

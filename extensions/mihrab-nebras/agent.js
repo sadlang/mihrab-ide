@@ -11,13 +11,13 @@ const path = require("path");
 // معرّف لغة ص وامتدادها (يطابق explain-selection + sad-lang).
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
-// صنف المهمّة (يطابق TaskKind «وكيل» في العقد).
-const TASK_AGENT = "وكيل";
-
-// وسوم حصيلة الخطوة (تعكس OUTCOME_* في @nebras/protocol — الامتداد CommonJS خارج شجرة TS).
-const OUTCOME_APPLIED = "طُبِّق";
-const OUTCOME_DENIED = "مرفوض";
-const OUTCOME_PENDING = "معلّق";
+// عقد السلك (صنف المهمّة + وسوم الحصيلة) من مصدر الحقيقة المولَّد (يعكس @nebras/protocol).
+const {
+  TASK_AGENT,
+  OUTCOME_APPLIED,
+  OUTCOME_DENIED,
+  OUTCOME_PENDING,
+} = require("./contract/protocol-contract.generated.js");
 /** أيقونة لكلّ حصيلة (بصريّة سريعة في القناة). */
 const OUTCOME_ICON = {
   [OUTCOME_APPLIED]: "✓",

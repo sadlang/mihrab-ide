@@ -19,6 +19,17 @@ echo
 "$PY" "$HERE/bundle/check_injected.py" || rc=1
 echo
 
+# ── نِبراس: حارس تطابق عقد السلك (المصدر ⇄ المولَّد) + اختبار وحدة RPC ──
+NEBRAS="$HERE/../extensions/mihrab-nebras"
+"$PY" "$NEBRAS/contract/gen_contract.py" --check || rc=1
+echo
+if command -v node >/dev/null 2>&1; then
+  ( cd "$NEBRAS" && node --test ) || rc=1
+else
+  echo "⚠️ node غير متوفّر — تخطّي اختبار وحدة نِبراس"
+fi
+echo
+
 echo "─── L3 (وقتيّ، يدويّ): أطلق النسخة ثمّ شغّل ───"
 echo "  Mihrab.exe --remote-debugging-port=9222 --remote-allow-origins=* \\"
 echo "    tests/runtime/fixtures/rtl_fixture.sad"

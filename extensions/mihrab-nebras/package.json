@@ -9,6 +9,11 @@
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Machine Learning"],
   "main": "./extension.js",
+  "scripts": {
+    "test": "node --test",
+    "gen:contract": "python contract/gen_contract.py",
+    "check:contract": "python contract/gen_contract.py --check"
+  },
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:sad"
