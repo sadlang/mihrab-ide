@@ -710,6 +710,33 @@ def _lang_identity():
         "لم يُعثَر على أيّ تصريح SAD_LANG_ID/SAD_EXT في المرايا — تحقّق من بنية الامتدادات"
 
 
+@check("مقتطفات ص [SAD-03]: معلَنة ↔ ملفّ موجود ↔ JSONC صالح ↔ رأس مولَّد (لا تحرير يدويّ)")
+def _sad_snippets():
+    ext = os.path.join(ROOT, "extensions", "sad-lang")
+    if not os.path.isdir(ext):
+        return  # لا إضافة لغة ص في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    decls = pkg.get("contributes", {}).get("snippets", [])
+    assert decls, "لا contributes.snippets في sad-lang — المقتطفات [SAD-03] غير مسجّلة"
+    for d in decls:
+        assert d.get("language") == "sad", f"مقتطف بلغة غير sad: {d.get('language')}"
+        rel = d.get("path")
+        assert rel, "إعلان مقتطفات بلا path"
+        p = os.path.join(ext, *rel.lstrip("./").split("/"))
+        assert os.path.isfile(p), f"ملفّ مقتطفات معلَن مفقود: {rel}"
+        raw = _read(p)
+        # رأس «مولَّد» (تعليق JSONC) — حارس ضدّ التحرير اليدويّ (المصدر gen_snippets.py في مستودع اللغة).
+        assert "gen_snippets.py" in raw and "لا تُحرِّره" in raw, \
+            f"ملفّ المقتطفات {rel} بلا رأس مولَّد — قد يكون حُرِّر يدويًّا (يجب توليده من language-truth)"
+        # JSONC صالح: نجرّد أسطر التعليقات // ثمّ نحلّل، ونتأكّد أنّ كلّ مقتطف يحمل prefix + body.
+        body = "".join(ln for ln in raw.splitlines(keepends=True) if not ln.lstrip().startswith("//"))
+        data = json.loads(body)
+        assert data, "ملفّ المقتطفات فارغ (لا مقتطفات مولَّدة)"
+        for key, snip in data.items():
+            assert isinstance(snip, dict) and snip.get("prefix") and snip.get("body"), \
+                f"مقتطف «{key}» بلا prefix/body صالح"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
