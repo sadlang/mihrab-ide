@@ -8,13 +8,14 @@ const assert = require("node:assert/strict");
 const Module = require("node:module");
 
 // ── بدائل متحكَّم بها ──
-const S = { collections: [], warnings: [], infos: [] };
+const S = { collections: [], warnings: [], infos: [], fakeExt: undefined };
 const CP = { calls: [], stdout: "", err: null, spawnErr: null };
 
 function resetState() {
   S.collections = [];
   S.warnings = [];
   S.infos = [];
+  S.fakeExt = undefined; // امتداد sad-lang الوهميّ (getExtension) — تضبطه اختبارات التنحّي.
   CP.calls = [];
   CP.stdout = "";
   CP.err = null;
@@ -47,6 +48,12 @@ const vscodeStub = {
         set(uri, diags) {
           this.items.set(uri.fsPath, diags);
         },
+        delete(uri) {
+          this.items.delete(uri.fsPath);
+        },
+        clear() {
+          this.items.clear();
+        },
         dispose() {
           this.disposed = true;
         },
@@ -61,6 +68,12 @@ const vscodeStub = {
     },
     showInformationMessage(m) {
       S.infos.push(m);
+    },
+  },
+  // بديل vscode.extensions: يُرجع امتداد sad-lang الوهميّ (لاختبار تنحّي الجسر لخادم LSP).
+  extensions: {
+    getExtension(_id) {
+      return S.fakeExt;
     },
   },
 };
@@ -95,7 +108,7 @@ Module._load = function (request, ...rest) {
   return _origLoad.call(this, request, ...rest);
 };
 
-const { SadDiagnostics, mapCheckOutput, conciseMessage, COPY } = require("./diagnostics.js");
+const { SadDiagnostics, mapCheckOutput, conciseMessage, lspOwnsDiagnostics, COPY } = require("./diagnostics.js");
 
 // مستند ص وهميّ.
 function fakeDoc(fsPath) {
@@ -306,4 +319,52 @@ test("dispose: يفكّك المجموعة ويمنع الفحص اللاحق", 
   await d.checkNow(fakeDoc("f.ص")); // بعد dispose: يخرج مبكّرًا بلا تشغيل الأداة
   assert.equal(lastCollection().items.has("f.ص"), false);
   assert.equal(CP.calls.length, 0, "لا يُشغَّل sad-check بعد dispose");
+});
+
+// ─────────── تنحّي الجسر لخادم ص LSP [تكامل SAD-01/02] ───────────
+
+/** يضبط امتداد sad-lang وهميًّا بحالة API معطاة. */
+function setFakeSadLang({ isActive = true, isDiagnosticsActive = true } = {}) {
+  S.fakeExt = { isActive, exports: { isDiagnosticsActive: () => isDiagnosticsActive } };
+}
+
+test("lspOwnsDiagnostics: غياب الامتداد ⇒ false (الجسر يعمل، تدهور رشيق)", () => {
+  resetState(); // S.fakeExt = undefined
+  assert.equal(lspOwnsDiagnostics(), false);
+});
+
+test("lspOwnsDiagnostics: امتداد نشط + isDiagnosticsActive()===true ⇒ true", () => {
+  resetState();
+  setFakeSadLang({ isActive: true, isDiagnosticsActive: true });
+  assert.equal(lspOwnsDiagnostics(), true);
+});
+
+test("lspOwnsDiagnostics: امتداد غير نشط أو API يُرجع false ⇒ false", () => {
+  resetState();
+  setFakeSadLang({ isActive: false, isDiagnosticsActive: true });
+  assert.equal(lspOwnsDiagnostics(), false, "غير نشط");
+  setFakeSadLang({ isActive: true, isDiagnosticsActive: false });
+  assert.equal(lspOwnsDiagnostics(), false, "API يُرجع false");
+});
+
+test("_runCheck يتنحّى: خادم LSP يملك التشخيص ⇒ لا sad-check + مسح المجموعة", async () => {
+  resetState();
+  setFakeSadLang({ isActive: true, isDiagnosticsActive: true });
+  CP.stdout = checkJson("f.ص", [{ severity: "error", code: "SYN001", line: 1, column: 1, messageAr: "خطأ" }]);
+  const d = new SadDiagnostics(fakeCtx, sadPred);
+  const doc = fakeDoc("f.ص");
+  await d.checkNow(doc);
+  assert.equal(CP.calls.length, 0, "لم يُشغَّل sad-check (الجسر تنحّى)");
+  assert.equal(lastCollection().items.has("f.ص"), false, "مُسِحت مجموعة الجسر");
+  assert.ok(S.infos.includes(COPY.lspOwns), "أُعلِم المستخدم بالتنحّي (أمر يدويّ)");
+  d.dispose();
+});
+
+test("_runCheck لا يتنحّى: لا خادم LSP ⇒ sad-check يعمل كالمعتاد", async () => {
+  resetState(); // لا امتداد sad-lang
+  CP.stdout = checkJson("f.ص", [{ severity: "error", code: "SYN001", line: 1, column: 1, messageAr: "خطأ" }]);
+  const d = new SadDiagnostics(fakeCtx, sadPred);
+  await d.checkNow(fakeDoc("f.ص"));
+  assert.equal(CP.calls.length, 1, "شُغِّل sad-check (لا خادم LSP مالك)");
+  d.dispose();
 });

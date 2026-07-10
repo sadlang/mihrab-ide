@@ -172,6 +172,9 @@ SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
 SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check.exe}"
 # [SAD-04] مصدر أداة البناء المدمجة (أمر «ابنِ» عبر sad-build). نفس اصطلاح sad-run/sad-check.
 SAD_BUILD_SRC="${MIHRAB_SAD_BUILD:-$ROOT/../sad-engines-dev/sad-build.exe}"
+# [SAD-01] مصدر خادم ص اللغويّ المدمج (LSP: تشخيص/إكمال/تحويم/تعريف). نفس اصطلاح الأدوات؛
+# يُحزَم في bin/ داخل نسخة sad-lang المُجهَّزة (لا mihrab-welcome — العميل يسكن في sad-lang).
+SAD_LSP_SRC="${MIHRAB_SAD_LSP:-$ROOT/../sad-engines-dev/sad-lsp.exe}"
 # [AR-02] مصدر خطّ ص العربيّ المحزوم (Kawkab Mono، OFL). يُستهلَك مرّتين: (١) media/ لوحة الترحيب
 # (AR-01 تُضمّنه data:URI)، (٢) @font-face وثيقة الـworkbench (تجهيز أدناه). MIHRAB_ARABIC_FONT أو الافتراضيّ.
 ARABIC_FONT_SRC="${MIHRAB_ARABIC_FONT:-$ROOT/patches/fonts/kawkab-mono.woff2}"
@@ -212,6 +215,25 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
     cp -f "$ARABIC_FONT_SRC" "$WELCOME_MEDIA/kawkab-mono.woff2"
     log "حُزِم الخطّ العربيّ في لوحة الترحيب: media/kawkab-mono.woff2 من $ARABIC_FONT_SRC"
   fi
+fi
+
+# ── (ز-2ب-3) [SAD-01] حزم خادم ص اللغويّ المدمج: احقن sad-lsp.exe في bin/ داخل نسخة sad-lang
+#         المُجهَّزة كي يعمل الذكاء اللغويّ (تشخيص/إكمال/تحويم/تعريف) فورًا دون تثبيت. **سقوط رشيق
+#         لا قاتل**: غياب الثنائيّ ⇒ العميل يسقط إلى PATH ويعرض تلميح تثبيت (LSP تحسينيّ لا شرط صحّة).
+if [[ -d "$STAGE_EXT/sad-lang" ]]; then
+  SADLANG_BIN="$STAGE_EXT/sad-lang/bin"
+  # نظّف أيّ bin/ منسوخ من الشجرة المصدريّة (قد يوجد على جهاز مطوّر رغم تجاهله في git):
+  # لا نشحن إلّا الثنائيّ من المصدر المعتمَد، أو لا شيء — فلا نسخة بائتة تُشحن صامتًا.
+  rm -rf "$SADLANG_BIN"
+  mkdir -p "$SADLANG_BIN"
+  if [[ -f "$SAD_LSP_SRC" ]]; then
+    cp -f "$SAD_LSP_SRC" "$SADLANG_BIN/sad-lsp.exe"
+    log "حُزِم خادم ص اللغويّ المدمج: sad-lsp.exe ($(du -h "$SADLANG_BIN/sad-lsp.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_LSP_SRC"
+  else
+    log "⚠️ لا sad-lsp.exe في $SAD_LSP_SRC — الذكاء اللغويّ يسقط إلى PATH. اضبط MIHRAB_SAD_LSP للحزم."
+  fi
+  # لا تشحن دليلًا فارغًا إن غاب الخادم (يُبقي السلوك كما لو لم يُنشأ bin/).
+  rmdir "$SADLANG_BIN" 2>/dev/null || true
 fi
 
 # جهّز رُقَع النواة + أصولها (تُطبَّق داخل build.sh المنبع بعد cd vscode، فتنجو من reset).
