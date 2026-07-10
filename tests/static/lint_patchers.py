@@ -707,7 +707,7 @@ def _lang_identity():
 
     mirrors = [
         os.path.join(ROOT, "extensions", "mihrab-nebras", n)
-        for n in ("chat.js", "agent.js", "explain-selection.js", "inline-completion.js")
+        for n in ("chat.js", "agent.js", "explain-selection.js", "inline-completion.js", "fix-diagnostic.js")
     ] + [os.path.join(ROOT, "extensions", "mihrab-welcome", "extension.js")]
     id_re = re.compile(r'const\s+SAD_LANG_ID\s*=\s*"([^"]*)"')
     ext_re = re.compile(r'const\s+SAD_EXT\s*=\s*"([^"]*)"')

@@ -70,33 +70,8 @@ function makeAgentCommand(proc, channel, getConfig) {
       return;
     }
     const doc = editor.document;
-    if (doc.languageId !== SAD_LANG_ID && !doc.fileName.endsWith(SAD_EXT)) {
-      vscode.window.showWarningMessage(COPY.notSadFile);
-      return;
-    }
-    if (doc.isUntitled || doc.uri.scheme !== "file") {
-      vscode.window.showWarningMessage(COPY.notOnDisk);
-      return;
-    }
-    // الوكيل يعمل على القرص (يقرأ/يكتب): تعديلاتٌ غير محفوظة ⇒ يعمل على نسخةٍ قديمة وقد يدوسها.
-    // اعرِض حفظًا صريحًا قبل المتابعة (fail-safe: أيّ إغلاقٍ للحوار ⇒ إلغاء).
-    if (doc.isDirty) {
-      const choice = await vscode.window.showWarningMessage(
-        COPY.dirtyTitle,
-        { modal: true, detail: COPY.dirtyDetail },
-        COPY.dirtySave,
-      );
-      if (choice !== COPY.dirtySave) return;
-      if (!(await doc.save())) {
-        vscode.window.showWarningMessage(COPY.saveFailed);
-        return;
-      }
-    }
-    if (!proc.isReady()) {
-      vscode.window.showWarningMessage(COPY.notReady);
-      void proc.start(); // حاول الإقلاع دون حجب.
-      return;
-    }
+    // الوكيل يعمل على القرص (يقرأ/يكتب): تحقّق ملفّ ص محفوظ + حفظ المتّسخ + جاهزيّة الخادم.
+    if (!(await ensureDocReadyForAgent(proc, doc))) return;
 
     // اطلب الهدف الذي يقود الحلقة (تعليمة «وكيل» إلزاميّة — يفرضها الخادم أيضًا).
     const goal = await vscode.window.showInputBox({
@@ -106,60 +81,110 @@ function makeAgentCommand(proc, channel, getConfig) {
     });
     if (goal === undefined || !goal.trim()) return; // ألغى المستخدم أو هدفٌ فارغ ⇒ لا شيء.
 
-    const cfg = getConfig();
-    const params = {
-      kind: TASK_AGENT,
-      target: doc.fileName,
-      instruction: goal,
-      permission: cfg.permissionMode,
-      locale: cfg.locale,
-    };
-
-    channel.clear();
-    channel.append(COPY.header(path.basename(doc.fileName), goal.trim()));
-    channel.show(true);
-
-    // يُدرَج رأس «الجواب» مرّةً واحدةً عند أوّل قطعة جوابٍ (بعد الخطوات، فالبثّ مُبوَّب للجواب النهائيّ).
-    let answerStarted = false;
-
-    await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: COPY.progress, cancellable: true },
-      async (_progress, token) => {
-        let cancelled = false;
-        try {
-          await runWithCancel(
-            proc,
-            params,
-            (delta) => {
-              // بعد الإلغاء لا تكتب شيئًا (الخادم قد يُكمِل الدورة الجارية قبل أن يُسقِطها): وإلّا
-              // يظهر «## الجواب» وقطعٌ إضافيّة بعد سطر «(أُلغيت المهمّة.)».
-              if (cancelled) return;
-              if (!answerStarted) {
-                channel.append(COPY.answerHeader);
-                answerStarted = true;
-              }
-              channel.append(delta);
-            },
-            (step) => {
-              if (cancelled) return; // لا تبثّ خطوةً بعد الإلغاء (تتوقّف القناة فورًا).
-              channel.append(formatStep(step));
-            },
-            token,
-            () => {
-              cancelled = true;
-            },
-          );
-          // نجاح: الخادم يبثّ الخطوات ثمّ الجواب ويعيد نتيجةً. الفشل يصل كرفض (JsonRpcError) لا كـresult،
-          // فيُعالَج في catch (لا فرع ok===false — ميتٌ بحكم عقد الخادم).
-          // إن حُسِم الوعد بنجاحٍ ثمّ وصل الإلغاء في النافذة الدقيقة بعده، اطبع سطر الإلغاء (لا «تمّ»).
-          channel.append(cancelled ? COPY.cancelled : COPY.done);
-        } catch (err) {
-          if (cancelled) channel.append(COPY.cancelled);
-          else channel.append(COPY.failed(String(err && err.message ? err.message : err)));
-        }
-      },
-    );
+    await runAgentTask(proc, channel, getConfig, doc, goal.trim());
   };
+}
+
+/**
+ * يجهّز مستند ص لتشغيل الوكيل (يشاركه أمر الوكيل و«أصلِح بنِبراس»): يتحقّق أنّه ملفّ ص محفوظ،
+ * يعرض حفظًا صريحًا إن كان متّسخًا (الوكيل يعمل على القرص)، ويتأكّد من جاهزيّة الخادم. يُرجع true
+ * إن جاز المتابعة، وإلّا false (مع تبليغ المستخدم). fail-safe: أيّ إلغاء ⇒ false.
+ * @param {import('./nebras-process.js').NebrasProcess} proc
+ * @param {vscode.TextDocument} doc
+ */
+async function ensureDocReadyForAgent(proc, doc) {
+  if (doc.languageId !== SAD_LANG_ID && !doc.fileName.endsWith(SAD_EXT)) {
+    vscode.window.showWarningMessage(COPY.notSadFile);
+    return false;
+  }
+  if (doc.isUntitled || doc.uri.scheme !== "file") {
+    vscode.window.showWarningMessage(COPY.notOnDisk);
+    return false;
+  }
+  if (doc.isDirty) {
+    const choice = await vscode.window.showWarningMessage(
+      COPY.dirtyTitle,
+      { modal: true, detail: COPY.dirtyDetail },
+      COPY.dirtySave,
+    );
+    if (choice !== COPY.dirtySave) return false;
+    if (!(await doc.save())) {
+      vscode.window.showWarningMessage(COPY.saveFailed);
+      return false;
+    }
+  }
+  if (!proc.isReady()) {
+    vscode.window.showWarningMessage(COPY.notReady);
+    void proc.start(); // حاول الإقلاع دون حجب.
+    return false;
+  }
+  return true;
+}
+
+/**
+ * نواة تشغيل مهمّة «وكيل» على مستندٍ بتعليمةٍ معطاة (يتشاركها أمر «وكيل» و«أصلِح بنِبراس»): يبني
+ * المعاملات، يبثّ الخطوات ثمّ الجواب إلى القناة، ويدعم الإلغاء. لا يتحقّق من الجاهزيّة (يفعله
+ * ensureDocReadyForAgent قبله). كلّ نصّ ظاهر ثابت مسمّى.
+ * @param {import('./nebras-process.js').NebrasProcess} proc
+ * @param {vscode.OutputChannel} channel
+ * @param {() => {permissionMode: string, locale: string}} getConfig
+ * @param {vscode.TextDocument} doc
+ * @param {string} instruction تعليمة الهدف (هدف المستخدم أو تعليمة الإصلاح المبنيّة من التشخيص)
+ */
+async function runAgentTask(proc, channel, getConfig, doc, instruction) {
+  const cfg = getConfig();
+  const params = {
+    kind: TASK_AGENT,
+    target: doc.fileName,
+    instruction,
+    permission: cfg.permissionMode,
+    locale: cfg.locale,
+  };
+
+  channel.clear();
+  channel.append(COPY.header(path.basename(doc.fileName), instruction));
+  channel.show(true);
+
+  // يُدرَج رأس «الجواب» مرّةً واحدةً عند أوّل قطعة جوابٍ (بعد الخطوات، فالبثّ مُبوَّب للجواب النهائيّ).
+  let answerStarted = false;
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: COPY.progress, cancellable: true },
+    async (_progress, token) => {
+      let cancelled = false;
+      try {
+        await runWithCancel(
+          proc,
+          params,
+          (delta) => {
+            // بعد الإلغاء لا تكتب شيئًا (الخادم قد يُكمِل الدورة الجارية قبل أن يُسقِطها): وإلّا
+            // يظهر «## الجواب» وقطعٌ إضافيّة بعد سطر «(أُلغيت المهمّة.)».
+            if (cancelled) return;
+            if (!answerStarted) {
+              channel.append(COPY.answerHeader);
+              answerStarted = true;
+            }
+            channel.append(delta);
+          },
+          (step) => {
+            if (cancelled) return; // لا تبثّ خطوةً بعد الإلغاء (تتوقّف القناة فورًا).
+            channel.append(formatStep(step));
+          },
+          token,
+          () => {
+            cancelled = true;
+          },
+        );
+        // نجاح: الخادم يبثّ الخطوات ثمّ الجواب ويعيد نتيجةً. الفشل يصل كرفض (JsonRpcError) لا كـresult،
+        // فيُعالَج في catch (لا فرع ok===false — ميتٌ بحكم عقد الخادم).
+        // إن حُسِم الوعد بنجاحٍ ثمّ وصل الإلغاء في النافذة الدقيقة بعده، اطبع سطر الإلغاء (لا «تمّ»).
+        channel.append(cancelled ? COPY.cancelled : COPY.done);
+      } catch (err) {
+        if (cancelled) channel.append(COPY.cancelled);
+        else channel.append(COPY.failed(String(err && err.message ? err.message : err)));
+      }
+    },
+  );
 }
 
 /**
@@ -190,4 +215,4 @@ async function runWithCancel(proc, params, onDelta, onToolStep, token, onCancel)
   }
 }
 
-module.exports = { makeAgentCommand, formatStep, COPY };
+module.exports = { makeAgentCommand, runAgentTask, ensureDocReadyForAgent, formatStep, COPY };

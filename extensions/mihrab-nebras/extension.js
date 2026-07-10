@@ -16,6 +16,7 @@ const { makeExplainCommand } = require("./explain-selection.js");
 const { makeAgentCommand } = require("./agent.js");
 const { registerChat } = require("./chat.js");
 const { registerInlineCompletion } = require("./inline-completion.js");
+const { registerFixDiagnostic } = require("./fix-diagnostic.js");
 
 // معرّفات الأوامر (مصدر حقيقة واحد يطابق package.json).
 const CMD_EXPLAIN = "mihrab.nebras.explainSelection";
@@ -107,6 +108,10 @@ function activate(context) {
       vscode.window.showInformationMessage(next ? COPY.inlineOn : COPY.inlineOff);
     }),
   );
+
+  // «أصلِح بنِبراس» [SAD-11]: إجراء كودٍ سريع على التشخيصات يشغّل الحلقة الوكيليّة بسياق الخطأ
+  // (يشارك قناة الوكيل وتحضيره). يربط تشخيصات المحرّر بحلقة الإصلاح.
+  registerFixDiagnostic(context, proc, agentChannel, getConfig);
 
   // الدردشة (لوحة webview) تُفتح كسولًا عبر أمرها (registerChat.open) — لا تهيئة عند التنشيط.
   // الإكمال السطريّ (مطفأ افتراضًا؛ يُفعَّل بالإعداد).
