@@ -840,6 +840,13 @@ def _sad_lsp_ext():
     assert "SEMANTIC_TOKEN_TYPES" in proto and '"decorator"' in proto, \
         "lsp-protocol.js لا يحوي مفتاح الرموز الدلاليّة SEMANTIC_TOKEN_TYPES [SAD-07]"
 
+    # (٧ب) أحرف تحفيز الإكمال ممرَّرة للمزوّد: بعد إصلاح wordPattern تُحفَّز أحرفُ الكلمة تلقائيًّا، لكنّ
+    #      أحرف التحفيز (. : ( ،) ليست أحرف كلمة فلا يُحفَّز الإكمال بعدها إلّا بتمريرها. ثابت مسمّى.
+    assert "COMPLETION_TRIGGER_CHARACTERS" in proto, \
+        "lsp-protocol.js لا يعرّف COMPLETION_TRIGGER_CHARACTERS — لا أحرف تحفيز للإكمال [SAD-01]"
+    assert _re.search(r"\.\.\.COMPLETION_TRIGGER_CHARACTERS", js), \
+        "extension.js لا يمرّر أحرف التحفيز لمزوّد الإكمال — لا إكمال تلقائيّ بعد . : ( ، [SAD-01]"
+
     # (٨) مزامنة كاملة (Full) لا تزايديّة: didChange يرسل النصّ الكامل (تفادي حساب إزاحات UTF-16).
     #     نتحقّق من غياب حساب إزاحات تزايديّة عبر تأكيد إرسال contentChanges بنصّ كامل.
     assert "contentChanges" in js and _re.search(r"contentChanges:\s*\[\{\s*text:", js), \
@@ -865,6 +872,47 @@ def _sad_lsp_ext():
     props = (contrib.get("configuration", {}) or {}).get("properties", {})
     assert "sad.lsp.serverPath" in props and "sad.lsp.trace" in props, \
         "إعدادات sad.lsp.serverPath/sad.lsp.trace غير معلَنة في المانيفست [SAD-01]"
+
+
+# ───────────── L0-19: wordPattern لغة ص عربيّ-الوعي (مانع انحدار الإكمال التلقائيّ) ─────────────
+@check("إعداد لغة ص: wordPattern يطابق العربيّة (كائن براية u عند \\p{}) — لا انحدار إكمال تلقائيّ")
+def _sad_word_pattern():
+    ext = os.path.join(ROOT, "extensions", "sad-lang")
+    if not os.path.isdir(ext):
+        return  # لا إضافة لغة ص في هذا الفرع — تخطٍّ
+    cfg_path = os.path.join(ext, "language-configuration.json")
+    assert os.path.isfile(cfg_path), "language-configuration.json مفقود في sad-lang"
+    # تحميله يفحص صحّة JSON ضمنًا (هذا الملفّ خارج نطاق حارس _json_valid). [تدقيق Amelia]
+    cfg = json.load(open(cfg_path, encoding="utf-8"))
+    wp = cfg.get("wordPattern")
+    assert wp is not None, \
+        "wordPattern غير معرَّف — لن يُكتشف المُدخَل العربيّ ككلمة فلا يُحفَّز الإكمال التلقائيّ"
+    # الجذر: VS Code يجمّع wordPattern النصّيّة بـnew RegExp(s, "") بلا راية ⇒ \p{L} يُعامَل حرفيًّا
+    #        فلا يطابق العربيّة. الحلّ: صيغة الكائن {pattern, flags:"u"} كي تُمرَّر الراية.
+    if isinstance(wp, str):
+        assert "\\p{" not in wp and "\\P{" not in wp, (
+            "wordPattern صيغة نصّيّة تحوي \\p{...} — تُجمَّع بلا راية u فتُعامَل حرفيًّا ولا تطابق "
+            "العربيّة (انحدار الإكمال التلقائيّ). استعمل صيغة الكائن {pattern, flags:'u'}")
+        return
+    assert isinstance(wp, dict) and isinstance(wp.get("pattern"), str), \
+        "wordPattern كائن بلا حقل pattern نصّيّ"
+    flags = wp.get("flags", "")
+    assert isinstance(flags, str), "wordPattern.flags ليس نصًّا"
+    if "\\p{" in wp["pattern"] or "\\P{" in wp["pattern"]:
+        assert "u" in flags, (
+            "wordPattern يستعمل \\p{...} دون راية u — بلا u تُعامَل حرفيًّا ولا تطابق العربيّة "
+            "(انحدار الإكمال التلقائيّ). أضِف flags:'u'")
+    # تعزيز سلوكيّ إن توفّر node: النمط يطابق عيّنة عربيّة «فيب» كاملةً فعليًّا. [تدقيق Amelia]
+    node = shutil.which("node")
+    if node:
+        sample = "فيب"  # «فيب»
+        script = (
+            "const w=%s;const re=new RegExp(w.pattern,w.flags||'');const s=%s;"
+            "const m=s.match(re);process.exit(m&&m[0]===s?0:3);"
+        ) % (json.dumps(wp), json.dumps(sample))
+        r = subprocess.run([node, "-e", script], capture_output=True, text=True)
+        assert r.returncode == 0, \
+            "wordPattern لا يطابق عيّنة عربيّة «فيب» كاملةً في Node — انحدار الإكمال التلقائيّ"
 
 
 # ───────────── L0-18: امتداد نِبراس (أوامر ↔ تسجيل موزّع + «أصلِح بنِبراس» SAD-11) ─────────────
@@ -927,6 +975,18 @@ def _nebras_ext():
         "extension.js لا يستدعي registerFixDiagnostic(...) — «أصلِح بنِبراس» غير موصول [SAD-11]"
     assert "mihrab.nebras.fixDiagnostic" in manifest_cmds, \
         "أمر mihrab.nebras.fixDiagnostic غير معلَن في مانيفست نِبراس [SAD-11]"
+
+    # (٥) cwd الخادم = جذر مساحة العمل: الخادم يشتقّ workspaceRoot من process.cwd()، فلا بدّ أن يُمرَّر
+    #     cwd (من resolveWorkspaceCwd) إلى cp.spawn — وإلّا يرث مجلّد إطلاق المحرّر فتُرفَض ملفّات المشروع
+    #     بـ«المسار خارج مجلّد العمل». حذف الوصلة انحدار صامت (لا اختبار وحدة يمسّ خيارات spawn). [تدقيق Amelia]
+    proc_js = _read(os.path.join(ext, "nebras-process.js"))
+    assert "resolveWorkspaceCwd" in proc_js and _re.search(r"const\s+cwd\s*=\s*resolveWorkspaceCwd\(", proc_js), \
+        "nebras-process.js لا يحسب cwd من resolveWorkspaceCwd — جذر عمل الوكيل سيكون مجلّد إطلاق المحرّر"
+    assert _re.search(r"cp\.spawn\([^;]*?\bcwd\b", proc_js, _re.S), \
+        "nebras-process.js لا يمرّر cwd إلى cp.spawn — الوكيل سيرفض ملفّات المشروع «خارج مجلّد العمل»"
+    # عند تغيّر مجلّد العمل أثناء الجلسة: إعادة تشغيل كي لا يبقى الخادم بـcwd بائت. [تدقيق Amelia — فجوة (ج)]
+    assert "onDidChangeWorkspaceFolders" in ext_js and "restartIfWorkspaceChanged" in ext_js, \
+        "extension.js لا يعيد تشغيل نِبراس عند تغيّر مجلّد العمل (onDidChangeWorkspaceFolders/restartIfWorkspaceChanged) — cwd بائت"
 
 
 # ───────────────────────── المشغّل ─────────────────────────
