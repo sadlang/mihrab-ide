@@ -10,11 +10,15 @@
 const vscode = require("vscode");
 const { runAgentTask, ensureDocReadyForAgent } = require("./agent.js");
 
-// معرّف لغة ص (يطابق بقيّة الامتداد) واسم أمر الإصلاح ونوع الإجراء.
+// معرّف لغة ص (يطابق بقيّة الامتداد) واسم أمر الإصلاح ونوع الإجراء ومخطَّط الملفّ.
 const SAD_LANG_ID = "sad";
+const FILE_SCHEME = "file";
 const FIX_COMMAND = "mihrab.nebras.fixDiagnostic";
 // محدِّد المستندات لمزوّد الإجراءات (ملفّات ص على القرص).
-const SAD_SELECTOR = { language: SAD_LANG_ID, scheme: "file" };
+const SAD_SELECTOR = { language: SAD_LANG_ID, scheme: FILE_SCHEME };
+// بادئة مصدر تشخيصات ص (جميعها تبدأ بـ«ص»: «ص» جسر SAD-02، «ص-تحليل»/«ص-محلل» خادم LSP). نرشّح
+// بها كي لا يظهر «أصلِح بنِبراس» فوق تشخيص أجنبيّ (مدقّق إملاء…) لا معنى لإصلاحه بأكواد ص. [تدقيق كليّ #6]
+const SAD_DIAGNOSTIC_SOURCE_PREFIX = "ص";
 // حدّ طول مقتطف رسالة التشخيص في عنوان الإجراء (كي لا يطول المصباح).
 const MAX_TITLE_MSG = 60;
 // شدّات التشخيص القابلة للإصلاح: أخطاء وتحذيرات فقط (لا معلومات/تلميحات — ليست أعطالًا). [مراجعة Amelia م4]
@@ -53,6 +57,8 @@ class NebrasFixCodeActionProvider {
     const diagnostics = (context && Array.isArray(context.diagnostics)) ? context.diagnostics : [];
     const actions = [];
     for (const d of diagnostics) {
+      // اقصُر على تشخيصات ص (مصدرها يبدأ بـ«ص») كي لا نصلح خطأ امتدادٍ أجنبيّ بأكواد ص. [تدقيق كليّ #6]
+      if (d.source !== undefined && !String(d.source).startsWith(SAD_DIAGNOSTIC_SOURCE_PREFIX)) continue;
       // اقصُر على الأخطاء/التحذيرات (لا معلومات/تلميحات). [مراجعة Amelia م4]
       if (d.severity !== undefined && !FIXABLE_SEVERITIES.includes(d.severity)) continue;
       const short = shortMessage(d.message);

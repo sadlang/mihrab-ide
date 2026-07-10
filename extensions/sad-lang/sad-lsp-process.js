@@ -150,6 +150,33 @@ class SadLspProcess {
     return this._rpc.request(method, params);
   }
 
+  /**
+   * كـrequest لكن بمهلة تُلغي الطلب المعلّق عند انقضائها (فلا يتراكم في _pending على خادمٍ عالِق).
+   * تُستعمَل في مزوّدات الميزات (إكمال/تحويم/تعريف/تلوين). [تدقيق كليّ #4]
+   */
+  requestWithTimeout(method, params, ms) {
+    if (!this._rpc || !this._ready) {
+      return Promise.reject(new Error("خادم ص LSP غير جاهز"));
+    }
+    const rpc = this._rpc;
+    const { id, promise } = rpc.requestWithId(method, params);
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => {
+        rpc.cancelPending(id, "انتهت مهلة الطلب"); // يحذف المدخل ويرفض الوعد أدناه.
+      }, ms);
+      promise.then(
+        (v) => {
+          clearTimeout(t);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(t);
+          reject(e);
+        },
+      );
+    });
+  }
+
   /** يرسل إشعارًا للخادم (يُتجاهَل بصمت إن لم يكن جاهزًا). */
   notify(method, params) {
     if (this._rpc && this._ready) this._rpc.notify(method, params);
