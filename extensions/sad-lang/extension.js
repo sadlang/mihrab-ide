@@ -18,6 +18,9 @@ const {
   M_COMPLETION,
   M_HOVER,
   M_DEFINITION,
+  M_SEMANTIC_TOKENS_FULL,
+  SEMANTIC_TOKEN_TYPES,
+  SEMANTIC_TOKEN_MODIFIERS,
   M_PUBLISH_DIAGNOSTICS,
   SEVERITY_ERROR,
   SEVERITY_WARNING,
@@ -178,6 +181,29 @@ function toCompletionItems(result) {
 }
 
 /**
+ * vscode.SemanticTokens من نتيجة LSP semanticTokens/full [SAD-07]. ترميز البيانات في LSP (خماسيّات
+ * نسبيّة: [ΔسطR، Δعمود، طول، نوع، معدّلات]) **مطابق** لترميز VS Code ⇒ تمرير مباشر لمصفوفة الأعداد.
+ * يُرجع undefined عند غياب البيانات. resultId (إن وُجد) يُمرَّر لدعم التحديثات المتزايدة مستقبلًا.
+ */
+function toSemanticTokens(result) {
+  if (!result || !Array.isArray(result.data)) return undefined;
+  return new vscode.SemanticTokens(new Uint32Array(result.data), result.resultId);
+}
+
+/**
+ * هل يطابق مفتاح الرموز الدلاليّة (legend) الذي يعلنه الخادم مفتاحَنا الثابت **ترتيبًا**؟ فهارس
+ * البيانات تشير إلى المفتاح، فأيّ تباعد ترتيب ⇒ تلوين خاطئ. عند عدم التطابق نمتنع عن التلوين
+ * الدلاليّ (نتركه لإبراز TextMate) بدل تلوين مضلِّل. [SAD-07، خطر مراجعة]
+ */
+function serverLegendMatches(caps) {
+  const legend = caps && caps.semanticTokensProvider && caps.semanticTokensProvider.legend;
+  if (!legend || !Array.isArray(legend.tokenTypes) || !Array.isArray(legend.tokenModifiers)) return false;
+  const sameOrder = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+  return sameOrder(legend.tokenTypes, SEMANTIC_TOKEN_TYPES) &&
+    sameOrder(legend.tokenModifiers, SEMANTIC_TOKEN_MODIFIERS);
+}
+
+/**
  * منسّق مزامنة المستند: يرسل didOpen/didChange(Full)/didSave/didClose لمستندات ص فقط.
  * يتتبّع المستندات المفتوحة كي يُعيد فتحها بعد إعادة تشغيل الخادم.
  */
@@ -275,9 +301,19 @@ function activate(context) {
     }),
   );
 
-  // عند جاهزيّة الخادم (أوّل مرّة أو بعد إعادة تشغيل): أعِد فتح مستندات ص المفتوحة لإعادة المزامنة.
+  // مُصدِر تغيّر الرموز الدلاليّة: يُطلَق عند جاهزيّة الخادم كي تُعيد VS Code طلب التلوين لمستندات
+  // مفتوحة لم تُحرَّر بعد. بدونه، أوّل طلب تلوين (عند الفتح البارد) يقع قبل جاهزيّة الخادم فيُرجع
+  // undefined فتُكاش VS Code «لا رموز» ولا تُعيد الطلب حتى أوّل تعديل ⇒ لا تلوين دلاليّ على الفتح. [SAD-07]
+  const semanticTokensChanged = new vscode.EventEmitter();
+  context.subscriptions.push(semanticTokensChanged);
+
+  // عند جاهزيّة الخادم (أوّل مرّة أو بعد إعادة تشغيل): أعِد فتح مستندات ص المفتوحة لإعادة المزامنة،
+  // وحفّز إعادة طلب التلوين الدلاليّ (المزوّد يُسحب بمبادرة VS Code لا بفعل المستخدم).
   proc.onReadyChanged((ready) => {
-    if (ready) sync.reopenAll();
+    if (ready) {
+      sync.reopenAll();
+      semanticTokensChanged.fire();
+    }
   });
 
   // مزامنة المستند (مستندات ص فقط).
@@ -348,6 +384,38 @@ function activate(context) {
     }),
   );
 
+  // ── تلوين دلاليّ (semantic tokens) [SAD-07] ──
+  // يُلوّن حسب الدور الحقيقيّ (أنواع/دوالّ/معاملات/أوسمة تعداد/كلمات مفتاحية) عبر الخادم، فوق إبراز
+  // TextMate الساكن. المفتاح (legend) ثابت يطابق الخادم؛ حارس المطابقة (serverLegendMatches) يمنع
+  // التلوين حين يختلف ترتيب الخادم (تلوين خاطئ) ⇒ سقوط رشيق إلى TextMate. سمتا محراب تعرّفان
+  // semanticTokenColors أصلًا فتُلوَّن الرموز بلا تعديل سمة.
+  const semanticLegend = new vscode.SemanticTokensLegend(SEMANTIC_TOKEN_TYPES, SEMANTIC_TOKEN_MODIFIERS);
+  context.subscriptions.push(
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      SAD_SELECTOR,
+      {
+        // يُخبِر VS Code أنّ التلوين قد تغيّر (عند جاهزيّة الخادم) فتُعيد طلبه. [SAD-07، S1]
+        onDidChangeSemanticTokens: semanticTokensChanged.event,
+        async provideDocumentSemanticTokens(doc, token) {
+          if (!hasCap("semanticTokensProvider") || !serverLegendMatches(proc.serverCapabilities)) {
+            return undefined;
+          }
+          try {
+            const result = await withTimeout(
+              proc.request(M_SEMANTIC_TOKENS_FULL, { textDocument: { uri: doc.uri.toString() } }),
+              REQUEST_TIMEOUT_MS,
+            );
+            if (token.isCancellationRequested) return undefined;
+            return toSemanticTokens(result);
+          } catch {
+            return undefined;
+          }
+        },
+      },
+      semanticLegend,
+    ),
+  );
+
   // أمر إعادة تشغيل الخادم.
   context.subscriptions.push(
     vscode.commands.registerCommand(RESTART_COMMAND, async () => {
@@ -380,6 +448,8 @@ module.exports = {
   toHoverContents,
   toDefinitionLocations,
   toCompletionItems,
+  toSemanticTokens,
+  serverLegendMatches,
   DocumentSync,
   SAD_LANGUAGE_ID,
   RESTART_COMMAND,

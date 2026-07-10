@@ -19,6 +19,23 @@ const M_DID_CLOSE = "textDocument/didClose";
 const M_COMPLETION = "textDocument/completion";
 const M_HOVER = "textDocument/hover";
 const M_DEFINITION = "textDocument/definition";
+const M_SEMANTIC_TOKENS_FULL = "textDocument/semanticTokens/full";
+
+// ── مفتاح الرموز الدلاليّة (legend) [SAD-07]: يجب أن يطابق ترتيبه **حرفيًّا** ما يعلنه الخادم
+//    (tools/lsp: json_rpc_transport.cpp)، لأنّ فهارس tokenType/tokenModifiers في بيانات الرموز
+//    هي فهارس داخل هذا المفتاح. أيّ تباعد ترتيب ⇒ تلوين خاطئ. حارس مطابقة زمن التشغيل يحمي منه.
+const SEMANTIC_TOKEN_TYPES = [
+  "namespace", "type", "class", "enum", "interface",
+  "struct", "typeParameter", "parameter", "variable",
+  "property", "enumMember", "event", "function",
+  "method", "macro", "keyword", "modifier", "comment",
+  "string", "number", "regexp", "operator", "decorator",
+];
+const SEMANTIC_TOKEN_MODIFIERS = [
+  "declaration", "definition", "readonly", "static",
+  "deprecated", "abstract", "async", "modification",
+  "documentation", "defaultLibrary",
+];
 
 // ── إشعار بثّ خادم→عميل ──
 const M_PUBLISH_DIAGNOSTICS = "textDocument/publishDiagnostics";
@@ -53,6 +70,9 @@ module.exports = {
   M_COMPLETION,
   M_HOVER,
   M_DEFINITION,
+  M_SEMANTIC_TOKENS_FULL,
+  SEMANTIC_TOKEN_TYPES,
+  SEMANTIC_TOKEN_MODIFIERS,
   M_PUBLISH_DIAGNOSTICS,
   M_REGISTER_CAPABILITY,
   M_UNREGISTER_CAPABILITY,
