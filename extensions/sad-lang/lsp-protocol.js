@@ -21,6 +21,11 @@ const M_HOVER = "textDocument/hover";
 const M_DEFINITION = "textDocument/definition";
 const M_SEMANTIC_TOKENS_FULL = "textDocument/semanticTokens/full";
 
+// أحرف تحفيز الإكمال: تطابق ما يعلنه خادم ص (lsp_engine_core.cpp: completion_provider.trigger_characters).
+// أحرف الكلمة (حروف/أرقام/_) تُحفَّز تلقائيًّا عبر quickSuggestions (بشرط wordPattern عربيّ-الوعي)؛ أمّا
+// هذه فليست أحرف كلمة فلا يُحفَّز الإكمال بعدها إلّا بتمريرها للمزوّد. "،" = الفاصلة العربيّة (،).
+const COMPLETION_TRIGGER_CHARACTERS = [".", ":", "(", "،"];
+
 // ── مفتاح الرموز الدلاليّة (legend) [SAD-07]: يجب أن يطابق ترتيبه **حرفيًّا** ما يعلنه الخادم
 //    (tools/lsp: json_rpc_transport.cpp)، لأنّ فهارس tokenType/tokenModifiers في بيانات الرموز
 //    هي فهارس داخل هذا المفتاح. أيّ تباعد ترتيب ⇒ تلوين خاطئ. حارس مطابقة زمن التشغيل يحمي منه.
@@ -71,6 +76,7 @@ module.exports = {
   M_HOVER,
   M_DEFINITION,
   M_SEMANTIC_TOKENS_FULL,
+  COMPLETION_TRIGGER_CHARACTERS,
   SEMANTIC_TOKEN_TYPES,
   SEMANTIC_TOKEN_MODIFIERS,
   M_PUBLISH_DIAGNOSTICS,

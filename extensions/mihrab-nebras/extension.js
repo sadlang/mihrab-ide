@@ -109,6 +109,14 @@ function activate(context) {
     }),
   );
 
+  // تغيّر مجلّد مساحة العمل أثناء الجلسة: الخادم مقيم بجذر cwd أُقلع به؛ إن تبدّل الجذر يعيد التشغيل
+  // كي يشتقّ workspaceRoot الجديد (وإلّا يرفض ملفّات المجلّد الجديد بـ«خارج مجلّد العمل»).
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      if (proc) void proc.restartIfWorkspaceChanged();
+    }),
+  );
+
   // «أصلِح بنِبراس» [SAD-11]: إجراء كودٍ سريع على التشخيصات يشغّل الحلقة الوكيليّة بسياق الخطأ
   // (يشارك قناة الوكيل وتحضيره). يربط تشخيصات المحرّر بحلقة الإصلاح.
   registerFixDiagnostic(context, proc, agentChannel, getConfig);
