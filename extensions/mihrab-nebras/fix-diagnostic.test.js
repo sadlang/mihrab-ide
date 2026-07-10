@@ -104,6 +104,18 @@ test("provideCodeActions: يتخطّى المعلومات/التلميحات (خ
   assert.equal(actions.length, 1, "إجراء واحد للخطأ فقط");
 });
 
+test("provideCodeActions: يرشّح بمصدر ص (يتخطّى الأجنبيّ) [تدقيق كليّ #6]", () => {
+  const provider = new fix.NebrasFixCodeActionProvider();
+  const lsp = { ...diag("خطأ ص"), source: "ص-تحليل" }; // مصدر LSP (يبدأ بـ«ص»)
+  const bridge = { ...diag("خطأ جسر"), source: "ص" }; // جسر SAD-02
+  const foreign = { ...diag("إملاء"), source: "cSpell" }; // امتداد أجنبيّ
+  const nosrc = diag("بلا مصدر"); // بلا مصدر ⇒ لا يُرشَّح خارجًا (مقبول)
+  const actions = provider.provideCodeActions({ uri: {} }, {}, { diagnostics: [lsp, bridge, foreign, nosrc] });
+  const titles = actions.map((a) => a.title);
+  assert.equal(actions.length, 3, "ص-تحليل + ص + بلا-مصدر (لا الأجنبيّ)");
+  assert.ok(!titles.some((t) => t.includes("إملاء")), "التشخيص الأجنبيّ مُستبعَد");
+});
+
 test("provideCodeActions: رسالة فارغة ⇒ عنوان عامّ لا نقطتين متدلّيتين [Amelia م2]", () => {
   const provider = new fix.NebrasFixCodeActionProvider();
   const actions = provider.provideCodeActions({ uri: {} }, {}, { diagnostics: [diag("", { line: 0 })] });
