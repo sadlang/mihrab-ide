@@ -56,6 +56,18 @@ class CompletionItem {
     this.kind = kind;
   }
 }
+class SemanticTokens {
+  constructor(data, resultId) {
+    this.data = data;
+    this.resultId = resultId;
+  }
+}
+class SemanticTokensLegend {
+  constructor(tokenTypes, tokenModifiers) {
+    this.tokenTypes = tokenTypes;
+    this.tokenModifiers = tokenModifiers;
+  }
+}
 const vscodeStub = {
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
   Range,
@@ -65,6 +77,8 @@ const vscodeStub = {
   MarkdownString,
   Hover,
   CompletionItem,
+  SemanticTokens,
+  SemanticTokensLegend,
   Uri: { parse: (s) => ({ toString: () => s, _s: s }) },
 };
 
@@ -262,4 +276,54 @@ test("DocumentSync: يتجاهل غير ملفّات ص (لغة أخرى أو م
   sync.open(fakeDoc("file:///a.txt", "x", { languageId: "plaintext" }));
   sync.open(fakeDoc("untitled:Untitled-1", "x", { scheme: "untitled" }));
   assert.equal(proc.sent.length, 0, "لا مزامنة لغير ملفّات ص المحفوظة");
+});
+
+// ═══════════════════════════ الرموز الدلاليّة [SAD-07] ═══════════════════════════
+
+test("toSemanticTokens: بيانات LSP تُمرَّر مباشرةً كـUint32Array (نفس الترميز)", () => {
+  // «دالة»(نوع 15=keyword) ثمّ «رئيسية»(نوع 12=function): خماسيّان نسبيّان.
+  const st = ext.toSemanticTokens({ data: [0, 0, 4, 15, 0, 0, 5, 6, 12, 0], resultId: "1" });
+  assert.ok(st.data instanceof Uint32Array);
+  assert.equal(st.data.length, 10);
+  assert.equal(st.data[3], 15); // نوع الرمز الأوّل = keyword
+  assert.equal(st.data[8], 12); // نوع الرمز الثاني = function
+  assert.equal(st.resultId, "1");
+});
+
+test("toSemanticTokens: غياب البيانات ⇒ undefined", () => {
+  assert.equal(ext.toSemanticTokens(null), undefined);
+  assert.equal(ext.toSemanticTokens({}), undefined);
+  assert.equal(ext.toSemanticTokens({ data: "ليست مصفوفة" }), undefined);
+});
+
+test("toSemanticTokens: data فارغة [] ⇒ رموز فارغة صالحة (لا undefined)", () => {
+  const st = ext.toSemanticTokens({ data: [] });
+  assert.ok(st.data instanceof Uint32Array);
+  assert.equal(st.data.length, 0);
+});
+
+test("serverLegendMatches: مطابقة الترتيب ⇒ true، اختلاف الترتيب/غياب ⇒ false", () => {
+  const good = {
+    semanticTokensProvider: {
+      legend: {
+        tokenTypes: ["namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"],
+        tokenModifiers: ["declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"],
+      },
+    },
+  };
+  assert.equal(ext.serverLegendMatches(good), true);
+
+  // ترتيب مختلف (type وnamespace متبادلان) ⇒ false (يمنع التلوين الخاطئ).
+  const reordered = JSON.parse(JSON.stringify(good));
+  [reordered.semanticTokensProvider.legend.tokenTypes[0], reordered.semanticTokensProvider.legend.tokenTypes[1]] =
+    [reordered.semanticTokensProvider.legend.tokenTypes[1], reordered.semanticTokensProvider.legend.tokenTypes[0]];
+  assert.equal(ext.serverLegendMatches(reordered), false);
+
+  // اختلاف المعدّلات وحدها (طول مختلف) ⇒ false.
+  const badMods = JSON.parse(JSON.stringify(good));
+  badMods.semanticTokensProvider.legend.tokenModifiers.pop();
+  assert.equal(ext.serverLegendMatches(badMods), false, "طول معدّلات مختلف");
+
+  assert.equal(ext.serverLegendMatches(null), false);
+  assert.equal(ext.serverLegendMatches({ semanticTokensProvider: {} }), false);
 });
