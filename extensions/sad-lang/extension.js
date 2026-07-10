@@ -19,6 +19,7 @@ const {
   M_HOVER,
   M_DEFINITION,
   M_SEMANTIC_TOKENS_FULL,
+  COMPLETION_TRIGGER_CHARACTERS,
   SEMANTIC_TOKEN_TYPES,
   SEMANTIC_TOKEN_MODIFIERS,
   M_PUBLISH_DIAGNOSTICS,
@@ -347,7 +348,7 @@ function activate(context) {
           return undefined;
         }
       },
-    }),
+    }, ...COMPLETION_TRIGGER_CHARACTERS),
 
     vscode.languages.registerHoverProvider(SAD_SELECTOR, {
       async provideHover(doc, position, token) {

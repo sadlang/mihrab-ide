@@ -8,13 +8,15 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("node:module");
 
+// بديل vscode قابل للتعديل: تُضبَط workspaceFolders لكلّ اختبار (resolveWorkspaceCwd يقرؤها داخل الدالّة).
+const vscodeStub = { workspace: { workspaceFolders: undefined, getConfiguration: () => ({ get: () => "" }) } };
 const _origLoad = Module._load;
 Module._load = function (request, ...rest) {
-  if (request === "vscode") return {};
+  if (request === "vscode") return vscodeStub;
   return _origLoad.call(this, request, ...rest);
 };
 
-const { isCompatible } = require("./nebras-process.js");
+const { isCompatible, resolveWorkspaceCwd } = require("./nebras-process.js");
 const { PROTOCOL_VERSION } = require("./contract/protocol-contract.generated.js");
 
 test("مصافحة حقيقيّة: نسخة البروتوكول متوافقة مع نفسها", () => {
@@ -54,4 +56,35 @@ test("نسخة غير صالحة/فارغة ⇒ غير متوافق (fail-safe �
   assert.equal(isCompatible("سين", "0.1.0"), false);
   assert.equal(isCompatible("0.1.0", "x.y.z"), false);
   assert.equal(isCompatible("-1.0", "0.1.0"), false);
+});
+
+// ── جذر مساحة العمل = cwd الخادم (منع «المسار خارج مجلّد العمل» عند إطلاق المحرّر من مجلّد آخر) ──
+
+test("resolveWorkspaceCwd: مجلّد مشروع مفتوح ⇒ مساره المطلق (يصير cwd الخادم = workspaceRoot)", () => {
+  vscodeStub.workspace.workspaceFolders = [
+    { uri: { scheme: "file", fsPath: "C:\\s_lang\\تقارير_مؤقته\\محراب\\تجربة_L3" } },
+  ];
+  assert.equal(resolveWorkspaceCwd(), "C:\\s_lang\\تقارير_مؤقته\\محراب\\تجربة_L3");
+});
+
+test("resolveWorkspaceCwd: أوّل مجلّد في مساحة متعدّدة الجذور", () => {
+  vscodeStub.workspace.workspaceFolders = [
+    { uri: { scheme: "file", fsPath: "/proj/أ" } },
+    { uri: { scheme: "file", fsPath: "/proj/ب" } },
+  ];
+  assert.equal(resolveWorkspaceCwd(), "/proj/أ");
+});
+
+test("resolveWorkspaceCwd: لا مجلّد مفتوح (ملفّ مفرد) ⇒ undefined (يرث cwd الافتراضيّ)", () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  assert.equal(resolveWorkspaceCwd(), undefined);
+  vscodeStub.workspace.workspaceFolders = [];
+  assert.equal(resolveWorkspaceCwd(), undefined);
+});
+
+test("resolveWorkspaceCwd: مجلّد بمخطّط غير قرصيّ (لا file) ⇒ undefined (لا cwd زائف)", () => {
+  vscodeStub.workspace.workspaceFolders = [
+    { uri: { scheme: "vscode-remote", fsPath: "/remote/x" } },
+  ];
+  assert.equal(resolveWorkspaceCwd(), undefined);
 });

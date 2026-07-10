@@ -48,6 +48,8 @@ const STABLE_UPTIME_MS = 15_000;
 const INIT_TIMEOUT_MS = 20_000;
 
 const CFG_SECTION = "mihrab.nebras";
+// مخطَّط ملفّات القرص (لتمييز مجلّد مساحة عمل حقيقيّ عن مخطّطات افتراضيّة).
+const FILE_SCHEME = "file";
 
 /** نصوص الحالة (عربيّة-أوّلًا = بيانات واجهة، استثناء مقبول لقاعدة السلاسل الحرفيّة). */
 const COPY = {
@@ -79,6 +81,23 @@ function isCompatible(clientVersion, serverVersion) {
   if (c[0] !== s[0]) return false;
   if (s[0] === 0) return c[1] === s[1];
   return true;
+}
+
+/**
+ * جذر مساحة العمل (أوّل مجلّد مشروع مفتوح على القرص) — يصير **cwd** لعمليّة الخادم، والخادم يشتقّ منه
+ * `workspaceRoot` عبر `process.cwd()` (حدّ الوكيل الصلب: يرفض أيّ هدف خارجه). بدونه يرث الخادم cwd
+ * مضيف الامتدادات (مجلّد إطلاق المحرّر) فتُرفَض ملفّات المشروع بـ«المسار خارج مجلّد العمل». يُرجع
+ * undefined إن لم يُفتَح مجلّد (ملفّ مفرد) ⇒ يرث الخادم cwd الافتراضيّ. ⚠️ الملفّ المفرد حالة تدهور
+ * معروفة (لا مسار سليم): «أصلِح بنِبراس» يبقى مرفوضًا حتى يُفتَح المجلّد الحاوي [دَين موثَّق].
+ * ⚠️ مساحة متعدّدة الجذور: يُعاد الأوّل فقط، فملفّ جذرٍ آخر يُرفَض [دَين موثَّق].
+ * @returns {string | undefined}
+ */
+function resolveWorkspaceCwd() {
+  const folders = vscode.workspace.workspaceFolders;
+  if (folders && folders.length > 0 && folders[0].uri.scheme === FILE_SCHEME) {
+    return folders[0].uri.fsPath;
+  }
+  return undefined;
 }
 
 /** يقرأ إعدادات نِبراس الحاليّة. */
@@ -145,10 +164,23 @@ class NebrasProcess {
     this._pendingRestart = null;
     /** @type {string | null} رسالة خطأ spawn (ENOENT) — تُقرأ في catch المصافحة */
     this._spawnErrorMsg = null;
+    /** @type {string | undefined} جذر مساحة العمل الذي أُقلع به الخادم (cwd) — لكشف تبايُته عند تغيّر المجلّد */
+    this._startedCwd = undefined;
   }
 
   onReadyChanged(cb) {
     this._onReadyChanged = cb;
+  }
+
+  /**
+   * يعيد تشغيل الخادم إن تغيّر جذر مساحة العمل عمّا أُقلع به (cwd بائت ⇒ الخادم يرفض ملفّات الجذر
+   * الجديد بـ«المسار خارج مجلّد العمل»). يُستدعى من مستمع onDidChangeWorkspaceFolders. آمن قبل الإقلاع.
+   */
+  async restartIfWorkspaceChanged() {
+    if (this._disposed) return;
+    if (resolveWorkspaceCwd() !== this._startedCwd) {
+      await this.restart();
+    }
   }
 
   isReady() {
@@ -183,9 +215,16 @@ class NebrasProcess {
     if (cfg.sadRunPath) env[ENV_SAD_RUN] = cfg.sadRunPath;
     else delete env[ENV_SAD_RUN];
 
+    // cwd الخادم = جذر مساحة العمل: الخادم يشتقّ workspaceRoot منه (process.cwd())، فبدونه يرث مجلّد
+    // إطلاق المحرّر وتُرفَض ملفّات المشروع بـ«المسار خارج مجلّد العمل». undefined ⇒ يرث الافتراضيّ.
+    // نخزّنه لكشف تبايُته لاحقًا (restartIfWorkspaceChanged) عند تغيّر المجلّد أثناء الجلسة.
+    const cwd = resolveWorkspaceCwd();
+    this._startedCwd = cwd;
+
     let child;
     try {
       child = cp.spawn(cfg.nodePath, [entry, SERVE_COMMAND, TRANSPORT_FLAG, TRANSPORT_STDIO], {
+        cwd,
         env,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
@@ -439,4 +478,4 @@ class NebrasProcess {
   }
 }
 
-module.exports = { NebrasProcess, isCompatible, readConfig, COPY };
+module.exports = { NebrasProcess, isCompatible, readConfig, resolveWorkspaceCwd, COPY };
