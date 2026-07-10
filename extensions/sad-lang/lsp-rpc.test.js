@@ -180,3 +180,26 @@ test("RpcClient: طلب على عميل مُغلَق يُرفَض فورًا", a
   client.dispose();
   await assert.rejects(client.request("x", null), /مُغلَق/);
 });
+
+test("RpcClient: requestWithId يُرجع {id, promise} والمعرّف موجب متزايد [تدقيق #4]", () => {
+  const { client, writable } = makeClient();
+  const a = client.requestWithId("m", {});
+  const b = client.requestWithId("m", {});
+  assert.equal(typeof a.id, "number");
+  assert.ok(b.id > a.id, "المعرّفات متزايدة");
+  assert.equal(writable.allMessages().length, 2);
+});
+
+test("RpcClient: cancelPending يرفض الطلب المعلّق ويحذفه (لا تراكم عند المهلة) [تدقيق #4]", async () => {
+  const { client, readable } = makeClient();
+  const { id, promise } = client.requestWithId("m", {});
+  client.cancelPending(id, "مهلة");
+  await assert.rejects(promise, /مهلة/);
+  // ردّ الخادم المتأخّر لنفس المعرّف يُتجاهَل (المدخل حُذف) — لا يرمي ولا يحلّ ثانيةً.
+  assert.doesNotThrow(() => readable.feed({ jsonrpc: "2.0", id, result: { late: true } }));
+});
+
+test("RpcClient: cancelPending لمعرّف غير موجود لا يفعل شيئًا", () => {
+  const { client } = makeClient();
+  assert.doesNotThrow(() => client.cancelPending(9999, "x"));
+});

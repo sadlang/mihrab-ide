@@ -116,12 +116,21 @@ class RpcClient {
 
   /** يرسل طلبًا وينتظر الردّ. يرفض إن أُغلق العميل/مات الخادم. */
   request(method, params) {
+    return this.requestWithId(method, params).promise;
+  }
+
+  /**
+   * كـrequest لكن يُرجع {id, promise} معًا كي يستطيع المُستدعِي إلغاء الطلب عند المهلة (cancelPending)
+   * فلا يتراكم مدخلٌ في _pending إلى الأبد على خادمٍ حيٍّ عالِق. [تدقيق كليّ #4]
+   * @returns {{id: number, promise: Promise<any>}}
+   */
+  requestWithId(method, params) {
     if (this._disposed) {
-      return Promise.reject(new Error("عميل ص LSP مُغلَق"));
+      return { id: -1, promise: Promise.reject(new Error("عميل ص LSP مُغلَق")) };
     }
     const id = this._nextId++;
     const message = { jsonrpc: JSONRPC_VERSION, id, method, params };
-    return new Promise((resolve, reject) => {
+    const promise = new Promise((resolve, reject) => {
       this._pending.set(id, { resolve, reject });
       try {
         this._writable.write(encodeFrame(message));
@@ -130,6 +139,19 @@ class RpcClient {
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
+    return { id, promise };
+  }
+
+  /** يُلغي طلبًا معلّقًا (عند المهلة): يحذفه من _pending ويرفض وعده كي لا يتراكم. [تدقيق كليّ #4] */
+  cancelPending(id, reason) {
+    const pending = this._pending.get(id);
+    if (!pending) return;
+    this._pending.delete(id);
+    try {
+      pending.reject(new Error(reason || "أُلغي الطلب (مهلة)"));
+    } catch {
+      /* تجاهل */
+    }
   }
 
   /** يرسل إشعارًا (بلا معرّف، بلا انتظار ردّ). */

@@ -38,25 +38,9 @@ const CFG_SECTION = "sad.lsp";
 const DIAGNOSTICS_KEY = "diagnostics";
 // مخطَّط مستندات الملفّات (نزامن ملفّات ص المحفوظة فقط؛ untitled لا مسار له للخادم). [C9]
 const FILE_SCHEME = "file";
-// مهلة طلبات الميزات (إكمال/تحويم/تعريف): خادم حيّ عالِق لا يُعلّق المزوّد للأبد. [S5]
+// مهلة طلبات الميزات (إكمال/تحويم/تعريف/تلوين): خادم حيّ عالِق لا يُعلّق المزوّد للأبد، والطلب
+// المعلّق يُلغى فلا يتراكم في _pending (proc.requestWithTimeout ⇒ rpc.cancelPending). [S5 / تدقيق كليّ #4]
 const REQUEST_TIMEOUT_MS = 5000;
-
-/** يسابق وعدًا مقابل مهلة (يرفض عند تجاوزها) كي لا يتعلّق مزوّد الميزة على خادم عالِق. [S5] */
-function withTimeout(promise, ms) {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("انتهت مهلة الطلب")), ms);
-    promise.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
-}
 
 /** نصوص واجهة (عربيّة-أوّلًا = بيانات واجهة، استثناء مقبول لقاعدة السلاسل الحرفيّة). */
 const COPY = {
@@ -280,6 +264,11 @@ function activate(context) {
   const diagnosticsEnabled = () =>
     vscode.workspace.getConfiguration(CFG_SECTION).get(DIAGNOSTICS_KEY) !== false;
 
+  // هل بثّ الخادم تشخيصًا فعلًا هذه الدورة؟ ملكيّة التشخيص تشترطه (لا مجرّد proc.ready): خادمٌ يوفّر
+  // إكمالًا/تلوينًا لكن لا يبثّ تشخيصًا يجب ألّا يُسكِت جسر SAD-02 (وإلّا فراغ تشخيص دائم). يُصفَّر عند
+  // فقدان الجاهزيّة كي تُعاد المطالبة بالملكيّة فقط بعد بثٍّ حقيقيّ من الخادم الجديد. [تدقيق كليّ #3]
+  let hasPublished = false;
+
   // تشخيصات: publishDiagnostics → لوحة المشاكل + تموّجات سطريّة (فقط حين تكون تشخيصات LSP مفعَّلة).
   proc.onNotification(M_PUBLISH_DIAGNOSTICS, (params) => {
     if (!params || typeof params.uri !== "string") return;
@@ -288,15 +277,22 @@ function activate(context) {
       diagnostics.delete(uri); // الخادم لا يملك التشخيص الآن — لا تُصيّر بثّه.
       return;
     }
+    hasPublished = true; // بثّ حقيقيّ ⇒ يملك LSP التشخيص فعليًّا (يفعّل تنحّي SAD-02). [#3]
     const list = Array.isArray(params.diagnostics) ? params.diagnostics : [];
     diagnostics.set(uri, list.map(toVscodeDiagnostic));
   });
 
-  // عند إطفاء تشخيصات LSP أثناء الجلسة: امسح ما صيّرناه كي لا يبقى قديمًا ويتسلّم جسر SAD-02.
+  // تبديل إعداد تشخيصات LSP أثناء الجلسة: [تدقيق كليّ #2]
+  //   • إطفاء ⇒ امسح ما صيّرناه كي لا يبقى قديمًا ويتسلّم جسر SAD-02.
+  //   • تفعيل ⇒ أعِد المزامنة لتُجبِر الخادمَ على إعادة البثّ (وإلّا تبقى مجموعة LSP فارغة والجسر
+  //     يتنحّى ⇒ فراغ تشخيص حتى أوّل تحرير). reopenAll يُرسِل didOpen فيبثّ الخادم فيُرفَع hasPublished.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration(`${CFG_SECTION}.${DIAGNOSTICS_KEY}`) && !diagnosticsEnabled()) {
+      if (!e.affectsConfiguration(`${CFG_SECTION}.${DIAGNOSTICS_KEY}`)) return;
+      if (!diagnosticsEnabled()) {
         diagnostics.clear();
+      } else if (proc.ready) {
+        sync.reopenAll();
       }
     }),
   );
@@ -313,6 +309,8 @@ function activate(context) {
     if (ready) {
       sync.reopenAll();
       semanticTokensChanged.fire();
+    } else {
+      hasPublished = false; // خادمٌ جديد لم يبثّ بعد ⇒ لا يملك التشخيص حتى يبثّ فعلًا. [#3]
     }
   });
 
@@ -339,10 +337,10 @@ function activate(context) {
       async provideCompletionItems(doc, position, token) {
         if (!hasCap("completionProvider")) return undefined;
         try {
-          const result = await withTimeout(proc.request(M_COMPLETION, {
+          const result = await proc.requestWithTimeout(M_COMPLETION, {
             textDocument: { uri: doc.uri.toString() },
             position: toLspPosition(position),
-          }), REQUEST_TIMEOUT_MS);
+          }, REQUEST_TIMEOUT_MS);
           if (token.isCancellationRequested) return undefined;
           return toCompletionItems(result);
         } catch {
@@ -355,10 +353,10 @@ function activate(context) {
       async provideHover(doc, position, token) {
         if (!hasCap("hoverProvider")) return undefined;
         try {
-          const result = await withTimeout(proc.request(M_HOVER, {
+          const result = await proc.requestWithTimeout(M_HOVER, {
             textDocument: { uri: doc.uri.toString() },
             position: toLspPosition(position),
-          }), REQUEST_TIMEOUT_MS);
+          }, REQUEST_TIMEOUT_MS);
           if (token.isCancellationRequested || !result || !result.contents) return undefined;
           return new vscode.Hover(toHoverContents(result.contents), result.range ? toVscodeRange(result.range) : undefined);
         } catch {
@@ -371,10 +369,10 @@ function activate(context) {
       async provideDefinition(doc, position, token) {
         if (!hasCap("definitionProvider")) return undefined;
         try {
-          const result = await withTimeout(proc.request(M_DEFINITION, {
+          const result = await proc.requestWithTimeout(M_DEFINITION, {
             textDocument: { uri: doc.uri.toString() },
             position: toLspPosition(position),
-          }), REQUEST_TIMEOUT_MS);
+          }, REQUEST_TIMEOUT_MS);
           if (token.isCancellationRequested) return undefined;
           return toDefinitionLocations(result);
         } catch {
@@ -401,8 +399,8 @@ function activate(context) {
             return undefined;
           }
           try {
-            const result = await withTimeout(
-              proc.request(M_SEMANTIC_TOKENS_FULL, { textDocument: { uri: doc.uri.toString() } }),
+            const result = await proc.requestWithTimeout(
+              M_SEMANTIC_TOKENS_FULL, { textDocument: { uri: doc.uri.toString() } },
               REQUEST_TIMEOUT_MS,
             );
             if (token.isCancellationRequested) return undefined;
@@ -430,7 +428,9 @@ function activate(context) {
   // API عامّ للامتدادات الشقيقة: هل يملك خادمُ LSP التشخيصَ الآن؟ (مفعَّل + الخادم جاهز يبثّ فعلًا).
   // يستعمله جسر فحص-الحفظ (SAD-02 في mihrab-welcome) ليتنحّى فيتفادى ازدواج التشخيص. [تكامل SAD-01/02]
   return {
-    isDiagnosticsActive: () => diagnosticsEnabled() && proc.ready,
+    // يملك LSP التشخيصَ فقط إن كان مفعَّلًا + الخادم جاهزًا + بثّ فعلًا مرّةً هذه الدورة. اشتراط
+    // البثّ الفعليّ (لا مجرّد الجاهزيّة) يمنع فراغ تشخيص دائم مع خادمٍ لا يبثّ تشخيصًا. [تدقيق كليّ #3]
+    isDiagnosticsActive: () => diagnosticsEnabled() && proc.ready && hasPublished,
   };
 }
 

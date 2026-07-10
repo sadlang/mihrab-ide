@@ -861,10 +861,72 @@ def _sad_lsp_ext():
     for c in contrib.get("commands", []):
         assert c.get("title"), f"أمر بلا عنوان: {c.get('command')}"
 
-    # (١٠) إعدادات الخادم معلَنة (المسار الصريح + التتبّع).
+    # (١٠) إعدادات الخادم معلَنة (المسار الصريح + التتبّع + ملكيّة التشخيص).
     props = (contrib.get("configuration", {}) or {}).get("properties", {})
     assert "sad.lsp.serverPath" in props and "sad.lsp.trace" in props, \
         "إعدادات sad.lsp.serverPath/sad.lsp.trace غير معلَنة في المانيفست [SAD-01]"
+
+
+# ───────────── L0-18: امتداد نِبراس (أوامر ↔ تسجيل موزّع + «أصلِح بنِبراس» SAD-11) ─────────────
+@check("امتداد نِبراس: main يصدّر activate، كلّ أمر معلَن مُسجَّل (تسجيل موزّع)، ووصل «أصلِح بنِبراس»")
+def _nebras_ext():
+    import re as _re
+    ext = os.path.join(ROOT, "extensions", "mihrab-nebras")
+    if not os.path.isdir(ext):
+        return  # لا امتداد نِبراس في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    contrib = pkg.get("contributes", {})
+
+    # (١) نقطة الدخول main موجودة وتصدّر activate.
+    main_rel = pkg.get("main")
+    assert main_rel, "لا حقل main في امتداد نِبراس"
+    main_path = os.path.join(ext, *main_rel.lstrip("./").split("/"))
+    assert os.path.isfile(main_path), f"ملفّ main مفقود: {main_rel}"
+    ext_js = _read(main_path)
+    assert "module.exports" in ext_js and "function activate" in ext_js, \
+        "نقطة دخول نِبراس لا تصدّر activate"
+
+    # (٢) صحّة نحو JS لملفّات الامتداد إن توفّر node.
+    js_files = ["extension.js", "agent.js", "fix-diagnostic.js", "explain-selection.js",
+                "chat.js", "inline-completion.js", "nebras-process.js", "rpc-client.js"]
+    node = shutil.which("node")
+    for jf in js_files:
+        jp = os.path.join(ext, jf)
+        if node and os.path.isfile(jp):
+            r = subprocess.run([node, "--check", jp], capture_output=True, text=True)
+            assert r.returncode == 0, f"خطأ نحويّ في {jf}:\n{r.stderr.strip()}"
+
+    # (٣) كلّ أمر معلَن مُسجَّل — التسجيل **موزّع** عبر extension.js ووحدات الميزات (مثل fix-diagnostic.js
+    #     عبر registerFixDiagnostic)، فنجمع registerCommand من كلّ ملفّات JS (مع حلّ الثوابت المسمّاة).
+    manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
+    assert manifest_cmds, "لا أوامر معلَنة في امتداد نِبراس"
+    js_cmds = set()
+    for jf in js_files:
+        jp = os.path.join(ext, jf)
+        if not os.path.isfile(jp):
+            continue
+        js = _read(jp)
+        const_str = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', js))
+        for arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", js):
+            arg = arg.strip()
+            lit = _re.fullmatch(r"""["']([^"']+)["']""", arg)
+            if lit:
+                js_cmds.add(lit.group(1))
+            elif arg in const_str:
+                js_cmds.add(const_str[arg])
+    missing = manifest_cmds - js_cmds
+    assert not missing, f"أوامر معلَنة في مانيفست نِبراس بلا registerCommand في JS: {missing}"
+    for c in contrib.get("commands", []):
+        assert c.get("title"), f"أمر نِبراس بلا عنوان: {c.get('command')}"
+
+    # (٤) [SAD-11] «أصلِح بنِبراس» موصول فعلًا: extension.js يستدعي registerFixDiagnostic (وإلّا يبقى
+    #     الأمر مُسجَّلًا في وحدة غير مستدعاة ⇒ «command not found» زمن التشغيل رغم خضرة L0).
+    # نطابق **النداء** `registerFixDiagnostic(` لا مجرّد الاسم (كي لا يُرضي الحارسَ سطرُ الاستيراد
+    # وحده لو حُذف الاستدعاء الفعليّ). [تشديد مراجعة Amelia]
+    assert _re.search(r"registerFixDiagnostic\s*\(", ext_js), \
+        "extension.js لا يستدعي registerFixDiagnostic(...) — «أصلِح بنِبراس» غير موصول [SAD-11]"
+    assert "mihrab.nebras.fixDiagnostic" in manifest_cmds, \
+        "أمر mihrab.nebras.fixDiagnostic غير معلَن في مانيفست نِبراس [SAD-11]"
 
 
 # ───────────────────────── المشغّل ─────────────────────────

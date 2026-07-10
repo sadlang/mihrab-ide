@@ -11,6 +11,7 @@ const path = require("path");
 // معرّف لغة ص وامتدادها (يطابق explain-selection + sad-lang).
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
+const FILE_SCHEME = "file";
 // عقد السلك (صنف المهمّة + وسوم الحصيلة) من مصدر الحقيقة المولَّد (يعكس @nebras/protocol).
 const {
   TASK_AGENT,
@@ -97,7 +98,7 @@ async function ensureDocReadyForAgent(proc, doc) {
     vscode.window.showWarningMessage(COPY.notSadFile);
     return false;
   }
-  if (doc.isUntitled || doc.uri.scheme !== "file") {
+  if (doc.isUntitled || doc.uri.scheme !== FILE_SCHEME) {
     vscode.window.showWarningMessage(COPY.notOnDisk);
     return false;
   }
