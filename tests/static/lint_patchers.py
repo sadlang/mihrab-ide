@@ -827,9 +827,18 @@ def _sad_lsp_ext():
         assert "lspOwnsDiagnostics" in wd and "isDiagnosticsActive" in wd, \
             "جسر SAD-02 لا يتنحّى لخادم LSP (lspOwnsDiagnostics/isDiagnosticsActive) — خطر ازدواج تشخيص [تكامل SAD-01/02]"
 
-    # (٧) المزوّدات الثلاثة (إكمال/تحويم/تعريف) مسجَّلة (ميزات اليوم الأوّل).
+    # (٧) المزوّدات مسجَّلة: إكمال/تحويم/تعريف [SAD-01] + الرموز الدلاليّة [SAD-07].
     for reg in ["registerCompletionItemProvider", "registerHoverProvider", "registerDefinitionProvider"]:
         assert reg in js, f"extension.js لا يسجّل {reg} — ميزة LSP ناقصة [SAD-01]"
+    # [SAD-07] التلوين الدلاليّ: مزوّد مسجَّل + حارس مطابقة المفتاح (legend) يمنع التلوين الخاطئ +
+    #          مُصدِر تغيّر (onDidChangeSemanticTokens) كي تظهر الألوان على الفتح البارد لا بعد أوّل تعديل.
+    assert "registerDocumentSemanticTokensProvider" in js and "serverLegendMatches" in js, \
+        "extension.js لا يسجّل التلوين الدلاليّ مع حارس المفتاح (registerDocumentSemanticTokensProvider/serverLegendMatches) [SAD-07]"
+    assert "onDidChangeSemanticTokens" in js, \
+        "المزوّد الدلاليّ بلا onDidChangeSemanticTokens — لا تلوين على الفتح البارد حتى أوّل تعديل [SAD-07]"
+    proto = _read(os.path.join(ext, "lsp-protocol.js"))
+    assert "SEMANTIC_TOKEN_TYPES" in proto and '"decorator"' in proto, \
+        "lsp-protocol.js لا يحوي مفتاح الرموز الدلاليّة SEMANTIC_TOKEN_TYPES [SAD-07]"
 
     # (٨) مزامنة كاملة (Full) لا تزايديّة: didChange يرسل النصّ الكامل (تفادي حساب إزاحات UTF-16).
     #     نتحقّق من غياب حساب إزاحات تزايديّة عبر تأكيد إرسال contentChanges بنصّ كامل.
