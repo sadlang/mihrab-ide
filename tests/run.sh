@@ -24,9 +24,9 @@ NEBRAS="$HERE/../extensions/mihrab-nebras"
 "$PY" "$NEBRAS/contract/gen_contract.py" --check || rc=1
 echo
 
-# ── اختبارات وحدة الامتدادات (نِبراس: RPC/توافق · الترحيب: تحقّق الاسم) ──
+# ── اختبارات وحدة الامتدادات (نِبراس: RPC/توافق · الترحيب: تحقّق الاسم · sad-lang: نقل LSP/محوّلات) ──
 if command -v node >/dev/null 2>&1; then
-  for _ext in "$NEBRAS" "$HERE/../extensions/mihrab-welcome"; do
+  for _ext in "$NEBRAS" "$HERE/../extensions/mihrab-welcome" "$HERE/../extensions/sad-lang"; do
     ( cd "$_ext" && node --test ) || rc=1
   done
 else

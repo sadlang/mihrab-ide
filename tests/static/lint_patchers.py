@@ -756,6 +756,108 @@ def _sad_snippets():
                 f"مقتطف «{key}» بلا prefix/body صالح"
 
 
+# ───────────── L0-17: عميل ص LSP (SAD-01: خادم لغويّ محزوم في sad-lang) ─────────────
+@check("عميل ص LSP: main يصدّر activate، تنشيط onLanguage:sad، حلّ الخادم المدمج ↔ حقن build.sh، تشخيص/مزوّدات موصولة")
+def _sad_lsp_ext():
+    import re as _re
+    ext = os.path.join(ROOT, "extensions", "sad-lang")
+    if not os.path.isdir(ext):
+        return  # لا إضافة لغة ص في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    contrib = pkg.get("contributes", {})
+
+    # (١) نقطة الدخول main موجودة وتصدّر activate (وإلّا لا يُفعَّل العميل إطلاقًا).
+    main_rel = pkg.get("main")
+    assert main_rel, "لا حقل main في sad-lang — عميل LSP يحتاج نقطة دخول JS [SAD-01]"
+    main_path = os.path.join(ext, *main_rel.lstrip("./").split("/"))
+    assert os.path.isfile(main_path), f"ملفّ main مفقود: {main_rel}"
+    js = _read(main_path)
+    assert "module.exports" in js and "function activate" in js, \
+        "نقطة دخول sad-lang لا تصدّر activate"
+
+    # (٢) التنشيط عند فتح لغة ص (وإلّا لا يبدأ الخادم عند تحرير ملفّ ص).
+    assert "onLanguage:sad" in pkg.get("activationEvents", []), \
+        "activationEvents لا يحوي onLanguage:sad — الخادم لن يبدأ عند فتح ملفّ ص [SAD-01]"
+
+    # (٣) صحّة نحو JS لكلّ ملفّات العميل إن توفّر node (لا يُفشِل حين غيابه).
+    js_files = ["extension.js", "sad-lsp-process.js", "lsp-rpc.js", "lsp-protocol.js", "tool-resolve.js"]
+    node = shutil.which("node")
+    for jf in js_files:
+        jp = os.path.join(ext, jf)
+        assert os.path.isfile(jp), f"ملفّ عميل LSP مفقود: {jf}"
+        if node:
+            r = subprocess.run([node, "--check", jp], capture_output=True, text=True)
+            assert r.returncode == 0, f"خطأ نحويّ في {jf}:\n{r.stderr.strip()}"
+
+    # (٤) حلّ الخادم المدمج: ثابت مجلّد bin يطابق ما يحقنه build.sh (وإلّا L0 أخضر والحزم مكسور).
+    tool_resolve = _read(os.path.join(ext, "tool-resolve.js"))
+    assert _re.search(r'BUNDLED_BIN_DIR\s*=\s*"bin"', tool_resolve), \
+        "ثابت BUNDLED_BIN_DIR ليس \"bin\" في sad-lang/tool-resolve.js — قد يفترق عن حقن build.sh"
+    assert "resolveBundledTool" in tool_resolve and "probeTool" in tool_resolve, \
+        "sad-lang/tool-resolve.js لا يصدّر محلّل الأدوات (resolveBundledTool/probeTool)"
+    proc_js = _read(os.path.join(ext, "sad-lsp-process.js"))
+    assert 'SAD_LSP_EXE = "sad-lsp.exe"' in proc_js, \
+        "sad-lsp-process.js لا يحلّ الثنائيّ المدمج باسم sad-lsp.exe — قد يتجاهل حقن build.sh"
+
+    # (٥) البناء يحزم الخادم المدمج، وgit يتجاهله (طبقة الحزم المدمجة، نفس نمط sad-run/check/build).
+    build_sh = _read(os.path.join(ROOT, "build", "build.sh"))
+    assert "SAD_LSP_SRC" in build_sh and "sad-lsp.exe" in build_sh and "SADLANG_BIN" in build_sh, \
+        "build.sh لا يحوي كتلة حزم sad-lsp المدمجة (SAD_LSP_SRC/SADLANG_BIN/sad-lsp.exe) [SAD-01]"
+    gitignore = _read(os.path.join(ROOT, ".gitignore"))
+    assert "extensions/sad-lang/bin/" in gitignore, \
+        ".gitignore لا يتجاهل الخادم المدمج extensions/sad-lang/bin/ (خطر إيداعه) [SAD-01]"
+
+    # (٦) التشخيص موصول: publishDiagnostics → DiagnosticCollection (القيمة الأساسيّة يوم الأوّل).
+    assert "createDiagnosticCollection" in js, \
+        "extension.js لا يُنشئ DiagnosticCollection — التشخيصات لن تظهر في لوحة المشاكل [SAD-01]"
+    assert "M_PUBLISH_DIAGNOSTICS" in js, \
+        "extension.js لا يستمع لـpublishDiagnostics — لا تشخيصات حيّة من الخادم [SAD-01]"
+
+    # (٦ب) تنسيق ملكيّة التشخيص [تكامل SAD-01/02]: الخادم يملك التشخيص فيتنحّى جسر فحص-الحفظ.
+    #      يجب: (أ) إعداد sad.lsp.diagnostics معلَن، (ب) extension يصدّر isDiagnosticsActive،
+    #      (ج) جسر SAD-02 (welcome/diagnostics.js) يستعلمه ويتنحّى — وإلّا ازدواج تشخيص لنفس الخطأ.
+    props = (contrib.get("configuration", {}) or {}).get("properties", {})
+    assert "sad.lsp.diagnostics" in props, \
+        "إعداد sad.lsp.diagnostics غير معلَن — لا مفتاح لملكيّة التشخيص [تكامل SAD-01/02]"
+    assert "isDiagnosticsActive" in js, \
+        "extension.js لا يصدّر isDiagnosticsActive — جسر SAD-02 لن يعرف متى يتنحّى [تكامل SAD-01/02]"
+    welcome_diag = os.path.join(ROOT, "extensions", "mihrab-welcome", "diagnostics.js")
+    if os.path.isfile(welcome_diag):
+        wd = _read(welcome_diag)
+        assert "lspOwnsDiagnostics" in wd and "isDiagnosticsActive" in wd, \
+            "جسر SAD-02 لا يتنحّى لخادم LSP (lspOwnsDiagnostics/isDiagnosticsActive) — خطر ازدواج تشخيص [تكامل SAD-01/02]"
+
+    # (٧) المزوّدات الثلاثة (إكمال/تحويم/تعريف) مسجَّلة (ميزات اليوم الأوّل).
+    for reg in ["registerCompletionItemProvider", "registerHoverProvider", "registerDefinitionProvider"]:
+        assert reg in js, f"extension.js لا يسجّل {reg} — ميزة LSP ناقصة [SAD-01]"
+
+    # (٨) مزامنة كاملة (Full) لا تزايديّة: didChange يرسل النصّ الكامل (تفادي حساب إزاحات UTF-16).
+    #     نتحقّق من غياب حساب إزاحات تزايديّة عبر تأكيد إرسال contentChanges بنصّ كامل.
+    assert "contentChanges" in js and _re.search(r"contentChanges:\s*\[\{\s*text:", js), \
+        "مزامنة المستند ليست كاملة (contentChanges بنصّ كامل) — خطر إزاحات UTF-16 يدويّة [SAD-01]"
+
+    # (٩) كلّ أمر معلَن في المانيفست مُسجَّل فعلًا (احتواء، مع حلّ الثوابت المسمّاة).
+    manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
+    _const_str = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', js))
+    js_cmds = set()
+    for arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", js):
+        arg = arg.strip()
+        lit = _re.fullmatch(r"""["']([^"']+)["']""", arg)
+        if lit:
+            js_cmds.add(lit.group(1))
+        elif arg in _const_str:
+            js_cmds.add(_const_str[arg])
+    missing = manifest_cmds - js_cmds
+    assert not missing, f"أوامر معلَنة بلا registerCommand في sad-lang: {missing}"
+    for c in contrib.get("commands", []):
+        assert c.get("title"), f"أمر بلا عنوان: {c.get('command')}"
+
+    # (١٠) إعدادات الخادم معلَنة (المسار الصريح + التتبّع).
+    props = (contrib.get("configuration", {}) or {}).get("properties", {})
+    assert "sad.lsp.serverPath" in props and "sad.lsp.trace" in props, \
+        "إعدادات sad.lsp.serverPath/sad.lsp.trace غير معلَنة في المانيفست [SAD-01]"
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
