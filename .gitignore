@@ -11,6 +11,8 @@
 
 # سلسلة أدوات ص المدمجة (تُحقَن وقت البناء من sad-engines-dev — لا تُتعقَّب)
 /extensions/mihrab-welcome/bin/
+# [SAD-01] خادم ص اللغويّ المدمج (sad-lsp.exe يُحقَن وقت البناء في bin/ داخل sad-lang — لا يُتعقَّب)
+/extensions/sad-lang/bin/
 # [AR-01↔AR-02] خطّ media المحقون وقت البناء (كـbin/): media/ نفسه متعقَّب لوسائط الجولة،
 # لكنّ الخطّ ثنائيّ يُحقَن (يقرؤه output-panel من extensionPath/media) فيُتجاهَل كي لا يُودَع
 # لو أسقطه مطوّر هناك للتجربة المحلّيّة (يورَّد من ARABIC_FONT_SRC وقت البناء لا يُتعقَّب).

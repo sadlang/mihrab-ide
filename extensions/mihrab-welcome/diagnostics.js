@@ -19,6 +19,10 @@ const SAD_CHECK_EXE = process.platform === "win32" ? SAD_CHECK + ".exe" : SAD_CH
 const JSON_FLAG = "--json";
 // اسم مجموعة التشخيص (يظهر مصدرًا في لوحة المشاكل).
 const DIAG_COLLECTION = "ص";
+// [تكامل SAD-01/02] معرّف امتداد عميل ص LSP ودالّة API التي يُصدّرها. حين يملك خادمُ LSP التشخيصَ
+// الحيّ يتنحّى هذا الجسر (فحص الحفظ) لتفادي تشخيص مكرّر لنفس الخطأ (تموّجان + سطران في لوحة المشاكل).
+const SAD_LANG_EXT_ID = "sadlang.sad-lang";
+const LSP_DIAGNOSTICS_API = "isDiagnosticsActive";
 // تهدئة الحفظ: نؤجّل الفحص كي لا نُشغّل الأداة على كلّ حفظ متتابع سريع.
 const DEBOUNCE_MS = 400;
 // مهلة أمان للفحص (لا يعلّق المحرّر على ملفّ مرضيّ).
@@ -54,7 +58,28 @@ const COPY = {
   checkFailed: (e) => `تعذّر فحص الملفّ: ${e}`,
   noSadFile: "افتح ملفّ ص واحفظه على القرص أوّلًا كي يُفحَص.",
   clean: "لا مشكلات في هذا الملفّ.",
+  lspOwns: "خادم ص اللغويّ يوفّر التشخيصات الحيّة — فحص الحفظ متوقّف لتفادي التكرار.",
 };
+
+/**
+ * هل يملك خادمُ ص LSP التشخيصَ الآن؟ يستعلم API امتداد sad-lang المُصدَّر (isDiagnosticsActive):
+ * true ⇒ الخادم جاهز ويبثّ تشخيصات حيّة ⇒ يتنحّى هذا الجسر. غياب الامتداد/الـAPI ⇒ false (الجسر
+ * يعمل، تدهور رشيق). نقيّ إزاء الأخطاء: أيّ استثناء ⇒ false (لا نُعطّل التشخيص بسبب عطل استعلام).
+ *
+ * دَين معروف (منخفض، ذاتيّ الشفاء): الاستعلام لحظيّ عند كلّ فحص، فإن اكتُسِبت ملكيّة LSP **بعد**
+ * أن ملأ الجسرُ مجموعتَه (خادم بطيء المصافحة تجاوز تهدئة الفتح 400ms) تبقى المجموعتان مأهولتين
+ * حتّى الفحص التالي (حفظ لاحق) حين يكتشف الجسر lspOwns ويمسح. عمليًّا الخادم يجهز قبل أوّل حفظ
+ * فالفحص الأوّل يتنحّى غالبًا. الإغلاق الكامل (متابعة): مسح المجموعة عند حدث خفيف (تبديل المحرّر).
+ */
+function lspOwnsDiagnostics() {
+  try {
+    const ext = vscode.extensions.getExtension(SAD_LANG_EXT_ID);
+    const fn = ext && ext.isActive && ext.exports && ext.exports[LSP_DIAGNOSTICS_API];
+    return typeof fn === "function" && fn() === true;
+  } catch {
+    return false;
+  }
+}
 
 // ───────────────────────── منطق نقيّ (بلا vscode) ─────────────────────────
 
@@ -180,6 +205,13 @@ class SadDiagnostics {
 
   /** يشغّل sad-check --json على الملفّ ويطبّق النتيجة. interactive ⇒ يعرض رسائل للمستخدم. */
   _runCheck(document, interactive) {
+    // [تكامل SAD-01/02] إن كان خادمُ ص LSP يوفّر تشخيصات حيّة، يتنحّى الجسر: نمسح ما ضبطناه سابقًا
+    // (كي لا يبقى قديمًا بجانب تشخيص الخادم) ولا نشغّل sad-check ⇒ لا ازدواج تشخيص لنفس الخطأ.
+    if (lspOwnsDiagnostics()) {
+      this._collection.delete(document.uri);
+      if (interactive) vscode.window.showInformationMessage(COPY.lspOwns);
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       const file = document.uri.fsPath;
       // على فشل الإطلاق (ENOENT/EACCES) يُطلق execFile ردّ النداء وحدث 'error' كليهما؛ نضمن
@@ -263,4 +295,4 @@ class SadDiagnostics {
   }
 }
 
-module.exports = { SadDiagnostics, mapCheckOutput, conciseMessage, DIAG_COLLECTION, COPY };
+module.exports = { SadDiagnostics, mapCheckOutput, conciseMessage, lspOwnsDiagnostics, DIAG_COLLECTION, SAD_LANG_EXT_ID, LSP_DIAGNOSTICS_API, COPY };

@@ -2,12 +2,14 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "sad-lang",
   "displayName": "لغة ص",
-  "description": "دعم لغة ص المدمج في محراب: إبراز الصياغة وتهيئة اللغة ومقتطفات البُنى. النحو والمقتطفات مولَّدان من مصدر الحقيقة (language-truth).",
+  "description": "دعم لغة ص المدمج في محراب: إبراز الصياغة وتهيئة اللغة ومقتطفات البُنى، وذكاء لغويّ (LSP) عبر خادم ص: تشخيص وإكمال وتحويم وتمرير للتعريف. النحو والمقتطفات مولَّدان من مصدر الحقيقة (language-truth).",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
   "engines": { "vscode": "*" },
-  "categories": ["Programming Languages"],
+  "categories": ["Programming Languages", "Linters"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:sad"],
   "contributes": {
     "languages": [
       {
@@ -29,7 +31,34 @@
         "language": "sad",
         "path": "./snippets/sad.code-snippets"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "sad.lsp.restart",
+        "title": "أعِد تشغيل خادم اللغة",
+        "category": "ص"
+      }
+    ],
+    "configuration": {
+      "title": "لغة ص",
+      "properties": {
+        "sad.lsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "مسار صريح لخادم ص اللغويّ (sad-lsp). إن تُرِك فارغًا يُستعمَل الخادم المدمج مع محراب، ثمّ `sad-lsp` من مسار النظام (PATH)."
+        },
+        "sad.lsp.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "سجّل رسائل خادم ص اللغويّ (stderr والأخطاء) في قناة المخرجات «ص — خادم اللغة» للتشخيص."
+        },
+        "sad.lsp.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "يوفّر خادمُ ص اللغويّ التشخيصات الحيّة (أخطاء/تحذيرات فوريّة أثناء الكتابة). عند التفعيل يتنحّى فحصُ الحفظ في جولة الترحيب لتفادي تشخيص مكرّر؛ أطفئه لتعتمد فحص الحفظ (sad-check) بدلًا منه."
+        }
+      }
+    }
   },
   "repository": {
     "type": "git",
