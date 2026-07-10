@@ -49,6 +49,12 @@
         "title": "نِبراس: بدّل الإكمال السطريّ",
         "shortTitle": "بدّل الإكمال السطريّ",
         "category": "نِبراس"
+      },
+      {
+        "command": "mihrab.nebras.fixDiagnostic",
+        "title": "نِبراس: أصلِح التشخيص",
+        "shortTitle": "أصلِح بنِبراس",
+        "category": "نِبراس"
       }
     ],
     "menus": {
@@ -62,6 +68,12 @@
           "command": "mihrab.nebras.runAgent",
           "when": "editorLangId == sad",
           "group": "nebras@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mihrab.nebras.fixDiagnostic",
+          "when": "false"
         }
       ]
     },
