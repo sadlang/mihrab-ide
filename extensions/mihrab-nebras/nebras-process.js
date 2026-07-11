@@ -62,6 +62,7 @@ const COPY = {
   gaveUp: "توقّف خادم نِبراس بعد محاولات إعادة تشغيل متكرّرة. استعمل «نِبراس: أعِد تشغيل الخادم».",
   starting: "يُشغَّل خادم نِبراس…",
   ready: "خادم نِبراس جاهز",
+  retargeting: (root) => `يُعاد توجيه جذر عمل نِبراس إلى «${root}»…`,
 };
 
 /** تفاوض توافق الإصدار الدلاليّ (نسخة عميل من isCompatible في البروتوكول). */
@@ -166,6 +167,14 @@ class NebrasProcess {
     this._spawnErrorMsg = null;
     /** @type {string | undefined} جذر مساحة العمل الذي أُقلع به الخادم (cwd) — لكشف تبايُته عند تغيّر المجلّد */
     this._startedCwd = undefined;
+    /** @type {string | undefined} جذر توجيهٍ صريح (ملفّ مفرد/جذرٌ غير الأوّل): يغلب resolveWorkspaceCwd
+     * حتى يتغيّر مجلّد مساحة العمل (حينها تعود الجذور الرسميّة هي الحكم). يصمد عبر restart اليدويّ
+     * وإعادة التشغيل التلقائيّة بعد تعطّل (آخر نيّةٍ صريحة تبقى الحكم؛ أيّ توجيهٍ لاحق يصحّحه).
+     * [إعادة توجيه الجذر] */
+    this._cwdOverride = undefined;
+    /** @type {Promise<void> | null} وعد الإقلاع الجاري (spawn + مصافحة): يتقاسمه مستدعو start
+     * المتزامنون كي لا يعود نداءٌ ثانٍ فوريًّا قبل الجاهزيّة فيُقرأ زورًا «فشل» (retargetRoot). */
+    this._startPromise = null;
   }
 
   onReadyChanged(cb) {
@@ -175,12 +184,58 @@ class NebrasProcess {
   /**
    * يعيد تشغيل الخادم إن تغيّر جذر مساحة العمل عمّا أُقلع به (cwd بائت ⇒ الخادم يرفض ملفّات الجذر
    * الجديد بـ«المسار خارج مجلّد العمل»). يُستدعى من مستمع onDidChangeWorkspaceFolders. آمن قبل الإقلاع.
+   * تغيّر المجلّدات يُسقِط أيّ توجيه جذرٍ صريح سابق (retargetRoot) — الجذور الرسميّة تعود هي الحكم.
+   * مهمّة جارية أثناء إعادة التشغيل تُقطَع بأمان: dispose عميل RPC يرفض وعدها («انتهى خادم نِبراس»)
+   * فيبلّغ مسارُ المهمّة فشلَها للمستخدم — لا وعود معلّقة ولا بثّ يتيم (_activeTasks تُمسَح).
    */
   async restartIfWorkspaceChanged() {
     if (this._disposed) return;
+    this._cwdOverride = undefined;
     if (resolveWorkspaceCwd() !== this._startedCwd) {
       await this.restart();
     }
+  }
+
+  /**
+   * يوجّه جذر عمل الخادم إلى مجلّدٍ بعينه (المجلّد المالك للملفّ الهدف، أو مجلّد الملفّ للملفّ المفرد):
+   * الخادم أحاديّ الجذر بتصميمه (workspaceRoot = cwd)، فبدل رفض هدفٍ خارج جذره الجاري نعيد تشغيله
+   * بالجذر المطلوب — يفتح «أصلِح بنِبراس»/«وكيل» للملفّ المفرد ولجذور مساحة العمل غير الأولى.
+   * لا يفعل شيئًا إن كان الجذر الجاري هو المطلوب أصلًا. يُرجع جاهزيّة الخادم بعد التوجيه.
+   * التوجيه يُنسَخ (_cwdOverride) فيصمد عبر restart اليدويّ، ويسقط عند تغيّر مجلّدات مساحة العمل.
+   * @param {string} desiredRoot مسار مطلق لجذر العمل المطلوب
+   * @returns {Promise<boolean>} جاهزيّة الخادم بعد التوجيه
+   */
+  async retargetRoot(desiredRoot) {
+    if (this._disposed) return false;
+    if (this._startedCwd === desiredRoot && this._ready) return true;
+    if (this._startedCwd !== desiredRoot) {
+      this._log.appendLine(`[نِبراس] ${COPY.retargeting(desiredRoot)}`);
+      this._cwdOverride = desiredRoot;
+      await this.restart();
+    } else {
+      await this.start(); // الجذر صحيح لكنّ الخادم غير جاهز (متوقّف/مصافحة جارية) ⇒ إقلاع أو انتظاره.
+    }
+    // سباق التوجيهات: توجيهٌ منافس أثناء انتظارنا (retargetRoot بجذرٍ آخر من ملفٍّ ثانٍ، أو
+    // restartIfWorkspaceChanged يمسح التوجيه) قد يكون بدّل الجذر الفائز — الجاهزيّة وحدها إذًا نجاحٌ
+    // زائف لجذرٍ خاسر (الوكيل سيُرفَض «خارج مجلّد العمل»)، فنشترط أنّ الجذر المُقلَع به هو المطلوب.
+    // المقارنة حرفيّة عمدًا: تبايُنُ تمثيلٍ لنفس المجلّد (حالة أحرف على Windows) يكلّف إعادة تشغيل
+    // زائدة لا أكثر، والمصدران (fsPath/dirname من vscode) متّسقا التمثيل عمليًّا.
+    return this._ready && this._startedCwd === desiredRoot;
+  }
+
+  /**
+   * هل توجيه الجذر إلى المجلّد المعطى سيقتضي **إعادة تشغيل** الخادم (قطع مهامّه الجارية)؟
+   * يقرؤه تجهيز الوكيل (ensureDocReadyForAgent) ليستأذن المستخدم قبل قطع مهمّةٍ حيّة —
+   * مع hasActiveTasks. استعلامٌ خالص: لا يغيّر حالةً ولا يبدأ توجيهًا.
+   * @param {string} desiredRoot مسار مطلق لجذر العمل المطلوب
+   */
+  retargetNeedsRestart(desiredRoot) {
+    return !this._disposed && this._startedCwd !== desiredRoot;
+  }
+
+  /** هل ثمّة مهامّ بثّ جارية الآن؟ (إعادة التشغيل تقطعها: dispose عميل RPC يرفض وعودها.) */
+  hasActiveTasks() {
+    return this._activeTasks.size > 0;
   }
 
   isReady() {
@@ -192,9 +247,30 @@ class NebrasProcess {
     return this._caps;
   }
 
-  /** يبدأ الخادم (idempotent): إن كان حيًّا فلا شيء. يُرجع وعدًا بالجاهزيّة. */
+  /**
+   * يبدأ الخادم (idempotent): إن كان حيًّا مُصافَحًا فلا شيء، وإن كانت مصافحته جاريةً انتُظر **نفس**
+   * وعد الإقلاع (عودةٌ فوريّة هنا كانت تُقرأ زورًا «غير جاهز» في retargetRoot أثناء نافذة المصافحة).
+   * يُرجع وعدًا يُحسَم باكتمال محاولة الإقلاع (الجاهزيّة عبر isReady/onReadyChanged).
+   */
   async start() {
-    if (this._disposed || this._child) return;
+    if (this._disposed) return;
+    if (this._child) {
+      // خادم حيّ: مصافحته معلّقة ⇒ انتظرها؛ مُصافَح سلفًا (لا وعد) ⇒ لا شيء.
+      if (this._startPromise) await this._startPromise;
+      return;
+    }
+    // وعدٌ بائت (فكّك restart خادمَه أثناء مصافحته) لا يمنع إقلاعًا جديدًا — الشرط _child لا الوعد.
+    const boot = this._startImpl();
+    this._startPromise = boot;
+    try {
+      await boot;
+    } finally {
+      if (this._startPromise === boot) this._startPromise = null;
+    }
+  }
+
+  /** جسم الإقلاع الفعليّ (spawn + مصافحة Initialize) — يُستدعى حصرًا من start (يضمن عدم التوازي على _child). */
+  async _startImpl() {
     const cfg = readConfig();
     const entry = resolveServerEntry(this._context, cfg.serverPath);
     if (!entry) {
@@ -215,10 +291,11 @@ class NebrasProcess {
     if (cfg.sadRunPath) env[ENV_SAD_RUN] = cfg.sadRunPath;
     else delete env[ENV_SAD_RUN];
 
-    // cwd الخادم = جذر مساحة العمل: الخادم يشتقّ workspaceRoot منه (process.cwd())، فبدونه يرث مجلّد
-    // إطلاق المحرّر وتُرفَض ملفّات المشروع بـ«المسار خارج مجلّد العمل». undefined ⇒ يرث الافتراضيّ.
-    // نخزّنه لكشف تبايُته لاحقًا (restartIfWorkspaceChanged) عند تغيّر المجلّد أثناء الجلسة.
-    const cwd = resolveWorkspaceCwd();
+    // cwd الخادم = جذر التوجيه الصريح (retargetRoot: ملفّ مفرد/جذر غير أوّل) وإلّا جذر مساحة العمل:
+    // الخادم يشتقّ workspaceRoot منه (process.cwd())، فبدونه يرث مجلّد إطلاق المحرّر وتُرفَض ملفّات
+    // المشروع بـ«المسار خارج مجلّد العمل». undefined ⇒ يرث الافتراضيّ. نخزّنه لكشف تبايُته لاحقًا
+    // (restartIfWorkspaceChanged/retargetRoot).
+    const cwd = this._cwdOverride !== undefined ? this._cwdOverride : resolveWorkspaceCwd();
     this._startedCwd = cwd;
 
     let child;
@@ -293,6 +370,9 @@ class NebrasProcess {
         }),
         INIT_TIMEOUT_MS,
       );
+      // متابعة بائتة: restart (يدويّ/تغيّر مجلّد العمل) فكّك هذا الخادم أثناء انتظار المصافحة
+      // وربّما أقلع خادمًا جديدًا — لا تلمس حالته (وإلّا يُضبَط _ready/_caps زورًا لخادم لم يُصافَح).
+      if (this._child !== child) return;
       if (!caps || !isCompatible(PROTOCOL_VERSION, caps.protocolVersion)) {
         vscode.window.showErrorMessage(
           COPY.incompatible(PROTOCOL_VERSION, caps ? caps.protocolVersion : "?"),
@@ -315,6 +395,9 @@ class NebrasProcess {
       //  • خطأ spawn (ENOENT): اعرض رسالة Node المخصّصة، أوقف (لا إعادة تشغيل — فاشلة حتمًا).
       //  • تعطّل الخادم (فكّكه _onExit سلفًا ⇒ _child=null): إعادة التشغيل التلقائيّة تكفي، اكتفِ بالسجلّ.
       //  • فشل حقيقيّ آخر (مهلة): اعرض initFailed وأوقف.
+      //  • متابعة بائتة (خادم **جديد** حيّ حلّ محلّ هذا عبر restart أثناء المصافحة): لا حوار ولا
+      //    _stop — _stop هنا كان **يقتل الخادم الجديد** ويعرض حوارًا مضلّلًا (سباق restart×start).
+      if (this._child !== null && this._child !== child) return;
       if (this._spawnErrorMsg) {
         vscode.window.showErrorMessage(this._spawnErrorMsg);
         await this._stop();
