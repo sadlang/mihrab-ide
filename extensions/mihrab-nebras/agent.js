@@ -37,12 +37,17 @@ const COPY = {
   dirtyCancel: "ألغِ",
   saveFailed: "تعذّر حفظ الملفّ — أُلغيَ.",
   notReady: "خادم نِبراس غير جاهز بعد — انتظر لحظة ثمّ أعِد المحاولة.",
-  // نِبراس (الخادم) يعمل ضمن جذرٍ واحد = أوّل مجلّد مساحة عمل؛ هدفٌ خارجه يرفضه الخادم. نتحقّق مسبقًا
-  // برسالةٍ قابلة للتنفيذ بدل الرفض المضلّل «المسار خارج مجلّد العمل». [ديون الملفّ المفرد/متعدّد الجذور]
-  noWorkspaceFolder:
-    "افتح المجلّد الحاوي لهذا الملفّ (ملفّ ▸ افتح مجلّدًا) كي يعمل نِبراس عليه — لا يعمل على ملفٍّ مفردٍ بلا مجلّد.",
-  outsidePrimaryRoot: (root) =>
-    `نِبراس يعمل ضمن مجلّد مساحة العمل الأوّل («${root}»)، وهذا الملفّ خارجه. افتح مجلّده كمساحة عملٍ مستقلّة كي يعمل عليه.`,
+  // إعادة توجيه الجذر [يحلّ ديون الملفّ المفرد/متعدّد الجذور]: الخادم أحاديّ الجذر (workspaceRoot=cwd)،
+  // فهدفٌ خارج جذره الجاري لا يُرفَض بل يُعاد تشغيل الخادم بالجذر المالك (retargetRoot). هذه الرسالة
+  // تظهر فقط إن فشل التوجيه نفسه (تعذّر إقلاع الخادم بالجذر الجديد).
+  retargetFailed: (root) =>
+    `تعذّر توجيه خادم نِبراس إلى مجلّد الملفّ («${root}») — راجع سجلّ نِبراس ثمّ أعِد المحاولة.`,
+  // إعادة التوجيه تعيد تشغيل الخادم، وإعادة التشغيل تقطع أيّ مهمّةٍ جارية (يُرفَض وعدها فيظهر
+  // فشلها في قناتها) — استئذانٌ صريح قبل القطع (نمط حوار الحفظ). الإغلاق/الإلغاء = تراجعٌ صامت.
+  retargetInterruptsTitle: "توجيه نِبراس إلى مجلّد هذا الملفّ سيعيد تشغيل الخادم",
+  retargetInterruptsDetail:
+    "ثمّة مهمّة نِبراس جاريةٌ الآن وستُقطَع (يظهر فشلها في قناتها). تابِع فقط إن كنت في غنًى عنها.",
+  retargetInterruptsProceed: "اقطعها وتابِع",
   goalPrompt: "صف الهدف الذي تريد أن يحقّقه وكيل نِبراس",
   goalPlaceholder: "مثال: أصلِح أخطاء الصياغة في هذا الملفّ ثمّ ابنِه للتأكّد.",
   progress: "وكيل نِبراس يعمل…",
@@ -104,9 +109,26 @@ function isUnderRoot(fsPath, rootFsPath) {
 }
 
 /**
+ * يحدّد جذر عمل الوكيل للملفّ الهدف [إعادة توجيه الجذر]: **أوّل** مجلّد مساحة عمل قرصيّ يحوي الملفّ
+ * (ترتيب المستخدم يحفظ أولويّة الجذر الأوّل؛ الاحتواء بادئة مسار كدلالة isInside في الخادم — لا
+ * getWorkspaceFolder الذي يُرجع الأضيق)، وإلّا مجلّد الملفّ نفسه (ملفّ مفرد/خارج كلّ الجذور).
+ * الروابط الرمزيّة حدّ معجميّ هنا؛ الخادم يعالج realpath في validateTarget.
+ * @param {string} fsPath مسار الملفّ المطلق @returns {string} جذر عمل مطلق
+ */
+function resolveAgentRoot(fsPath) {
+  const folders = vscode.workspace.workspaceFolders || [];
+  for (const f of folders) {
+    if (f.uri.scheme !== FILE_SCHEME) continue;
+    if (isUnderRoot(fsPath, f.uri.fsPath)) return f.uri.fsPath;
+  }
+  return path.dirname(fsPath);
+}
+
+/**
  * يجهّز مستند ص لتشغيل الوكيل (يشاركه أمر الوكيل و«أصلِح بنِبراس»): يتحقّق أنّه ملفّ ص محفوظ،
- * يعرض حفظًا صريحًا إن كان متّسخًا (الوكيل يعمل على القرص)، ويتأكّد من جاهزيّة الخادم. يُرجع true
- * إن جاز المتابعة، وإلّا false (مع تبليغ المستخدم). fail-safe: أيّ إلغاء ⇒ false.
+ * يعرض حفظًا صريحًا إن كان متّسخًا (الوكيل يعمل على القرص)، ويوجّه جذر الخادم إلى المجلّد المالك
+ * للملفّ (retargetRoot — يفتح الملفّ المفرد وجذور مساحة العمل غير الأولى) ثمّ يتأكّد من الجاهزيّة.
+ * يُرجع true إن جاز المتابعة، وإلّا false (مع تبليغ المستخدم). fail-safe: أيّ إلغاء ⇒ false.
  * @param {import('./nebras-process.js').NebrasProcess} proc
  * @param {vscode.TextDocument} doc
  */
@@ -117,24 +139,6 @@ async function ensureDocReadyForAgent(proc, doc) {
   }
   if (doc.isUntitled || doc.uri.scheme !== FILE_SCHEME) {
     vscode.window.showWarningMessage(COPY.notOnDisk);
-    return false;
-  }
-  // تحقّق مسبق من احتواء مجلّد العمل: الخادم مقيَّد بجذرٍ واحد (أوّل مجلّد بمخطّط file = cwd)، فهدفٌ
-  // خارجه يُرفَض بـ«خارج مجلّد العمل». نبلّغ رسالةً واضحة هنا (بلا مجلّد ⇒ افتح مجلّدًا؛ خارج الجذر
-  // الأوّل ⇒ افتح مجلّده) بدل تشغيلٍ ضائعٍ ينتهي برفضٍ مضلّل. المطابقة **احتواء مسارٍ** (بادئة fsPath
-  // مطبَّعة) لا هويّة المجلّد الحاوي — getWorkspaceFolder يُرجع الأضيق، فجذرٌ متداخلٌ داخل الأوّل كان
-  // سيُرفَض زورًا رغم أنّ الخادم يقبله [مراجعة Amelia]. يطابق دلالة isInside في الخادم.
-  // [ديون: دعم متعدّد الجذور الحقيقيّ/الملفّ المفرد يلزمه تغيير الخادم؛ روابط رمزيّة ⇒ حدّ معجميّ موثَّق]
-  const folders = vscode.workspace.workspaceFolders;
-  const serverRoot = folders && folders.length > 0 && folders[0].uri.scheme === FILE_SCHEME
-    ? folders[0]
-    : undefined; // بوّابة المخطّط تطابق resolveWorkspaceCwd (جذر غير قرصيّ ⇒ كأنْ لا مجلّد).
-  if (!serverRoot) {
-    vscode.window.showWarningMessage(COPY.noWorkspaceFolder);
-    return false;
-  }
-  if (!isUnderRoot(doc.uri.fsPath, serverRoot.uri.fsPath)) {
-    vscode.window.showWarningMessage(COPY.outsidePrimaryRoot(serverRoot.name));
     return false;
   }
   if (doc.isDirty) {
@@ -149,9 +153,21 @@ async function ensureDocReadyForAgent(proc, doc) {
       return false;
     }
   }
-  if (!proc.isReady()) {
-    vscode.window.showWarningMessage(COPY.notReady);
-    void proc.start(); // حاول الإقلاع دون حجب.
+  // وجّه جذر الخادم إلى المجلّد المالك للملفّ (لا شيء إن كان الجذر صحيحًا وجاهزًا؛ وإلّا إعادة
+  // تشغيل بالجذر المطلوب — تحلّ الملفّ المفرد وجذور مساحة العمل غير الأولى بدل رفضٍ مضلّل).
+  const desiredRoot = resolveAgentRoot(doc.uri.fsPath);
+  // التوجيه سيقطع مهمّةً جارية (إعادة التشغيل ترفض وعودها) ⇒ استأذن المستخدم أوّلًا. fail-safe:
+  // إغلاق الحوار = إلغاءٌ صامت (اختيار المستخدم لا «فشل» — لا رسالة retargetFailed فوقه).
+  if (proc.retargetNeedsRestart(desiredRoot) && proc.hasActiveTasks()) {
+    const choice = await vscode.window.showWarningMessage(
+      COPY.retargetInterruptsTitle,
+      { modal: true, detail: COPY.retargetInterruptsDetail },
+      COPY.retargetInterruptsProceed,
+    );
+    if (choice !== COPY.retargetInterruptsProceed) return false;
+  }
+  if (!(await proc.retargetRoot(desiredRoot))) {
+    vscode.window.showWarningMessage(COPY.retargetFailed(desiredRoot));
     return false;
   }
   return true;
@@ -251,4 +267,4 @@ async function runWithCancel(proc, params, onDelta, onToolStep, token, onCancel)
   }
 }
 
-module.exports = { makeAgentCommand, runAgentTask, ensureDocReadyForAgent, isUnderRoot, formatStep, COPY };
+module.exports = { makeAgentCommand, runAgentTask, ensureDocReadyForAgent, isUnderRoot, resolveAgentRoot, formatStep, COPY };
