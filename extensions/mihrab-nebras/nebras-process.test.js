@@ -228,6 +228,106 @@ test("start متزامن: نداءٌ ثانٍ أثناء مصافحةٍ جاري
   assert.equal(proc._startPromise, null, "وعد الإقلاع يُمسَح بعد الحسم");
 });
 
+// ═══════════ dedup التوجيهات المتزامنة (وعد مشترك لنفس الجذر) ═══════════
+
+/** بديل restart قابل للتحكّم: يعلّق حتى يُستدعى release() — يحاكي إعادة تشغيلٍ طائرة. */
+function makeProcWithGatedRestart() {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  /** @type {(() => void)[]} */
+  const gates = [];
+  proc.restart = async () => {
+    calls.restarts += 1;
+    await new Promise((resolve) => gates.push(() => resolve(undefined)));
+  };
+  const release = () => {
+    while (gates.length) /** @type {() => void} */ (gates.shift())();
+  };
+  return { proc, calls, release };
+}
+
+test("dedup: نداءان متزامنان لنفس الجذر يتقاسمان وعدًا واحدًا ⇒ إعادة تشغيل واحدة", async () => {
+  const { proc, calls, release } = makeProcWithGatedRestart();
+  proc._startedCwd = "/proj/أ";
+  const p1 = proc.retargetRoot("/proj/ب");
+  const p2 = proc.retargetRoot("/proj/ب");
+  await new Promise((r) => setImmediate(r)); // كلاهما طائر — لم يبدأ سوى restart واحد
+  assert.equal(calls.restarts, 1, "الثاني شارك وعد الأوّل بدل إعادة تشغيلٍ ثانية");
+  proc._ready = true;
+  proc._startedCwd = "/proj/ب"; // يحاكي نجاح إعادة التشغيل بالجذر الموجَّه
+  release();
+  assert.equal(await p1, true);
+  assert.equal(await p2, true);
+  assert.equal(proc._retargetPromise, null, "الوعد المشترك يُمسَح بعد الحسم");
+  assert.equal(proc._retargetTo, undefined);
+});
+
+test("dedup: بعد حسم التوجيه، نداءٌ لاحق لنفس الجذر يبدأ توجيهًا جديدًا (لا وعد بائت)", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  await proc.retargetRoot("/proj/ب");
+  proc._startedCwd = "/proj/أ"; // يحاكي عودة الجذر (مثلًا restartToWorkspaceRoot)
+  await proc.retargetRoot("/proj/ب");
+  assert.equal(calls.restarts, 2, "كلّ نداءٍ بعد الحسم توجيهٌ مستقلّ");
+});
+
+test("dedup تعاقُب ر١←ر٢←ر١: اكتمال الأوّل لا يمسح وعد الثالث الجاري (تنظيف بهويّة الوعد)", async () => {
+  const { proc, calls, release } = makeProcWithGatedRestart();
+  proc._startedCwd = "/proj/س";
+  const p1 = proc.retargetRoot("/proj/ر١"); // طائر
+  const p2 = proc.retargetRoot("/proj/ر٢"); // ينافس — يستبدل النيّة
+  const p3 = proc.retargetRoot("/proj/ر١"); // نيّة ر١ جديدة (وعد جديد)
+  const third = proc._retargetPromise;
+  assert.equal(calls.restarts, 3);
+  proc._ready = true;
+  proc._startedCwd = "/proj/ر١";
+  release(); // يُحسَم الجميع — تنظيف الأوّل يجب ألّا يمسّ وعد الثالث قبل حسمه هو
+  await Promise.all([p1, p3]);
+  await p2;
+  assert.notEqual(third, null, "وعد الثالث أُنشئ فعلًا (لا مشاركة مع الأوّل عبر نيّة ر٢)");
+  // رابعٌ قبل حسم الثالث كان — بمقارنة الجذر القديمة — يفقد الـdedup إن مسح الأوّلُ الحالةَ مبكّرًا.
+  assert.equal(proc._retargetPromise, null, "بعد حسم الكلّ تُمسَح الحالة");
+});
+
+test("dedup: رابعٌ لنفس الجذر أثناء طيران الثالث يشاركه رغم اكتمال الأوّل قبله", async () => {
+  const { proc, calls, release } = makeProcWithGatedRestart();
+  proc._startedCwd = "/proj/س";
+  const p1 = proc.retargetRoot("/proj/ر١");
+  const p2 = proc.retargetRoot("/proj/ر٢");
+  // أكمِل الأوّل والثاني فقط، ثمّ أطلق ر١ ثالثًا وهو وحده الطائر.
+  proc._ready = true;
+  proc._startedCwd = "/proj/ر٢";
+  release();
+  await p1;
+  await p2;
+  const p3 = proc.retargetRoot("/proj/ر١"); // طائر (بوّابة جديدة)
+  await new Promise((r) => setImmediate(r));
+  const restartsBefore = calls.restarts;
+  const p4 = proc.retargetRoot("/proj/ر١"); // يجب أن يشارك وعد الثالث
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.restarts, restartsBefore, "الرابع شارك الثالث — لا إعادة تشغيل زائدة");
+  proc._ready = true;
+  proc._startedCwd = "/proj/ر١";
+  release();
+  assert.equal(await p3, true);
+  assert.equal(await p4, true);
+});
+
+test("restartToWorkspaceRoot: يمسح التوجيه الصريح ونيّة التوجيه الطائر ثمّ يعيد التشغيل", async () => {
+  const { proc, calls, release } = makeProcWithGatedRestart();
+  proc._startedCwd = "/proj/أ";
+  const inflight = proc.retargetRoot("/proj/ب"); // توجيه طائر (override مضبوط)
+  assert.equal(proc._cwdOverride, "/proj/ب");
+  const manual = proc.restartToWorkspaceRoot();
+  assert.equal(proc._cwdOverride, undefined, "إعادة التشغيل اليدويّة تعود للجذر الرسميّ");
+  assert.equal(proc._retargetPromise, null, "نيّة التوجيه الطائر أُبطلت — لاحقٌ لنفس الجذر لا يشارك وعدًا بائتًا");
+  proc._ready = true;
+  proc._startedCwd = "/proj/رسمي";
+  release();
+  await manual;
+  assert.equal(await inflight, false, "التوجيه الملغى يبلّغ فشله (الجذر النهائيّ ليس المطلوب)");
+  assert.equal(calls.restarts, 2);
+});
+
 test("retargetNeedsRestart/hasActiveTasks: استعلامان خالصان لحوار «قطع مهمّة جارية» في تجهيز الوكيل", async () => {
   const { proc } = makeProcWithSpiedRestart();
   proc._startedCwd = "/proj/أ";

@@ -99,7 +99,9 @@ function activate(context) {
     vscode.commands.registerCommand(CMD_RESTART, async () => {
       if (!proc) return;
       statusItem && (statusItem.text = COPY.statusStarting);
-      await proc.restart();
+      // إعادة التشغيل اليدويّة تعود للجذر الرسميّ (تمسح توجيه ملفٍّ مفرد/جذرٍ غير أوّل سابق) —
+      // الضاغط على الأمر يريد الحالة القياسيّة. [توصية Amelia]
+      await proc.restartToWorkspaceRoot();
       // رسالة النجاح مشروطة بالجاهزيّة الفعليّة: restart قد يفشل (ثنائيّ مفقود/مصافحة) ويبلّغ فشله
       // بحواره الخاصّ — إظهار «أُعيد التشغيل» فوقه كان يكذب على المستخدم. [ملاحظة Amelia ٣]
       if (proc.isReady()) vscode.window.showInformationMessage(COPY.restarted);
