@@ -172,6 +172,10 @@ class NebrasProcess {
      * وإعادة التشغيل التلقائيّة بعد تعطّل (آخر نيّةٍ صريحة تبقى الحكم؛ أيّ توجيهٍ لاحق يصحّحه).
      * [إعادة توجيه الجذر] */
     this._cwdOverride = undefined;
+    /** @type {Promise<void> | null} وعد توجيهٍ جارٍ (retargetRoot) — يتقاسمه المتزامنون لنفس الجذر */
+    this._retargetPromise = null;
+    /** @type {string | undefined} الجذر الذي يستهدفه التوجيه الجاري */
+    this._retargetTo = undefined;
     /** @type {Promise<void> | null} وعد الإقلاع الجاري (spawn + مصافحة): يتقاسمه مستدعو start
      * المتزامنون كي لا يعود نداءٌ ثانٍ فوريًّا قبل الجاهزيّة فيُقرأ زورًا «فشل» (retargetRoot). */
     this._startPromise = null;
@@ -208,6 +212,32 @@ class NebrasProcess {
   async retargetRoot(desiredRoot) {
     if (this._disposed) return false;
     if (this._startedCwd === desiredRoot && this._ready) return true;
+    // dedup: توجيهٌ جارٍ **لنفس** الجذر ⇒ شارِك وعده بدل إعادتي تشغيل متتاليتين لنفس الغاية
+    // (نداءان متزامنان من ملفّين بنفس الجذر). جذرٌ مغاير لا يُشارَك — يتنافسان ويحسم شرطُ العودة.
+    if (!(this._retargetPromise && this._retargetTo === desiredRoot)) {
+      // التنظيف بهويّة الوعد لا بسلسلة الجذر: تسلسل ر١←ر٢←ر١ (والأوّل طائر) كان — بمقارنة الجذر —
+      // يدع اكتمالَ الأوّل يمسح وعد الثالث الجاري قبل أوانه فيضيع الـdedup اللاحق.
+      /** @type {Promise<void>} */
+      const shared = this._retargetImpl(desiredRoot).finally(() => {
+        if (this._retargetPromise === shared) {
+          this._retargetPromise = null;
+          this._retargetTo = undefined;
+        }
+      });
+      this._retargetTo = desiredRoot;
+      this._retargetPromise = shared;
+    }
+    await this._retargetPromise;
+    // سباق التوجيهات: توجيهٌ منافس أثناء انتظارنا (retargetRoot بجذرٍ آخر من ملفٍّ ثانٍ، أو
+    // restartIfWorkspaceChanged يمسح التوجيه) قد يكون بدّل الجذر الفائز — الجاهزيّة وحدها إذًا نجاحٌ
+    // زائف لجذرٍ خاسر (الوكيل سيُرفَض «خارج مجلّد العمل»)، فنشترط أنّ الجذر المُقلَع به هو المطلوب.
+    // المقارنة حرفيّة عمدًا: تبايُنُ تمثيلٍ لنفس المجلّد (حالة أحرف على Windows) يكلّف إعادة تشغيل
+    // زائدة لا أكثر، والمصدران (fsPath/dirname من vscode) متّسقا التمثيل عمليًّا.
+    return this._ready && this._startedCwd === desiredRoot;
+  }
+
+  /** جسم التوجيه الفعليّ (يلفّه retargetRoot بوعدٍ مشترك للتوجيهات المتزامنة لنفس الجذر). */
+  async _retargetImpl(desiredRoot) {
     if (this._startedCwd !== desiredRoot) {
       this._log.appendLine(`[نِبراس] ${COPY.retargeting(desiredRoot)}`);
       this._cwdOverride = desiredRoot;
@@ -215,12 +245,20 @@ class NebrasProcess {
     } else {
       await this.start(); // الجذر صحيح لكنّ الخادم غير جاهز (متوقّف/مصافحة جارية) ⇒ إقلاع أو انتظاره.
     }
-    // سباق التوجيهات: توجيهٌ منافس أثناء انتظارنا (retargetRoot بجذرٍ آخر من ملفٍّ ثانٍ، أو
-    // restartIfWorkspaceChanged يمسح التوجيه) قد يكون بدّل الجذر الفائز — الجاهزيّة وحدها إذًا نجاحٌ
-    // زائف لجذرٍ خاسر (الوكيل سيُرفَض «خارج مجلّد العمل»)، فنشترط أنّ الجذر المُقلَع به هو المطلوب.
-    // المقارنة حرفيّة عمدًا: تبايُنُ تمثيلٍ لنفس المجلّد (حالة أحرف على Windows) يكلّف إعادة تشغيل
-    // زائدة لا أكثر، والمصدران (fsPath/dirname من vscode) متّسقا التمثيل عمليًّا.
-    return this._ready && this._startedCwd === desiredRoot;
+  }
+
+  /**
+   * إعادة تشغيل يدويّة إلى الجذر الرسميّ لمساحة العمل: تمسح توجيه retargetRoot الصريح — المستخدم
+   * الضاغط «أعِد تشغيل الخادم» يريد العودة للحالة القياسيّة لا لبقاء جذر ملفٍّ مفردٍ سابق. [توصية Amelia]
+   */
+  async restartToWorkspaceRoot() {
+    this._cwdOverride = undefined;
+    // أبطِل نيّة أيّ توجيهٍ طائر: وعده يعكس توجيهًا مُسح للتوّ، فمشاركتُه من retargetRoot لاحقٍ
+    // لنفس الجذر تُرجِع «غير جاهز» زائفًا بدل توجيهٍ نظيف. (تنظيف finally بهويّة الوعد لن يمسّ
+    // حالةً جديدةً تُضبَط بعد هذا الإبطال.)
+    this._retargetPromise = null;
+    this._retargetTo = undefined;
+    await this.restart();
   }
 
   /**

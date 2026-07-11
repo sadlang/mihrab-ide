@@ -38,6 +38,8 @@ const vscodeStub = {
     },
     onDidChangeActiveTextEditor(cb) { S.edCb = cb; return { dispose() {} }; },
   },
+  // chat.js يستورد resolveAgentRoot من agent.js (توحيد سياسة التوجيه) وهي تقرأ workspaceFolders.
+  workspace: { workspaceFolders: undefined },
 };
 
 const _origLoad = Module._load;
@@ -64,6 +66,7 @@ test("حارس الحِقبة: مهمّة تكتمل بعد تبديل المل�
   const d = deferred();
   const proc = {
     isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true,
     runTask(_p, onDelta, onId) { onId(1); onDelta("جواب"); return d.promise; },
   };
   const s = new ChatSession(proc, cfg, () => {});
@@ -84,6 +87,7 @@ test("حارس الحِقبة معزولًا: مهمّة تكتمل بعد ال�
   const d = deferred();
   const proc = {
     isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true,
     runTask(_p, onDelta, onId) { onId(9); onDelta("جواب"); return d.promise; },
   };
   const s = new ChatSession(proc, cfg, () => {});
@@ -99,6 +103,7 @@ test("الدور الناجح يُدوَّن (مستخدم+مساعد) ويحد�
   const d = deferred();
   const proc = {
     isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true,
     runTask(_p, onDelta, onId) { onId(2); onDelta("الشرح"); return d.promise; },
   };
   const s = new ChatSession(proc, cfg, () => {});
@@ -116,6 +121,7 @@ test("جواب فارغ (بثّ صفريّ) لا يُدوَّن", async () => {
   const d = deferred();
   const proc = {
     isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true,
     runTask(_p, _onDelta, onId) { onId(3); return d.promise; }, // لا بثّ
   };
   const s = new ChatSession(proc, cfg, () => {});
@@ -130,6 +136,7 @@ test("لا ملفّ ص نشط ⇒ رسالة «افتح ملفّ» بلا مهم
   let ran = false;
   const proc = {
     isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true,
     runTask() { ran = true; return Promise.resolve({}); },
   };
   const s = new ChatSession(proc, cfg, () => {});
@@ -138,24 +145,42 @@ test("لا ملفّ ص نشط ⇒ رسالة «افتح ملفّ» بلا مهم
   assert.ok(lastPanel().posts.some((m) => m.text === COPY.noContext));
 });
 
-test("الخادم غير جاهز ⇒ محاولة بدء، بلا مهمّة", async () => {
+test("فشل التوجيه/الخادم غير جاهز ⇒ رسالة «غير جاهز»، بلا مهمّة", async () => {
   S.editorFile = "/w/a.ص";
-  let started = false, ran = false;
+  let retargeted = false, ran = false;
   const proc = {
-    isReady: () => false, start() { started = true; }, cancel() {},
+    isReady: () => false, start() {}, cancel() {},
+    retargetNeedsRestart: () => false, hasActiveTasks: () => false,
+    retargetRoot: async () => { retargeted = true; return false; }, // التوجيه يتولّى محاولة الإقلاع داخليًّا
     runTask() { ran = true; return Promise.resolve({}); },
   };
   const s = new ChatSession(proc, cfg, () => {});
   await s.onUserMessage("س");
-  assert.equal(started, true);
+  assert.equal(retargeted, true);
   assert.equal(ran, false);
   assert.ok(lastPanel().posts.some((m) => m.text === COPY.notReady));
+});
+
+test("توجيهٌ يستلزم إعادة تشغيل ومهمّةٌ جارية ⇒ رسالة انشغال بلا قطعٍ ولا مهمّة", async () => {
+  S.editorFile = "/w/a.ص";
+  let retargeted = false, ran = false;
+  const proc = {
+    isReady: () => true, start() {}, cancel() {},
+    retargetNeedsRestart: () => true, hasActiveTasks: () => true,
+    retargetRoot: async () => { retargeted = true; return true; },
+    runTask() { ran = true; return Promise.resolve({}); },
+  };
+  const s = new ChatSession(proc, cfg, () => {});
+  await s.onUserMessage("س");
+  assert.equal(retargeted, false, "لا قطع لمهمّة جارية من لوحة الدردشة");
+  assert.equal(ran, false);
+  assert.ok(lastPanel().posts.some((m) => m.text === COPY.busyRetargeting));
 });
 
 test("الإغلاق يستدعي onDispose ويمنع النشر بعده", () => {
   S.editorFile = "/w/a.ص";
   let disposed = false;
-  const proc = { isReady: () => true, start() {}, cancel() {}, runTask() { return Promise.resolve({}); } };
+  const proc = { isReady: () => true, start() {}, cancel() {}, retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true, runTask() { return Promise.resolve({}); } };
   const s = new ChatSession(proc, cfg, () => { disposed = true; });
   const panel = lastPanel();
   panel._disp(); // أطلق onDidDispose
@@ -168,7 +193,7 @@ test("الإغلاق يستدعي onDispose ويمنع النشر بعده", () 
 test("registerChat: نسخة مفردة — الفتح الثاني يكشف القائمة لا ينشئ لوحة", () => {
   S.editorFile = "/w/a.ص";
   const before = S.panels.length;
-  const proc = { isReady: () => true, start() {}, cancel() {}, runTask() { return Promise.resolve({}); } };
+  const proc = { isReady: () => true, start() {}, cancel() {}, retargetNeedsRestart: () => false, hasActiveTasks: () => false, retargetRoot: async () => true, runTask() { return Promise.resolve({}); } };
   registerChat.open({}, proc, cfg);
   registerChat.open({}, proc, cfg); // الثاني يكشف
   assert.equal(S.panels.length, before + 1, "لوحة واحدة فقط");

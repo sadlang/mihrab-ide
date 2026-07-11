@@ -10,6 +10,8 @@
 const vscode = require("vscode");
 const path = require("path");
 const crypto = require("crypto");
+// اختيار جذر عمل الوكيل للملفّ (إعادة توجيه الجذر — نفس سياسة «وكيل»/«أصلِح بنِبراس»).
+const { resolveAgentRoot } = require("./agent.js");
 
 const SAD_LANG_ID = "sad";
 const SAD_EXT = ".ص";
@@ -42,6 +44,9 @@ const COPY = {
   contextFile: (f) => `السياق: ${f}`,
   failed: (e) => `تعذّر: ${e}`,
   notReady: "خادم نِبراس غير جاهز بعد.",
+  // توحيد سلوك التوجيه مع «وكيل»/«أصلِح بنِبراس» [توصية Amelia]: ملفّ السياق خارج جذر الخادم الجاري
+  // يستلزم إعادة توجيه (إعادة تشغيل)؛ مع مهمّةٍ جاريةٍ لا نقطعها من لوحة دردشة — نطلب المعاودة.
+  busyRetargeting: "ثمّة مهمّة نِبراس جارية والملفّ خارج جذر العمل الحاليّ — أعِد المحاولة بعد اكتمالها.",
 };
 
 /** يولّد nonce تشفيريًّا لسياسة CSP (لا يُخمَّن). */
@@ -248,20 +253,30 @@ class ChatSession {
 
   /** يعالج رسالة مستخدم: يشغّل «اشرح» ويبثّ للّوحة. */
   async onUserMessage(text) {
-    if (!this._proc.isReady()) {
-      this._post({ type: MSG_ERROR, text: COPY.notReady });
-      void this._proc.start();
-      return;
-    }
     const file = activeSadFile();
     if (!file) {
       this._post({ type: MSG_ERROR, text: COPY.noContext });
       return;
     }
-    // التقط الجلسة والملفّ اللذين تنطلق المهمّة لأجلهما — يُفحَصان بعد الاكتمال (await) قبل كتابة
-    // أيّ حالة، كي لا تُلوّث مهمّةٌ اكتملت متأخّرةً جلسةً صُفِّرت لملفٍّ آخر (سباق ق6).
+    // التقط الجلسة والملفّ اللذين تنطلق المهمّة لأجلهما **قبل أيّ await** (التوجيه أدناه await) —
+    // يُفحَصان بعد الاكتمال قبل كتابة أيّ حالة، كي لا تُلوّث مهمّةٌ اكتملت متأخّرةً (أو تصفيرٌ وقع
+    // أثناء انتظار التوجيه) جلسةً صُفِّرت لملفٍّ آخر (سباق ق6).
     const epoch = this._sessionEpoch;
     const forFile = file;
+    // وجّه جذر الخادم إلى المجلّد المالك لملفّ السياق (نفس سياسة «وكيل»/«أصلِح بنِبراس» —
+    // يفتح الدردشة عن ملفٍّ مفرد/جذرٍ غير أوّل). لا نقطع مهمّةً جارية من لوحة الدردشة (لا حوار
+    // نمطيّ هنا) — نطلب المعاودة بعد اكتمالها. [توصية Amelia — توحيد سلوك التوجيه]
+    const desiredRoot = resolveAgentRoot(file);
+    if (this._proc.retargetNeedsRestart(desiredRoot) && this._proc.hasActiveTasks()) {
+      this._post({ type: MSG_ERROR, text: COPY.busyRetargeting });
+      return;
+    }
+    if (!(await this._proc.retargetRoot(desiredRoot))) {
+      this._post({ type: MSG_ERROR, text: COPY.notReady });
+      return;
+    }
+    // تصفيرٌ أثناء انتظار التوجيه (إغلاق اللوحة/تبديل الملفّ) ⇒ لا تُطلق المهمّة أصلًا.
+    if (epoch !== this._sessionEpoch) return;
     const cfg = this._getConfig();
     const params = {
       kind: TASK_EXPLAIN,
