@@ -41,6 +41,7 @@ const COPY = {
   statusTipReady: "خادم نِبراس جاهز — انقر لفتح الدردشة",
   statusTipOffline: "خادم نِبراس متوقّف — انقر لإعادة التشغيل",
   restarted: "أُعيد تشغيل خادم نِبراس.",
+  restartFailed: "تعذّرت إعادة تشغيل خادم نِبراس — راجع سجلّ نِبراس.",
   inlineOn: "فُعِّل الإكمال السطريّ لنِبراس.",
   inlineOff: "أُطفئ الإكمال السطريّ لنِبراس.",
 };
@@ -99,7 +100,10 @@ function activate(context) {
       if (!proc) return;
       statusItem && (statusItem.text = COPY.statusStarting);
       await proc.restart();
-      vscode.window.showInformationMessage(COPY.restarted);
+      // رسالة النجاح مشروطة بالجاهزيّة الفعليّة: restart قد يفشل (ثنائيّ مفقود/مصافحة) ويبلّغ فشله
+      // بحواره الخاصّ — إظهار «أُعيد التشغيل» فوقه كان يكذب على المستخدم. [ملاحظة Amelia ٣]
+      if (proc.isReady()) vscode.window.showInformationMessage(COPY.restarted);
+      else vscode.window.showWarningMessage(COPY.restartFailed);
     }),
     vscode.commands.registerCommand(CMD_TOGGLE_INLINE, async () => {
       const cfg = vscode.workspace.getConfiguration(CFG_SECTION);
@@ -113,7 +117,8 @@ function activate(context) {
   // كي يشتقّ workspaceRoot الجديد (وإلّا يرفض ملفّات المجلّد الجديد بـ«خارج مجلّد العمل»).
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      if (proc) void proc.restartIfWorkspaceChanged();
+      // رفض الوعد مُلتقَط (كنمط proc.start أدناه) — رفض يتيم في مستمع حدث يظهر كتحذير مضيف مبهم.
+      if (proc) proc.restartIfWorkspaceChanged().catch((e) => log.appendLine(`[نِبراس] إعادة تشغيل بعد تغيّر المجلّد فشلت: ${e}`));
     }),
   );
 

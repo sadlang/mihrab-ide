@@ -980,9 +980,16 @@ def _nebras_ext():
     #     cwd (من resolveWorkspaceCwd) إلى cp.spawn — وإلّا يرث مجلّد إطلاق المحرّر فتُرفَض ملفّات المشروع
     #     بـ«المسار خارج مجلّد العمل». حذف الوصلة انحدار صامت (لا اختبار وحدة يمسّ خيارات spawn). [تدقيق Amelia]
     proc_js = _read(os.path.join(ext, "nebras-process.js"))
-    assert "resolveWorkspaceCwd" in proc_js and _re.search(r"const\s+cwd\s*=\s*resolveWorkspaceCwd\(", proc_js), \
+    # cwd يُحسب من resolveWorkspaceCwd (مع توجيهٍ صريح اختياريّ _cwdOverride من retargetRoot قبله في نفس التعبير).
+    assert "resolveWorkspaceCwd" in proc_js and _re.search(r"const\s+cwd\s*=[^;\n]*resolveWorkspaceCwd\(", proc_js), \
         "nebras-process.js لا يحسب cwd من resolveWorkspaceCwd — جذر عمل الوكيل سيكون مجلّد إطلاق المحرّر"
-    assert _re.search(r"cp\.spawn\([^;]*?\bcwd\b", proc_js, _re.S), \
+    # إعادة توجيه الجذر (ملفّ مفرد/جذر غير أوّل): retargetRoot معرَّفة في المدير ومستهلَكة في تجهيز الوكيل.
+    agent_js_src = _read(os.path.join(ext, "agent.js"))
+    assert "retargetRoot" in proc_js and _re.search(r"retargetRoot\s*\(", agent_js_src), \
+        "إعادة توجيه الجذر غير موصولة (retargetRoot في nebras-process/agent) — الملفّ المفرد/الجذور غير الأولى ستُرفَض"
+    # النمط يُلزِم `cwd` **كمفتاح خيار** (يليه , أو : أو }) داخل نداء spawn نفسه (حتى أوّل ;) —
+    # لا مجرّد ورود الكلمة (تعليق «// cwd …» داخل النداء كان يُرضي النمط القديم زورًا).
+    assert _re.search(r"cp\.spawn\([^;]*?\bcwd\b\s*[,:}]", proc_js), \
         "nebras-process.js لا يمرّر cwd إلى cp.spawn — الوكيل سيرفض ملفّات المشروع «خارج مجلّد العمل»"
     # عند تغيّر مجلّد العمل أثناء الجلسة: إعادة تشغيل كي لا يبقى الخادم بـcwd بائت. [تدقيق Amelia — فجوة (ج)]
     assert "onDidChangeWorkspaceFolders" in ext_js and "restartIfWorkspaceChanged" in ext_js, \

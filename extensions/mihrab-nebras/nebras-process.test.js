@@ -16,7 +16,7 @@ Module._load = function (request, ...rest) {
   return _origLoad.call(this, request, ...rest);
 };
 
-const { isCompatible, resolveWorkspaceCwd } = require("./nebras-process.js");
+const { NebrasProcess, isCompatible, resolveWorkspaceCwd } = require("./nebras-process.js");
 const { PROTOCOL_VERSION } = require("./contract/protocol-contract.generated.js");
 
 test("مصافحة حقيقيّة: نسخة البروتوكول متوافقة مع نفسها", () => {
@@ -87,4 +87,156 @@ test("resolveWorkspaceCwd: مجلّد بمخطّط غير قرصيّ (لا file)
     { uri: { scheme: "vscode-remote", fsPath: "/remote/x" } },
   ];
   assert.equal(resolveWorkspaceCwd(), undefined);
+});
+
+// ── restartIfWorkspaceChanged: إعادة التشغيل فقط عند تبدّل جذر cwd الفعليّ (لا عبث بمهامّ جارية بلا داعٍ) ──
+
+/** نسخة NebrasProcess بأدنى تبعيّات + restart مرصود (لا spawn حقيقيّ في اختبار وحدة). */
+function makeProcWithSpiedRestart() {
+  const proc = new NebrasProcess(
+    /** @type {any} */ ({ extensionPath: "" }),
+    /** @type {any} */ ({ appendLine: () => {} }),
+    async () => false,
+  );
+  const calls = { restarts: 0 };
+  proc.restart = async () => {
+    calls.restarts += 1;
+  };
+  return { proc, calls };
+}
+
+test("restartIfWorkspaceChanged: الجذر لم يتغيّر (قبل الإقلاع: undefined=undefined) ⇒ لا إعادة تشغيل", async () => {
+  vscodeStub.workspace.workspaceFolders = undefined;
+  const { proc, calls } = makeProcWithSpiedRestart();
+  await proc.restartIfWorkspaceChanged();
+  assert.equal(calls.restarts, 0);
+});
+
+test("restartIfWorkspaceChanged: تبدّل الجذر عمّا أُقلع به ⇒ إعادة تشغيل واحدة", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/قديم";
+  vscodeStub.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: "/proj/جديد" } }];
+  await proc.restartIfWorkspaceChanged();
+  assert.equal(calls.restarts, 1);
+});
+
+test("restartIfWorkspaceChanged: نفس الجذر الذي أُقلع به ⇒ لا إعادة تشغيل (لا قطع مهامّ بلا سبب)", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/نفسه";
+  vscodeStub.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: "/proj/نفسه" } }];
+  await proc.restartIfWorkspaceChanged();
+  assert.equal(calls.restarts, 0);
+});
+
+test("restartIfWorkspaceChanged: بعد dispose ⇒ لا إعادة تشغيل (مستمع متأخّر بعد التعطيل)", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  await proc.dispose();
+  proc._startedCwd = "/proj/قديم";
+  vscodeStub.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: "/proj/جديد" } }];
+  await proc.restartIfWorkspaceChanged();
+  assert.equal(calls.restarts, 0);
+});
+
+// ═══════════ retargetRoot (إعادة توجيه الجذر: ملفّ مفرد/جذر غير أوّل) ═══════════
+
+test("retargetRoot: جذر مغاير ⇒ يضبط التوجيه ويعيد التشغيل", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  proc._ready = true;
+  await proc.retargetRoot("/proj/ب");
+  assert.equal(calls.restarts, 1);
+  assert.equal(proc._cwdOverride, "/proj/ب", "التوجيه محفوظ ليستعمله start التالي");
+});
+
+test("retargetRoot: الجذر الجاري نفسه والخادم جاهز ⇒ لا شيء (true فورًا)", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  proc._ready = true;
+  const ok = await proc.retargetRoot("/proj/أ");
+  assert.equal(ok, true);
+  assert.equal(calls.restarts, 0, "لا إعادة تشغيل بلا سبب (لا قطع مهامّ)");
+});
+
+test("retargetRoot: بعد dispose ⇒ false بلا إعادة تشغيل", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  await proc.dispose();
+  const ok = await proc.retargetRoot("/proj/ب");
+  assert.equal(ok, false);
+  assert.equal(calls.restarts, 0);
+});
+
+test("restartIfWorkspaceChanged يُسقِط توجيه retargetRoot (الجذور الرسميّة تعود هي الحكم)", async () => {
+  const { proc } = makeProcWithSpiedRestart();
+  proc._cwdOverride = "/ملف/مفرد";
+  proc._startedCwd = "/ملف/مفرد";
+  vscodeStub.workspace.workspaceFolders = [{ uri: { scheme: "file", fsPath: "/proj/جديد" } }];
+  await proc.restartIfWorkspaceChanged();
+  assert.equal(proc._cwdOverride, undefined, "تغيّر المجلّدات يمسح التوجيه الصريح");
+});
+
+test("retargetRoot سباق: توجيهٌ منافس فاز بجذرٍ آخر أثناء إعادة التشغيل ⇒ false (لا نجاح زائف للخاسر)", async () => {
+  const { proc } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  // يحاكي فوز متنافسٍ متزامن: بنهاية restart الخاصّ بنا صار الخادم جاهزًا لكن على جذرٍ ثالث.
+  proc.restart = async () => {
+    proc._startedCwd = "/proj/ج";
+    proc._ready = true;
+  };
+  const ok = await proc.retargetRoot("/proj/ب");
+  assert.equal(ok, false, "الجاهزيّة على جذرٍ غير المطلوب ليست نجاحًا — الوكيل كان سيُرفَض «خارج مجلّد العمل»");
+});
+
+test("retargetRoot: نفس الجذر لكن غير جاهز ⇒ محاولة إقلاع (لا إعادة تشغيل تقطع شيئًا) ونجاح بجاهزيّته", async () => {
+  const { proc, calls } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  let starts = 0;
+  proc.start = async () => {
+    starts += 1;
+    proc._ready = true;
+  };
+  const ok = await proc.retargetRoot("/proj/أ");
+  assert.equal(ok, true);
+  assert.equal(starts, 1, "إقلاع لا إعادة تشغيل");
+  assert.equal(calls.restarts, 0);
+});
+
+test("start متزامن: نداءٌ ثانٍ أثناء مصافحةٍ جارية ينتظر وعد الإقلاع نفسه (لا عودة فوريّة قبل الجاهزيّة)", async () => {
+  const { proc } = makeProcWithSpiedRestart();
+  let finishBoot = () => {};
+  // بديل جسم الإقلاع: يضبط _child فورًا (كما يفعل spawn) ثمّ يعلّق حتى «اكتمال المصافحة».
+  proc._startImpl = () => {
+    proc._child = /** @type {any} */ ({});
+    return new Promise((resolve) => {
+      finishBoot = () => {
+        proc._ready = true;
+        resolve(undefined);
+      };
+    });
+  };
+  const first = proc.start();
+  let secondSettled = false;
+  const second = proc.start().then(() => {
+    secondSettled = true;
+  });
+  await new Promise((r) => setImmediate(r)); // أفسِح للمهامّ الدقيقة — الثاني يجب أن يبقى معلّقًا
+  assert.equal(secondSettled, false, "الثاني لا يعود قبل اكتمال المصافحة (كان يعود فوريًّا فيُقرأ «غير جاهز»)");
+  finishBoot();
+  await first;
+  await second;
+  assert.equal(secondSettled, true);
+  assert.equal(proc.isReady(), true);
+  assert.equal(proc._startPromise, null, "وعد الإقلاع يُمسَح بعد الحسم");
+});
+
+test("retargetNeedsRestart/hasActiveTasks: استعلامان خالصان لحوار «قطع مهمّة جارية» في تجهيز الوكيل", async () => {
+  const { proc } = makeProcWithSpiedRestart();
+  proc._startedCwd = "/proj/أ";
+  assert.equal(proc.retargetNeedsRestart("/proj/أ"), false, "نفس الجذر ⇒ لا إعادة تشغيل");
+  assert.equal(proc.retargetNeedsRestart("/proj/ب"), true, "جذر مغاير ⇒ إعادة تشغيل");
+  assert.equal(proc.hasActiveTasks(), false);
+  proc._activeTasks.set(1, {});
+  assert.equal(proc.hasActiveTasks(), true);
+  proc._activeTasks.clear();
+  await proc.dispose();
+  assert.equal(proc.retargetNeedsRestart("/proj/ب"), false, "بعد dispose لا توجيه أصلًا (لا حوار زائف)");
 });
