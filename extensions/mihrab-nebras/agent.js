@@ -37,6 +37,12 @@ const COPY = {
   dirtyCancel: "ألغِ",
   saveFailed: "تعذّر حفظ الملفّ — أُلغيَ.",
   notReady: "خادم نِبراس غير جاهز بعد — انتظر لحظة ثمّ أعِد المحاولة.",
+  // نِبراس (الخادم) يعمل ضمن جذرٍ واحد = أوّل مجلّد مساحة عمل؛ هدفٌ خارجه يرفضه الخادم. نتحقّق مسبقًا
+  // برسالةٍ قابلة للتنفيذ بدل الرفض المضلّل «المسار خارج مجلّد العمل». [ديون الملفّ المفرد/متعدّد الجذور]
+  noWorkspaceFolder:
+    "افتح المجلّد الحاوي لهذا الملفّ (ملفّ ▸ افتح مجلّدًا) كي يعمل نِبراس عليه — لا يعمل على ملفٍّ مفردٍ بلا مجلّد.",
+  outsidePrimaryRoot: (root) =>
+    `نِبراس يعمل ضمن مجلّد مساحة العمل الأوّل («${root}»)، وهذا الملفّ خارجه. افتح مجلّده كمساحة عملٍ مستقلّة كي يعمل عليه.`,
   goalPrompt: "صف الهدف الذي تريد أن يحقّقه وكيل نِبراس",
   goalPlaceholder: "مثال: أصلِح أخطاء الصياغة في هذا الملفّ ثمّ ابنِه للتأكّد.",
   progress: "وكيل نِبراس يعمل…",
@@ -87,6 +93,17 @@ function makeAgentCommand(proc, channel, getConfig) {
 }
 
 /**
+ * هل المسار تحت الجذر (احتواء مسار)؟ يطابق دلالة isInside في الخادم (path.relative لا يهرب بـ«..»)،
+ * فيقبل ملفًّا في جذرٍ متداخلٍ داخل الأوّل (getWorkspaceFolder كان يُرجع الأضيق فيرفضه زورًا).
+ * الروابط الرمزيّة حدّ معجميّ موثَّق (لا realpath هنا). path.relative على Windows يطبّع حالة حرف السوّاقة.
+ * @param {string} fsPath @param {string} rootFsPath
+ */
+function isUnderRoot(fsPath, rootFsPath) {
+  const rel = path.relative(rootFsPath, fsPath);
+  return rel !== "" && rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel);
+}
+
+/**
  * يجهّز مستند ص لتشغيل الوكيل (يشاركه أمر الوكيل و«أصلِح بنِبراس»): يتحقّق أنّه ملفّ ص محفوظ،
  * يعرض حفظًا صريحًا إن كان متّسخًا (الوكيل يعمل على القرص)، ويتأكّد من جاهزيّة الخادم. يُرجع true
  * إن جاز المتابعة، وإلّا false (مع تبليغ المستخدم). fail-safe: أيّ إلغاء ⇒ false.
@@ -100,6 +117,24 @@ async function ensureDocReadyForAgent(proc, doc) {
   }
   if (doc.isUntitled || doc.uri.scheme !== FILE_SCHEME) {
     vscode.window.showWarningMessage(COPY.notOnDisk);
+    return false;
+  }
+  // تحقّق مسبق من احتواء مجلّد العمل: الخادم مقيَّد بجذرٍ واحد (أوّل مجلّد بمخطّط file = cwd)، فهدفٌ
+  // خارجه يُرفَض بـ«خارج مجلّد العمل». نبلّغ رسالةً واضحة هنا (بلا مجلّد ⇒ افتح مجلّدًا؛ خارج الجذر
+  // الأوّل ⇒ افتح مجلّده) بدل تشغيلٍ ضائعٍ ينتهي برفضٍ مضلّل. المطابقة **احتواء مسارٍ** (بادئة fsPath
+  // مطبَّعة) لا هويّة المجلّد الحاوي — getWorkspaceFolder يُرجع الأضيق، فجذرٌ متداخلٌ داخل الأوّل كان
+  // سيُرفَض زورًا رغم أنّ الخادم يقبله [مراجعة Amelia]. يطابق دلالة isInside في الخادم.
+  // [ديون: دعم متعدّد الجذور الحقيقيّ/الملفّ المفرد يلزمه تغيير الخادم؛ روابط رمزيّة ⇒ حدّ معجميّ موثَّق]
+  const folders = vscode.workspace.workspaceFolders;
+  const serverRoot = folders && folders.length > 0 && folders[0].uri.scheme === FILE_SCHEME
+    ? folders[0]
+    : undefined; // بوّابة المخطّط تطابق resolveWorkspaceCwd (جذر غير قرصيّ ⇒ كأنْ لا مجلّد).
+  if (!serverRoot) {
+    vscode.window.showWarningMessage(COPY.noWorkspaceFolder);
+    return false;
+  }
+  if (!isUnderRoot(doc.uri.fsPath, serverRoot.uri.fsPath)) {
+    vscode.window.showWarningMessage(COPY.outsidePrimaryRoot(serverRoot.name));
     return false;
   }
   if (doc.isDirty) {
@@ -216,4 +251,4 @@ async function runWithCancel(proc, params, onDelta, onToolStep, token, onCancel)
   }
 }
 
-module.exports = { makeAgentCommand, runAgentTask, ensureDocReadyForAgent, formatStep, COPY };
+module.exports = { makeAgentCommand, runAgentTask, ensureDocReadyForAgent, isUnderRoot, formatStep, COPY };
