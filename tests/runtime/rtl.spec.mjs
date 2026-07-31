@@ -2,7 +2,7 @@
 import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi, tabsDropRtl, chromeTypography, arabicInkMetrics, welcomePattern, langRuleProof, bidiLabels, bidiAudit, directionalGlyphs, unicodeHighlight, activateSadTab, activateWelcomeTab,
          bidiPanels, glyphOrder, breadcrumbsBar, key, MOD, escape, sleep, insertText, focusEditor,
 openDiffFromScm, confirmDialog, walkthroughAlign, waitFor, resetWorkbench, editorHover,
-openExtensionDetails, dialogButtons, statusbarOrder, discardUntitled } from "./harness.mjs";
+openExtensionDetails, dialogButtons, statusbarOrder, discardUntitled, pinActiveTab, recoverWelcomeTab } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -118,7 +118,7 @@ export async function interactionAssertions(cdp) {
     // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
   // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
   // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
-  if (!w || !w.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomeHeader(cdp); } }
+  if (!w || !w.present) { if (await recoverWelcomeTab(cdp) && await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomeHeader(cdp); } }
     if (!w || !w.present) {
       out.push(skip("ترحيب: الشعار والجملة",
         "لا تبويب ترحيب (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
@@ -137,7 +137,7 @@ export async function interactionAssertions(cdp) {
     // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
   // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
   // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
-  if (!w || !w.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomePattern(cdp); } }
+  if (!w || !w.present) { if (await recoverWelcomeTab(cdp) && await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomePattern(cdp); } }
     if (!w || !w.present) out.push(skip("ترحيب: الزخرفة النجميّة",
       "لا تبويب ترحيب (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
     else if (!w.hasTile) out.push(fail("ترحيب: الزخرفة النجميّة", "بلا بلاطة SVG"));
@@ -156,7 +156,7 @@ export async function interactionAssertions(cdp) {
     // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
   // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
   // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
-  if (!a || !a.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); a = await walkthroughAlign(cdp); } }
+  if (!a || !a.present) { if (await recoverWelcomeTab(cdp) && await activateWelcomeTab(cdp)) { await sleep(1500); a = await walkthroughAlign(cdp); } }
     if (!a || !a.present) out.push(skip("ترحيب: محاذاة الجولة",
       "لا جولة محراب مفتوحة (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
     else if (!a.widths || a.widths < 2) out.push(skip("ترحيب: محاذاة الجولة",
@@ -552,7 +552,12 @@ export async function panelAssertions(cdp) {
       } else if (mode === "ext-details") {
         if (!(await openExtensionDetails(cdp))) { notOpened.push(label); continue; }
       } else if (mode === "welcome") {
-        if (!(await activateWelcomeTab(cdp))) { notOpened.push(label); continue; }
+        // تنشيطٌ **بإقرارِ التصيير** لا بنجاح النقرة: activateWelcomeTab يعود true لمجرّد
+        // وجود التبويب، وقِسنا تشغيلةً انفتح فيها التبويب ولم يُصيَّر `.gettingStartedContainer`
+        // في مهلة البصمة — فيُبلَّغ «لم ينفتح» بلا سبب. محاولةٌ ثانية بعد إفلاتٍ للتصيير.
+        let okW = await activateWelcomeTab(cdp) && await waitFor(cdp, FP(fingerprint), 4000);
+        if (!okW) { await recoverWelcomeTab(cdp); await sleep(800); okW = await activateWelcomeTab(cdp); }
+        if (!okW) { notOpened.push(label); continue; }
       } else if (mode === "dialog") {
         const ok = await confirmDialog(cdp);
         if (!ok) { notOpened.push(label); continue; }
@@ -812,18 +817,15 @@ export async function runAll(cdp) {
   // ‏`.extension-editor` وغيرَه يُفتَح في **تبويب المعاينة**، وتبويبُ المعاينة واحدٌ يُستبدَل
   // — فابتلع الترحيبَ. تثبيتُه (نقرةٌ مزدوجة) يجعل التشغيلتين قابلتين للمقارنة، وهو
   // شرطُ أن يُقرأ اختلافُ التشغيلتين انحدارًا لا صدفة.
+  // ⚠️ تسميةُ التبويب **«مرحباً»** لا «ترحيب» (قِسناها)، ونقرتُه المزدوجة **لا تُثبِّته**
+  // (قِسناها كذلك). فالتثبيتُ بالارتباط `Ctrl+K Shift+Enter` عبر activateWelcomeTab ثمّ
+  // pinActiveTab، وشاهدُه ذهابُ صفِّ `italic` — لا مجرّدُ إرسالِ المفاتيح.
   try {
-    await cdp.evaluate(`(() => {
-      const t = [...document.querySelectorAll(".tabs-container .tab")]
-        // ⚠️ تسميةُ التبويب **«مرحباً»** لا «ترحيب»: قِسناها، فبنمطٍ يطابق «ترحيب» وحدها
-        // كان التثبيتُ لا يعمل ولا يُبلِّغ (‏find يعود undefined فيعود المِجَسّ 0 بهدوء).
-        .find(x => /\\u0645\\u0631\\u062d\\u0628|\\u062a\\u0631\\u062d\\u064a\\u0628|Welcome|Get Started/i.test(x.textContent || ""));
-      if (!t) return 0;
-      for (const type of ["mousedown", "mouseup", "click", "dblclick"])
-        t.dispatchEvent(new MouseEvent(type, { bubbles: true, detail: type === "dblclick" ? 2 : 1 }));
-      return 1;
-    })()`);
-    await sleep(500);
+    await recoverWelcomeTab(cdp);
+    if (await activateWelcomeTab(cdp)) {
+      const pin = await pinActiveTab(cdp);
+      if (!pin.pinnedAfter) console.log(`  [تنبيه] تثبيتُ الترحيب لم يُثبَّت: ${JSON.stringify(pin)}`);
+    }
     await activateSadTab(cdp); await sleep(400);
   } catch { /* */ }
   const geo = await editorGeometry(cdp);

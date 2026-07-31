@@ -250,6 +250,52 @@ export async function activateTab(cdp, pattern) {
   return true;
 }
 
+/**
+ * تثبيتُ التبويب النشط بإبطالِ صفةِ **المعاينة** — بالارتباط `Ctrl+K Shift+Enter`
+ * (‏workbench.action.keepEditor)، لا بنقرةٍ مزدوجة: النقرةُ المزدوجة قِسناها فلم تُثبِّت.
+ * والارتباطُ معرِّفٌ ثابت لا اسمٌ مترجَم، فلا يسقط بتغيُّر التعريب.
+ *
+ * ويعود **بشاهدٍ مقيس** لا بادّعاء: تبويبُ المعاينة يحمل صفَّ `italic` على تسميته،
+ * فذهابُه هو الإثبات. { found, pinnedBefore, pinnedAfter } — و`false` إن لم يوجد تبويب.
+ */
+export async function pinActiveTab(cdp) {
+  const state = () => cdp.evaluate(`(() => {
+    const t = document.querySelector('.tabs-container > .tab.active');
+    if (!t) return null;
+    const lbl = t.querySelector('.tab-label') || t;
+    return { preview: t.classList.contains('italic') || lbl.classList.contains('italic'),
+             label: (t.textContent || '').trim().slice(0, 40) };
+  })()`);
+  const before = await state();
+  if (!before) return { found: false };
+  await key(cdp, 75, "KeyK", MOD.CTRL);
+  await sleep(150);
+  await key(cdp, 13, "Enter", MOD.SHIFT);
+  await sleep(400);
+  const after = await state();
+  return { found: true, label: before.label, pinnedBefore: !before.preview, pinnedAfter: !!after && !after.preview };
+}
+
+/**
+ * استعادةُ تبويب الترحيب إن **أُغلِق** — بـ`Ctrl+Shift+T` (‏reopenClosedEditor)، ارتباطٌ
+ * ثابت لا اسمُ أمرٍ مترجَم (وأسماءُ الأوامر تسقط بالتعريب — كسرَنا ذلك مرّةً من قبل).
+ *
+ * وسببُ الحاجة مقيس: التثبيتُ يُنجي الترحيبَ من **ابتلاعِ تبويب المعاينة**، ولا يُنجيه
+ * من إغلاقٍ صريح تُحدثه تشغيلةٌ سابقة. فالتثبيتُ وقايةٌ والاستعادةُ علاج، ونحتاجهما معًا
+ * لتكون التشغيلةُ الثانية **قابلةً للمقارنة** بالأولى — وإلّا قُرئ اختلافُهما انحدارًا زورًا.
+ */
+export async function recoverWelcomeTab(cdp, tries = 3) {
+  const present = () => cdp.evaluate(`(() => [...document.querySelectorAll('.tabs-container > .tab')]
+    .some(t => /\\u0645\\u0631\\u062d|Welcome|Get Started/i.test(t.textContent || '')))()`);
+  if (await present()) return true;
+  for (let i = 0; i < tries; i++) {
+    await key(cdp, 84, "KeyT", MOD.CTRL | MOD.SHIFT);
+    await sleep(700);
+    if (await present()) return true;
+  }
+  return false;
+}
+
 /** تبويب عيّنة ص (‏`.ص` — لا `\b` بعده، انظر pickPage). */
 export const activateSadTab = cdp => activateTab(cdp, "\.\u0635");
 /** تبويب الترحيب («مرحبًا» بأيّ صيغة همزة/تنوين، أو Welcome في وضع التطوير غير المخبوز). */
