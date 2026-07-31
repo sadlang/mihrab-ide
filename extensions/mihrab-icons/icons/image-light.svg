@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- مولَّد بـgen_icons.py — لا تحرّره يدويًّا | عائلة «image» على الأرضيّة الفاتحة -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
+  <path d="M6 3 h13 l8 8 v24 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V5 a2 2 0 0 1 2 -2 z"
+        fill="none" stroke="#5E7278" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M19 3 v8 h8" fill="none" stroke="#5E7278" stroke-width="1.8" stroke-linejoin="round"/>
+  <circle cx="12" cy="21" r="2" fill="#0E776A"/>
+  <path d="M8 29 l5 -6 l4 4 l3 -3 l4 5 z" fill="#0E776A"/>
+</svg>

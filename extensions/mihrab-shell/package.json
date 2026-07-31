@@ -16,7 +16,10 @@
       "editor.guides.bracketPairsHorizontal": "active",
       "editor.matchBrackets": "always",
       "editor.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
-      "terminal.integrated.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace"
+      "terminal.integrated.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
+      "[sad]": {
+        "editor.unicodeHighlight.nonBasicASCII": false
+      }
     }
   },
   "repository": {

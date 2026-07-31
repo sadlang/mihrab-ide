@@ -2,12 +2,16 @@
   "$schema": "vscode://schemas/vscode-extensions",
   "name": "mihrab-themes",
   "displayName": "سمات محراب",
-  "description": "سمتا محراب اللونيّتان (داكنة/فاتحة) لكود ص: تُخرّطان نطاقات نحو ص ورموز LSP الدلاليّة على لوحة الهوية (فيروزيّ + ذهب).",
+  "description": "أربع سمات لمحراب لكود ص (داكنة/فاتحة + نظيرتاهما عاليتا التباين): تُخرّط نطاقات نحو ص ورموز LSP الدلاليّة على لوحة الهوية (فيروزيّ + ذهب) بخمس عائلات لونيّة متمايزة.",
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
-  "engines": { "vscode": "*" },
-  "categories": ["Themes"],
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Themes"
+  ],
   "contributes": {
     "themes": [
       {
@@ -19,10 +23,24 @@
         "label": "محراب الفاتحة",
         "uiTheme": "vs",
         "path": "./themes/mihrab-light-color-theme.json"
+      },
+      {
+        "label": "محراب الداكنة عالية التباين",
+        "uiTheme": "hc-black",
+        "path": "./themes/mihrab-hc-dark-color-theme.json"
+      },
+      {
+        "label": "محراب الفاتحة عالية التباين",
+        "uiTheme": "hc-light",
+        "path": "./themes/mihrab-hc-light-color-theme.json"
       }
     ],
     "configurationDefaults": {
-      "workbench.colorTheme": "محراب الداكنة"
+      "workbench.colorTheme": "محراب الداكنة",
+      "workbench.preferredDarkColorTheme": "محراب الداكنة",
+      "workbench.preferredLightColorTheme": "محراب الفاتحة",
+      "workbench.preferredHighContrastColorTheme": "محراب الداكنة عالية التباين",
+      "workbench.preferredHighContrastLightColorTheme": "محراب الفاتحة عالية التباين"
     }
   },
   "repository": {

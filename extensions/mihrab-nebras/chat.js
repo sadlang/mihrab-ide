@@ -81,10 +81,22 @@ function buildHtml(webview) {
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="${csp}" />
 <style nonce="${nonce}">
-  body { font-family: system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-  #ctx { padding: 6px 12px; font-size: 12px; opacity: 0.75; border-bottom: 1px solid var(--vscode-panel-border); }
+  /* مكدّس بوجه عربيّ صريح على المنصّات الثلاث — النظير المقصود لـ[AR-03] في القشرة:
+     ‏system-ui وحده لا يضمن محارف عربيّة على لينكس. */
+  body { font-family: system-ui, "Segoe UI", Tahoma, "SF Arabic", "Noto Sans Arabic", sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+  /* اسم ملفّ السياق لاتينيّ داخل لوحة RTL ⇒ محايداته الطرفيّة (نقطة الامتداد، الشُّرَط)
+     تقفز للطرف الخاطئ. plaintext يشتقّ اتّجاه الفقرة من محتواها. */
+  #ctx { padding: 6px 12px; font-size: 12px; opacity: 0.75; border-bottom: 1px solid var(--vscode-panel-border); unicode-bidi: plaintext; }
   #log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
-  .msg { padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; max-width: 90%; line-height: 1.6; }
+  /* **جوهر الإصلاح:** ردّ نِبراس نصٌّ مختلط بطبيعته — شرحٌ عربيّ تتخلّله أسطر شيفرة لاتينيّة.
+     وفقاعةٌ واحدة بفقرة RTL واحدة تُبعثر كلّ سطر شيفرة: تقفز الأقواس والنقاط والفواصل
+     المنقوطة إلى الطرف المقابل فتصير الشيفرة غير قابلة للنسخ بصريًّا.
+     مع white-space:pre-wrap يُنشئ كلّ فاصل سطر **فقرة bidi مستقلّة**، فـplaintext
+     يمنح كلّ سطر اتّجاهه من أوّل محرف قويّ فيه: سطر الشرح RTL، وسطر الشيفرة LTR.
+     وtext-align:start (لا right) كي تتبع محاذاة السطر اتّجاهَه الخاصّ لا اتّجاه اللوحة.
+     ⚠️ لا شواهد خلفيّة (backtick) في تعليقات هذه الورقة: الـHTML كلّه قالبٌ نصّيّ في JS،
+     وأيّ شاهدة هنا تُنهيه فيسقط الملفّ بـSyntaxError (أمسكه اختبار الوحدة). */
+  .msg { padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; max-width: 90%; line-height: 1.6; unicode-bidi: plaintext; text-align: start; }
   .user { align-self: flex-start; background: var(--vscode-input-background); border: 1px solid var(--vscode-panel-border); }
   .bot { align-self: flex-end; background: var(--vscode-textBlockQuote-background); }
   .err { align-self: center; color: var(--vscode-errorForeground); font-size: 12px; }
@@ -98,7 +110,9 @@ function buildHtml(webview) {
   <div id="ctx"></div>
   <div id="log"></div>
   <div id="bar">
-    <textarea id="q" rows="2" placeholder="اسأل نِبراس عن الملفّ… (Ctrl+Enter للإرسال)"></textarea>
+    <!-- dir="auto": السؤال قد يكون لصقةَ شيفرة لاتينيّة؛ المتصفّح يشتقّ اتّجاه الصندوق من
+         أوّل محرف قويّ يكتبه المستخدم بدل فرض RTL على شيفرة. -->
+    <textarea id="q" rows="2" dir="auto" placeholder="اسأل نِبراس عن الملفّ… (Ctrl+Enter للإرسال)"></textarea>
     <button id="send">أرسِل</button>
     <button id="cancel" hidden>أوقِف</button>
   </div>

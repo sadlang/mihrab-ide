@@ -9,6 +9,9 @@
 /dist/
 /*.vsix
 
+# مخرَجات التشغيل الحيّ (L3): لقطات + ملفّ مستخدم/امتدادات معزول ينشئه launch.mjs
+/tests/runtime/artifacts/
+
 # سلسلة أدوات ص المدمجة (تُحقَن وقت البناء من sad-engines-dev — لا تُتعقَّب)
 /extensions/mihrab-welcome/bin/
 # [SAD-01] خادم ص اللغويّ المدمج (sad-lsp.exe يُحقَن وقت البناء في bin/ داخل sad-lang — لا يُتعقَّب)

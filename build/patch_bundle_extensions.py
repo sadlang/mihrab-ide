@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v20"
+CORE_PATCH_VERSION = "v22"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,7 +38,7 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v20 (+رأس التطبيق + خلفية المحرّر + أصول sessions) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v22 (+رأس التطبيق + خلفية المحرّر + أصول sessions + زخرفة نجميّة الترحيب + تصريح <html lang>) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
@@ -128,6 +128,17 @@ INJECT = """
   # رُقعة صفحة الترحيب: شعار القوس + الجملة الاستعاريّة في ترويسة Get Started (شكل الشعار في mihrab-rtl.css).
   if [ -f ../.mihrab-patch-welcome-rtl.py ]; then
     python ../.mihrab-patch-welcome-rtl.py src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts || { echo "محراب: فشلت رُقعة صفحة الترحيب" >&2; exit 1; }
+  fi
+  # تصريح لغة المستند: العربيّة مخبوزة في nls الافتراضيّ فلا يحلّ NLS لغةً ⇒ كان <html lang="en"
+  # على واجهة عربيّة (يُضلّل قارئات الشاشة ويُبطِل :lang(ar)). نرتدّ إلى product.defaultLocale.
+  if [ -f ../.mihrab-patch-html-lang.py ]; then
+    python ../.mihrab-patch-html-lang.py src/vs/code/electron-browser/workbench/workbench.ts || { echo "محراب: فشلت رُقعة تصريح لغة المستند" >&2; exit 1; }
+  fi
+  # افتراضُ الحوار المشروط: 'native' يعني حوارَ ويندوز بلغته وباتّجاه LTR في لحظة فقدِ عمل.
+  # 'custom' يُصيّره الـworkbench فيرث dir=rtl والسلاسلَ العربيّة المخبوزة (نطاقُه APPLICATION
+  # فلا تبلغه configurationDefaults من إضافة — قِسناه).
+  if [ -f ../.mihrab-patch-dialog-style.py ]; then
+    python ../.mihrab-patch-dialog-style.py src/vs/workbench/electron-browser/desktop.contribution.ts || { echo "محراب: فشلت رُقعة نمط الحوار" >&2; exit 1; }
   fi"""
 
 

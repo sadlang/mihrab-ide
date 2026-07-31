@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- مولَّد بـgen_icons.py — لا تحرّره يدويًّا | عائلة «data» على الأرضيّة الداكنة -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
+  <path d="M6 3 h13 l8 8 v24 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V5 a2 2 0 0 1 2 -2 z"
+        fill="none" stroke="#8CA0A6" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M19 3 v8 h8" fill="none" stroke="#8CA0A6" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M9 20 h14 M9 24 h14 M9 28 h9" fill="none" stroke="#E3BE68" stroke-width="2" stroke-linecap="round"/>
+</svg>

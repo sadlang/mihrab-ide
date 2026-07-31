@@ -1,5 +1,8 @@
 // تأكيدات RTL الوقتيّة (L3) — مشتقّة من docs/rtl/rtl-inventory.md، هندسيّة حتميّة بسماحية.
-import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi, tabsDropRtl } from "./harness.mjs";
+import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi, tabsDropRtl, chromeTypography, arabicInkMetrics, welcomePattern, langRuleProof, bidiLabels, bidiAudit, directionalGlyphs, unicodeHighlight, activateSadTab, activateWelcomeTab,
+         bidiPanels, glyphOrder, breadcrumbsBar, key, MOD, escape, sleep, insertText, focusEditor,
+openDiffFromScm, confirmDialog, walkthroughAlign, waitFor, resetWorkbench, editorHover,
+openExtensionDetails, dialogButtons, statusbarOrder, discardUntitled } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -26,7 +29,13 @@ export function geometryAssertions(geo) {
     ? pass("قشرة RTL", "workbench dir=rtl")
     : fail("قشرة RTL", `dir=${geo.dir} (متوقَّع rtl)`));
 
-  if (!ed) return [...out, fail("المحرّر موجود", "لا .monaco-editor — هل فُتِح ملفّ؟")];
+  // غيابُ المحرّر **فشلٌ في تشغيلة المحرّر وتخطٍّ في تشغيلة الترحيب.** التمييز بالحالة لا
+  // بالرغبة: إن كانت صفحةُ الترحيب معروضةً فهذه تشغيلةُ ترحيبٍ عمدًا (لا ملفّ يُمرَّر فيها
+  // أصلًا)، فالإنذار عن «لا محرّر» ضجيجٌ يُحمِّر تشغيلةً سليمة ويُعلِّم القارئَ تجاهُلَ الأحمر.
+  // وإن لم تكن معروضة فالمحرّر مفقودٌ فعلًا وذلك انحدار.
+  if (!ed) return [...out, geo.welcomePresent
+    ? skip("المحرّر موجود", "تشغيلة ترحيب (لا ملفّ) — الهندسة تُقاس في تشغيلة المحرّر", true)
+    : fail("المحرّر موجود", "لا .monaco-editor — هل فُتِح ملفّ؟")];
   out.push(pass("المحرّر موجود", `[${ed.l},${ed.r}] عرض ${ed.w}`));
 
   // الخريطة المصغّرة يسارًا (م2)
@@ -59,12 +68,15 @@ export function geometryAssertions(geo) {
       : fail("مسطرة النظرة يسارًا", `left=${geo.overviewRuler.l} (متوقَّع < ${Math.round(mid)})`))
     : skip("مسطرة النظرة يسارًا", "غير مرئيّة"));
 
-  // منطقة المحتوى بين الخريطة (يسارًا) والمزراب (يمينًا)
-  out.push(geo.content
-    ? ((geo.minimap ? geo.content.l >= geo.minimap.r - TOL : true) && geo.gutter && geo.content.l < geo.gutter.l
-      ? pass("المحتوى بين الخريطة والمزراب", `[${geo.content.l},${geo.content.r}]`)
-      : fail("المحتوى بين الخريطة والمزراب", `المحتوى ${geo.content.l} لا يقع بين الخريطة ${geo.minimap?.r} والمزراب ${geo.gutter?.l}`))
-    : skip("المحتوى بين الخريطة والمزراب", "لا view-lines"));
+  // منطقة المحتوى بين الخريطة (يسارًا) والمزراب (يمينًا).
+  // نقيس **إطار المحتوى** (‏editor-scrollable) لا طبقةَ `.view-lines`: الأخيرة عرضُها عرضُ
+  // أطول سطر ويسارُها سالب كلّما فاض السطر — سلوك RTL صحيح كان يُسقِط هذا التأكيد زورًا.
+  const cv = geo.contentView || geo.content;
+  out.push(cv
+    ? ((geo.minimap ? cv.l >= geo.minimap.r - TOL : true) && geo.gutter && cv.l < geo.gutter.l
+      ? pass("المحتوى بين الخريطة والمزراب", `[${cv.l},${cv.r}]`)
+      : fail("المحتوى بين الخريطة والمزراب", `المحتوى ${cv.l} لا يقع بين الخريطة ${geo.minimap?.r} والمزراب ${geo.gutter?.l}`))
+    : skip("المحتوى بين الخريطة والمزراب", "لا إطار محتوى"));
 
   // شريط الأنشطة يمينًا (القشرة RTL)
   out.push(geo.activityBar
@@ -94,6 +106,69 @@ export function geometryAssertions(geo) {
 export async function interactionAssertions(cdp) {
   const out = [];
 
+  // **قياس الترحيب أوّلًا — قبل أيّ نقر.** مِجَسّ فجوة الاقتراحات ينقر داخل منطقة المحرّر
+  // على إحداثيّةٍ عمياء؛ وحين تكون صفحة الترحيب هي المحرّر النشط فقد تقع النقرة على بطاقة
+  // جولة فتنتقل الصفحة إلى تفاصيلها، فتختفي حاوية الفئات وتُبلَّغ ترويسة الترحيب «غير
+  // موجودة» بعد أن كانت موجودة قبل ثوانٍ. رصدناه حيًّا: المِجَسّ يجدها ثمّ لا يجدها.
+  // ترحيب: شعار القوس + الجملة الاستعاريّة (best-effort — يحتاج صفحة Get Started مفتوحة).
+  try {
+    // صفحة الترحيب تبويبٌ خلفيّ بعد فتح ملفّ، فكان المِجَسّ يُبلَّغ «غير مفتوحة» دائمًا.
+    // نُنشِّطها بالنقر (نافذة واحدة، حتميّ) ثمّ نُعيد تبويب العيّنة في نهاية القسم.
+    let w = await welcomeHeader(cdp);
+    // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
+  // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
+  // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
+  if (!w || !w.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomeHeader(cdp); } }
+    if (!w || !w.present) {
+      out.push(skip("ترحيب: الشعار والجملة",
+        "لا تبويب ترحيب (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
+    } else {
+      const okMark = w.markVisible;
+      const okSub = !!w.subtitle && w.subtitle.includes(WELCOME_TAGLINE_MARKER);
+      if (okMark && okSub) out.push(pass("ترحيب: الشعار والجملة", `شعار ${w.markWidth}px + الجملة الاستعاريّة`));
+      else out.push(fail("ترحيب: الشعار والجملة",
+        `شعار مرئيّ=${okMark} (عرض ${w.markWidth})، الجملة=${JSON.stringify((w.subtitle || "").slice(0, 24))}`));
+    }
+  } catch (e) { out.push(skip("ترحيب: الشعار والجملة", "تعذّر: " + e.message, true)); }
+
+  // [القاعدة 19] الزخرفة النجميّة: خافتة، مُبلَّطة، محجوبة، وبلا نزّ تحت الترويسة.
+  try {
+    let w = await welcomePattern(cdp);
+    // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
+  // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
+  // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
+  if (!w || !w.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); w = await welcomePattern(cdp); } }
+    if (!w || !w.present) out.push(skip("ترحيب: الزخرفة النجميّة",
+      "لا تبويب ترحيب (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
+    else if (!w.hasTile) out.push(fail("ترحيب: الزخرفة النجميّة", "بلا بلاطة SVG"));
+    else if (!(w.opacity > 0 && w.opacity <= 0.12)) out.push(fail("ترحيب: الزخرفة النجميّة",
+      `شفافيّة ${w.opacity} خارج المدى الخافت (0, 0.12]`));
+    else if (!w.hasMask) out.push(fail("ترحيب: الزخرفة النجميّة", "بلا قناع تلاشٍ ⇒ حافّة حادّة/نزّ"));
+    else out.push(pass("ترحيب: الزخرفة النجميّة",
+      `شفافيّة ${w.opacity}، مُقنَّعة، نزّ ${w.bleedPx}px تحت الترويسة (مُذاب بالقناع)`));
+  } catch (e) { out.push(skip("ترحيب: الزخرفة النجميّة", "تعذّر: " + e.message, true)); }
+
+  // [القاعدة 32] محاذاة الجولة «ابدأ في ٩٠ ثانية» — **بلاغُ مستخدم لا مسحُ ماسح.**
+  // العطبُ الذي أفلت من كلّ تأكيداتنا: الترتيب سليم والمحاذاة يسار. الحكم بالأثر:
+  // أوراقُ نصٍّ متفاوتةُ الأطوال تشترك في حافّةٍ يمنى واحدة ⇒ الفقرة تبدأ من اليمين.
+  try {
+    let a = await walkthroughAlign(cdp);
+    // **التنشيطُ وحده لا يكفي — التصيير يحتاج مهلة.** تشغيلةٌ ثانية على النسخة نفسها
+  // تخطّت ثلاثةَ تأكيدات ترحيبٍ رغم وجود التبويب: نُشِّط وقُرئ في اللحظة نفسها،
+  // ومحرّرُ التبويب غير النشط لا يُصيَّر — فقرأنا DOM قبل أن يوجد.
+  if (!a || !a.present) { if (await activateWelcomeTab(cdp)) { await sleep(1500); a = await walkthroughAlign(cdp); } }
+    if (!a || !a.present) out.push(skip("ترحيب: محاذاة الجولة",
+      "لا جولة محراب مفتوحة (شغّل بـ--welcome لملفّ مستخدم نظيف)", true));
+    else if (!a.widths || a.widths < 2) out.push(skip("ترحيب: محاذاة الجولة",
+      `أوراق متطابقة الطول (${a.leaves}) — لا تُميّز يمينًا من يسار`, true));
+    else if (a.rights < a.lefts) out.push(pass("ترحيب: محاذاة الجولة",
+      `${a.leaves} ورقة: حوافّ يمنى ${a.rights} < يسرى ${a.lefts} ⇒ تبدأ من اليمين`));
+    else out.push(fail("ترحيب: محاذاة الجولة",
+      `النصّ ملصَقٌ يسارًا: حوافّ يمنى ${a.rights} ≥ يسرى ${a.lefts} في ${a.leaves} ورقة`));
+  } catch (e) { out.push(skip("ترحيب: محاذاة الجولة", "تعذّر: " + e.message, true)); }
+
+
+
   // فجوة الاقتراحات = صفر (الإصلاح الحاسم rtl19)
   try {
     let s = await suggestGap(cdp);
@@ -117,20 +192,6 @@ export async function interactionAssertions(cdp) {
       else out.push(fail("البحث أعلى-اليسار", `left=${f.left} (≥ ${Math.round(bound)}) — لم يُعكَس لأعلى-اليسار!`));
     }
   } catch (e) { out.push(skip("البحث أعلى-اليسار", "تعذّر: " + e.message)); }
-
-  // ترحيب: شعار القوس + الجملة الاستعاريّة (best-effort — يحتاج صفحة Get Started مفتوحة).
-  try {
-    const w = await welcomeHeader(cdp);
-    if (!w || !w.present) {
-      out.push(skip("ترحيب: الشعار والجملة", "صفحة الترحيب غير مفتوحة (افتح Get Started ثمّ أعِد)", true));
-    } else {
-      const okMark = w.markVisible;
-      const okSub = !!w.subtitle && w.subtitle.includes(WELCOME_TAGLINE_MARKER);
-      if (okMark && okSub) out.push(pass("ترحيب: الشعار والجملة", `شعار ${w.markWidth}px + الجملة الاستعاريّة`));
-      else out.push(fail("ترحيب: الشعار والجملة",
-        `شعار مرئيّ=${okMark} (عرض ${w.markWidth})، الجملة=${JSON.stringify((w.subtitle || "").slice(0, 24))}`));
-    }
-  } catch (e) { out.push(skip("ترحيب: الشعار والجملة", "تعذّر: " + e.message, true)); }
 
   // أيقونة ملفّ ص في المستكشف تحمل القوس (best-effort — يحتاج مجلّدًا فيه ملفّ .ص مفتوحًا).
   try {
@@ -164,7 +225,7 @@ export async function interactionAssertions(cdp) {
   // bidi المحرّر (#24): النصّ العربيّ في السطر مُحاذًى يمينًا (اتّجاه RTL فعليّ) — يحتاج الـfixture.
   try {
     const b = await editorBidi(cdp);
-    if (!b || !b.present) out.push(skip("bidi: النصّ العربيّ يمينًا", "لا سطر عربيّ (افتح rtl_fixture.sad)", true));
+    if (!b || !b.present) out.push(skip("bidi: النصّ العربيّ يمينًا", "لا سطر عربيّ (افتح rtl_fixture.ص)", true));
     else if (!b.hasText) out.push(skip("bidi: النصّ العربيّ يمينًا", "السطر بلا نصّ قابل للقياس", true));
     else {
       // مقارنة الفجوتين (مستقلّة عن حجم النافذة/التمرير/الخطّ، بلا ثابت سحريّ — مراجعة Amelia):
@@ -190,9 +251,587 @@ export async function interactionAssertions(cdp) {
   return out;
 }
 
+// ─────────────── تأكيدات التصميم العربيّ (طباعة القشرة + الزخرفة + قياس التشكيل) ───────────────
+export async function designAssertions(cdp) {
+  const out = [];
+
+  // [AR-03] مكدّس خطّ القشرة: `:lang(ar)` غلب قاعدة المنبع **حيًّا** لا على الورق.
+  try {
+    const t = await chromeTypography(cdp);
+    if (!t || !t.present) out.push(skip("AR-03: مكدّس خطّ القشرة", "لا .monaco-workbench", true));
+    // وضع التطوير (رسائل غير مخبوزة) نصّه إنجليزيّ فعلًا ⇒ lang=en **صحيح** لا انحدار.
+    // لا نُفشِل هنا ولا نتساهل: الآليّة نفسها تُبرهَن بمِجَسّ langRuleProof أدناه (يقود lang=ar).
+    else if (t.lang !== "ar" && !t.baked) out.push(skip("AR-03: مكدّس خطّ القشرة",
+      `وضع تطوير (رسائل غير مخبوزة) ⇒ lang=${t.lang} صحيح؛ الآليّة تُفحَص بـlangRuleProof`, true));
+    else if (t.lang !== "ar") out.push(fail("AR-03: مكدّس خطّ القشرة",
+      `بناء مخبوز لكنّ html lang=${t.lang} (متوقَّع ar) — رُقعة mihrab-html-lang لم تسرِ!`));
+    else {
+      // الوجه العربيّ الصريح المتوقَّع لمنصّة التشغيل الحاليّة (نفس خريطة حارس L0).
+      const FACE = { windows: "Tahoma", mac: "SF Arabic", linux: "Noto Sans Arabic" };
+      const want = FACE[t.platform];
+      if (!want) out.push(skip("AR-03: مكدّس خطّ القشرة", `منصّة غير معروفة (${t.platform})`, true));
+      else if (!t.monacoFont.includes(want)) out.push(fail("AR-03: مكدّس خطّ القشرة",
+        `--monaco-font=«${t.monacoFont}» بلا «${want}» — قاعدة المنبع غلبت قاعدتنا!`));
+      else if (!/Kawkab Mono/.test(t.monospaceFont)) out.push(fail("AR-03: الوجه الأحاديّ في القشرة",
+        `--monaco-monospace-font=«${t.monospaceFont}» بلا Kawkab Mono`));
+      else out.push(pass("AR-03: مكدّس خطّ القشرة",
+        `${t.platform}/lang=ar · متناسب «${t.monacoFont}» · أحاديّ «${t.monospaceFont}»`));
+    }
+  } catch (e) { out.push(skip("AR-03: مكدّس خطّ القشرة", "تعذّر: " + e.message, true)); }
+
+  // [AR-03] برهان آليّة القاعدة: نقود `lang` من en إلى ar حيًّا ونطالب بتبدّل المكدّس.
+  // **ثنائيّ الاتّجاه عمدًا:** الصيغة السابقة كانت تضبط ar وتتوقّع تبدّلًا، فتنجح في وضع
+  // التطوير (يبدأ من en) و**تفشل زورًا على البناء المشحون** حيث lang=ar مخبوزة أصلًا.
+  try {
+    const r = await langRuleProof(cdp);
+    if (!r || !r.present) out.push(skip("AR-03: برهان :lang(ar) حيًّا", "لا قشرة", true));
+    else if (!r.changed) out.push(fail("AR-03: برهان :lang(ar) حيًّا",
+      `en→ar لم يبدّل المكدّس (بقي «${r.after.font}») — القاعدة لا تُطابِق أو يغلبها المنبع`));
+    else out.push(pass("AR-03: برهان :lang(ar) حيًّا",
+      `en→ar بدّل المكدّس: «${r.before.font}» ⇒ «${r.after.font}» (اللغة الأصليّة ${r.originalLang})`));
+  } catch (e) { out.push(skip("AR-03: برهان :lang(ar) حيًّا", "تعذّر: " + e.message, true)); }
+
+  // [بند سالي] اقتطاع التشكيل — قياسٌ يحسم ما كان حدسًا. نُبلِّغ الرقم دائمًا؛ ونُفشِل فقط
+  // حين يتجاوز حبرُ العربيّة المُشكَّلة صندوقَ السطر (اقتطاع مؤكَّد حيث overflow:hidden).
+  try {
+    const m = await arabicInkMetrics(cdp);
+    if (!m || !m.present) out.push(skip("طباعة: حبر التشكيل داخل السطر", "لا قشرة", true));
+    else {
+      const d = `حبر المُشكَّلة ${m.tashkeel.height}px ÷ سطر ${m.lineHeightPx}px = ${m.tashkeelRatio}` +
+        ` (لاتينيّ ${m.latinRatio}، كلفة التشكيل +${m.tashkeelExtraPx}px)`;
+      if (m.tashkeelRatio > 1) out.push(fail("طباعة: حبر التشكيل داخل السطر", d + " — يتجاوز السطر ⇒ اقتطاع"));
+      else out.push(pass("طباعة: حبر التشكيل داخل السطر", d));
+    }
+  } catch (e) { out.push(skip("طباعة: حبر التشكيل داخل السطر", "تعذّر: " + e.message, true)); }
+
+
+  // [القاعدة 21] المحايدات: تسمياتٌ محتواها يحدّد اتّجاهه (نقاط «‎…‎» ومسارات مختلطة).
+  try {
+    const b = await bidiLabels(cdp);
+    if (!b) out.push(skip("اتّجاه التسميات المحايدة (bidi)", "تعذّر القياس", true));
+    else if (b.wrong.length) out.push(fail("اتّجاه التسميات المحايدة (bidi)",
+      `ليست plaintext: ${b.wrong.join("، ")} — ستقفز النقاط/الشُّرَط إلى الطرف الخاطئ`));
+    else if (!b.found.length) out.push(skip("اتّجاه التسميات المحايدة (bidi)",
+      `لا هدف ظاهر (${b.missing.length} غائبًا — افتح ملفًّا/صفحة الترحيب)`, true));
+    else out.push(pass("اتّجاه التسميات المحايدة (bidi)",
+      `${b.found.length}/${b.checked} plaintext${b.missing.length ? `، ${b.missing.length} غير ظاهر` : ""}`));
+  } catch (e) { out.push(skip("اتّجاه التسميات المحايدة (bidi)", "تعذّر: " + e.message, true)); }
+
+  // [القاعدة 22] الرموز الاتّجاهيّة — تُقاس بالأثر: تدرّج المثلّث مع العمق، وجهة الأدلّة،
+  // وانعكاس الأسهم. يحتاج **مجلّدًا مفتوحًا** (‏--folder) وإلّا فلا شجرة تُقاس ⇒ تخطٍّ صريح.
+  try {
+    const d = await directionalGlyphs(cdp);
+    const flipped = Object.entries(d.arrows || {}).filter(([, v]) => v && v.startsWith("matrix(-1"));
+    const present = Object.entries(d.arrows || {}).filter(([, v]) => v);
+    const bad = present.filter(([, v]) => !v.startsWith("matrix(-1")).map(([k]) => k);
+    if (!d || d.depths < 2) {
+      out.push(skip("الرموز الاتّجاهيّة (القاعدة 22)",
+        `لا شجرة بعمقين على الشاشة (${d ? d.depths : 0}) — شغّل بـ--folder ووسّع مجلّدًا`, true));
+    } else if (d.step <= 0) {
+      out.push(fail("الرموز الاتّجاهيّة (القاعدة 22)",
+        `مثلّث الشجرة لا يتدرّج مع العمق (خطوة ${d.step}px) — يصطفّ في عمود واحد بينما ` +
+        `تتدرّج التسميات وحدها`));
+    } else if (d.indSide !== null && d.indSide > 40) {
+      out.push(fail("الرموز الاتّجاهيّة (القاعدة 22)",
+        `أدلّة التشجير على بُعد ${d.indSide}px من حافّة الصفّ — مرساة على الحافّة المقابلة`));
+    } else if (bad.length) {
+      out.push(fail("الرموز الاتّجاهيّة (القاعدة 22)", `أسهم غير معكوسة: ${bad.join("، ")}`));
+    } else {
+      out.push(pass("الرموز الاتّجاهيّة (القاعدة 22)",
+        `تدرّج المثلّث ${d.step}px/مستوى، الأدلّة على بُعد ${d.indSide}px من حافّة الصفّ، ` +
+        `${flipped.length}/${present.length} سهمًا معكوسًا (${5 - present.length} غير ظاهر)`));
+    }
+  } catch (e) { out.push(skip("الرموز الاتّجاهيّة (القاعدة 22)", "تعذّر: " + e.message, true)); }
+
+  // [AR-04] إبراز يونيكود: صفرُ علامات في ملفّ ص. يُقاس **بالأثر** (عقد .unicode-highlight)
+  // لا بقراءة الإعداد. في مساحةٍ موثوقة لا يُثبت الصفرُ شيئًا (الإبراز مُعطَّل أصلًا) ⇒ نُصرّح.
+  try {
+    const u = await unicodeHighlight(cdp);
+    if (!u || !u.present) out.push(skip("إبراز يونيكود [AR-04]", "لا محرّر مفتوح", true));
+    else if (!u.arabic) out.push(skip("إبراز يونيكود [AR-04]", "لا سطر عربيّ في المحرّر", true));
+    else if (u.marks) out.push(fail("إبراز يونيكود [AR-04]",
+      `${u.marks} علامة إبراز على محارف عربيّة — إعفاء [sad] لم يصل`));
+    else out.push(pass("إبراز يونيكود [AR-04]",
+      `0 علامة على نصّ عربيّ${u.restricted ? " (مساحة مقيَّدة — القياس حاسم)" : " (مساحة موثوقة — القياس مؤيِّد لا حاسم)"}`));
+  } catch (e) { out.push(skip("إبراز يونيكود [AR-04]", "تعذّر: " + e.message, true)); }
+
+  // مسح bidi شامل — استكشافيّ لا حاجز: يُبلِّغ عن أوراق النصّ المعرَّضة التي ما زالت
+  // `normal`. لا يُفشِل (المسح مرهون بما هو مفتوح على الشاشة الآن، والقائمة تُقرأ لا تُقاس)،
+  // لكنّه المصدر الوحيد الذي نشتقّ منه أهداف القاعدة 21 — قياسًا لا تخمينًا.
+  try {
+    const a = await bidiAudit(cdp);
+    if (!a) out.push(skip("مسح bidi شامل", "تعذّر القياس", true));
+    else if (!a.atRisk.length) out.push(pass("مسح bidi شامل",
+      `${a.scanned} ورقة نصّ، ${a.exposed} معرَّضة، 0 بلا معالجة`));
+    else out.push(skip("مسح bidi شامل",
+      `${a.exposed}/${a.scanned} معرَّضة، ${a.atRisk.length} توقيعًا بلا معالجة: ` +
+      a.atRisk.slice(0, 6).map(g => `${g.sig}×${g.n}«${g.sample}»`).join(" | "), true));
+  } catch (e) { out.push(skip("مسح bidi شامل", "تعذّر: " + e.message, true)); }
+
+  // أعِد تبويب العيّنة العربيّة نشطًا: قسمُ الترحيب قد يكون بدّله، وما بعده يقيس نصًّا عربيًّا.
+  try { await activateSadTab(cdp); } catch { /* */ }
+
+  // فتات المسار: **يُطالَب بأن يكون مأهولًا** لا بأن يكون نظيفًا. سطحٌ بلا بندٍ واحد
+  // يُبلِّغ «‎0 معرَّضة» زورًا — وهو بالضبط ما خدعَنا فيه أوّل قياس (الترحيب كان نشطًا،
+  // ولا URI ⇒ الشريط مخفيّ). التنشيط أعلاه شرطُ صحّة هذا القياس لا زينة.
+  try {
+    const b = await breadcrumbsBar(cdp);
+    if (!b || !b.present) out.push(skip("فتات المسار: مأهول ومتّجه", "لا .breadcrumbs-control", true));
+    else if (b.hidden || !b.items.length) out.push(skip("فتات المسار: مأهول ومتّجه",
+      `مخفيّ=${b.hidden} بنود=${b.items.length} — لا محرّر بـURI نشط (ترحيب؟)`, true));
+    else {
+      // البنود تتدرّج **من اليمين إلى اليسار** في قشرة RTL: أوّل بندٍ منطقيّ أقصى اليمين.
+      const desc = b.items.every((it, i) => i === 0 || it.left < b.items[i - 1].left);
+      const raw = b.items.filter(it => it.ub === "normal").map(it => it.t);
+      if (!desc) out.push(fail("فتات المسار: مأهول ومتّجه",
+        `ترتيب البنود ليس يمينًا←يسارًا: ${b.items.map(i => `${i.t}@${i.left}`).join(" ")}`));
+      else if (raw.length) out.push(fail("فتات المسار: مأهول ومتّجه",
+        `${raw.length} بندًا بـunicode-bidi:normal (${raw.join("، ")}) — محايداتُ المسار ستقفز`));
+      else out.push(pass("فتات المسار: مأهول ومتّجه",
+        `${b.items.length} بندًا (عرض ${b.w}) متدرّجًا يمينًا←يسارًا، ` +
+        `آخرها «${b.items.at(-1).t}» بترتيب ${b.items.at(-1).ltr ? "LTR" : "RTL"}`));
+    }
+  } catch (e) { out.push(skip("فتات المسار: مأهول ومتّجه", "تعذّر: " + e.message, true)); }
+
+  return out;
+}
+
+
+// ───────── القاعدة 24: أسطح اللوحات (بحث · امتدادات · مشاكل) ─────────
+//
+// هذه الأسطح **لم تُقَس أصلًا** قبل هذه الدفعة: مِجَسّاتنا كلّها كانت على المحرّر والمستكشف
+// والترحيب، فبقيت اللوحات نقطةً عمياء حتى مسحناها بماسحٍ عامّ فأعادت خمسة أسطح معطوبة.
+//
+// **نفتحها باختصارات المفاتيح لا بلوحة الأوامر عمدًا.** أسماء الأوامر تُخبَز عربيّةً في
+// البناء المشحون وتبقى إنجليزيّة في وضع التطوير، فمِجَسٌّ يكتب «‎View: Show Extensions‎»
+// كان سيعمل عندنا ويتخطّى صامتًا عند المستخدم — وهو بالضبط صنفُ الأخضر الكاذب الذي
+// كلّفنا أكثر ما كلّف في هذه الجلسة. الاختصارات لا تتغيّر بتغيّر اللغة.
+// كلُّ عنصر: [الاسم، سلسلةُ ضغطاتٍ [رمز، code، مُعدِّلات]]. السلسلة لا ضغطةٌ واحدة لأنّ
+// محرّر الاختصارات يُفتَح بوترٍ (‏Ctrl+K ثمّ Ctrl+S).
+// مِجَسُّ الهويّة: يعدّد الحاوياتِ المرئيّة ذاتَ المعرِّفات/الأصناف الثابتة (لا نصوصًا:
+// النصُّ يُترجَم فيسقط في أحد المسارين، كما تعلّمنا من أسماء الأوامر).
+const ID_PROBE = `(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('[id^="workbench."], .composite, .quick-input-widget, .settings-editor, .keybindings-editor, .search-view, .markers-panel, .extensions-viewlet, .terminal-outer-container, .monaco-diff-editor, .gettingStartedContainer, .context-view, .suggest-widget, .action-widget, .zone-widget, .editor-widget.find-widget, .notifications-list-container, .monaco-dialog-box, .repl, .output-view')) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 20 || r.height < 20) continue;
+    out.push((el.id ? '#' + el.id : '') + '.' + [...el.classList].slice(0, 3).join('.'));
+  }
+  const q = document.querySelector('.quick-input-box .monaco-inputbox input, .quick-input-box input, .quick-input-box .view-line');
+  if (q) out.push('QUERY=' + JSON.stringify((typeof q.value === 'string' ? q.value : q.textContent || '').replace(/\\u200b/g, '')));
+  return [...new Set(out)].join(' | ');
+})()`;
+
+// مقدّمةُ البصمة: تُحقَن في كلّ تقييم — مرّةً للانتظار ومرّةً للتأكيد، بالنصّ نفسه، حتّى
+// لا ينتظرَ الطقمُ شرطًا ويؤكّدَ آخر.
+const FP = (expr) => `(() => {
+  const V = s => [...document.querySelectorAll(s)].some(e => { const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 20; });
+  const ID = s => { const e = document.getElementById(s); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 20 && r.height > 20; };
+  const Q = () => { const e = document.querySelector(".quick-input-box input"); return e ? e.value : null; };
+  try { return !!(${expr}); } catch { return false; }
+})()`;
+
+// العنصرُ الرابع (اختياريّ): **بصمةُ هويّة** — تعبيرٌ يُقيَّم في الصفحة ويجب أن يصدق بعد
+// المحفّز، وإلّا فالسطحُ المفتوح ليس السطحَ المقصود. انظر شرحَ الحارس في الحلقة أدناه.
+const PANELS = [
+  ["الامتدادات", [[88, "KeyX", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.view.extensions")`],
+  ["البحث", [[70, "KeyF", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.view.search")`],
+  ["المشاكل", [[77, "KeyM", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.panel.markers")`],
+  ["لوحة الأوامر", [[80, "KeyP", MOD.CTRL | MOD.SHIFT]], "query", `V(".quick-input-widget") && Q() && Q().startsWith(">")`],
+  ["الإعدادات", [[188, "Comma", MOD.CTRL]], null, `V(".settings-editor")`],
+  ["الاختصارات", [[75, "KeyK", MOD.CTRL], [83, "KeyS", MOD.CTRL]], null, `V(".keybindings-editor")`],
+  // الدفعة الثانية: أسطحٌ في **اللوحة السفلى** وفي جزء المصادر لم يبلغها المسحُ الأوّل
+  // لأنّنا فتحنا الشريطَ الجانبيّ وحده. اللوحة السفلى نطاقٌ أصلًا (‏`.part.panel`) لكنّها
+  // كانت فارغةً في كلّ تشغيلاتنا — نطاقٌ بلا محتوًى يُبلِّغ «نظيف» بلا أن يمسح شيئًا.
+  ["المخرجات", [[85, "KeyU", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.panel.output")`],
+  ["وحدة التصحيح", [[89, "KeyY", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.panel.repl")`],
+  ["الطرفيّة", [[192, "Backquote", MOD.CTRL]], null, `V(".terminal-outer-container")`],
+  // التحكّم بالمصادر وترٌ في الإصدارات الحديثة (‏Ctrl+Shift+G ثمّ G) لا ضغطةٌ واحدة.
+  ["التحكّم بالمصادر", [[71, "KeyG", MOD.CTRL | MOD.SHIFT], [71, "KeyG", 0]], null, `ID("workbench.view.scm")`],
+  // **قائمة السياق بالمفتاح لا بالفأرة.** ‏Shift+F10 يفتحها على العنصر المركَّز عليه، فلا
+  // نحتاج إحداثيّاتٍ تتغيّر بتغيّر التخطيط. وهي سطحٌ كثيفُ الخلط: تسميةٌ عربيّة يمينًا
+  // واختصارٌ لاتينيّ يسارًا في الصفّ نفسه (قِسنا 17 ورقة). أضفناها لأنّنا كنّا قد أدخلنا
+  // ‏`.context-view` في النطاق **بلا أن نفتحها قطّ** — وهو بعينه الفخّ الذي وثّقناه
+  // للوحة السفلى: نطاقٌ بلا محتوًى يُبلِّغ «نظيف» بلا أن يمسح شيئًا.
+  ["قائمة السياق", [[69, "KeyE", MOD.CTRL | MOD.SHIFT], [121, "F10", MOD.SHIFT]], null, `V(".context-view.monaco-menu-container")`],
+  // ‏Ctrl+P غير Ctrl+Shift+P: الأولى تعرض **مساراتِ ملفّات** والثانية أسماءَ أوامر.
+  // المسارُ صنفُ نصٍّ آخر بالكامل (شرطات مائلة ونقاط وامتدادات) — محايداتٌ في الطرفين.
+  ["فتح سريع (مسارات)", [[80, "KeyP", MOD.CTRL]], "query", `V(".quick-input-widget") && Q() && !Q().startsWith(">")`],
+  // **الإشعارات — بالنقر لا بالمفتاح.** `notifications.showList` بلا اختصارٍ افتراضيّ،
+  // واسمُ الأمر يُترجَم فيسقط في أحد المسارين. زرُّ الجرس في شريط الحالة معرّفٌ ثابت
+  // (‏`#status.notifications`) لا يتغيّر بتغيّر اللغة. وكنّا نصف هذا السطح «انتهازيًّا»
+  // لأنّ قياسًا ملوَّثًا أوهمَنا أنّه لا يُملأ — وفيه إشعارُ محرابٍ نفسه دائمًا.
+  ["الإشعارات", [], "click:#status\\.notifications a", `V(".notifications-list-container")`],
+  // **ودجة البحث في المحرّر — أوّلُ سطحٍ في حاوية LTR ندخله.** نصُّها واجهةٌ مترجَمة
+  // داخل حاوية المحرّر التي أبقيناها LTR عمدًا لحماية الكود، وعدّادُها («‏3 من 146»)
+  // كان يُقرأ «‏3 146 من». تحتاج تركيزًا في المحرّر ثمّ استعلامًا يُعطي نتائج، فلها
+  // وضعُها الخاصّ: `findWidget` ينقر أكبرَ `.view-lines` (لا إحداثيّةً ثابتة) ثمّ Ctrl+F.
+  ["ودجة البحث في المحرّر", [], "find:ا", `V(".editor-widget.find-widget.visible")`],
+  // **الثلاثةُ التي «تعذّر فتحُها» — وما كان التعذّرُ إلّا ظنًّا.** كانت `.suggest-widget`
+  // و`.action-widget` و`.zone-widget` في نطاق الماسح **بلا أن تُفتَح قطّ**، وعلّلنا ذلك
+  // بأنّ إدخال CDP النصّيّ لا يبلغ `native-edit-context`. القياسُ نقض التعليل: المحفّزات
+  // الثلاثة لا تحتاج كتابةً أصلًا — تركيزٌ في المحرّر ثمّ وترُ مفاتيح. و«نطاقٌ بلا محتوًى
+  // يُبلِّغ نظيفًا بلا أن يمسح شيئًا» هو الفخُّ نفسه الذي وثّقناه للوحة السفلى مرّتين.
+  // ‏(‏`Shift+F12` و`Alt+F12` و`F2` جُرِّبت ولم تفتح شيئًا — لا خادمَ مراجع في العيّنة —
+  // فلم نُدرِجها: مِجَسٌّ لا يفتح سطحَه يُحتسَب «لم ينفتح» لا تغطية.)
+  ["اقتراحات المحرّر", [], "editor:32,Space,2", `V(".suggest-widget.visible")`],
+  ["إجراءات الكود", [], "editor:190,Period,2", `V(".action-widget")`],
+  ["نظرة المشاكل", [], "editor:119,F8,0", `V(".zone-widget")`],
+  // ── محرّرُ المقارنة: سطحُ محرّرٍ كاملٌ لم يبلغه مِجَسّ ──────────────────────────
+  // يُفتَح بنقر مَورِدٍ متغيّر في جزء التحكّم بالمصادر — لا اسمَ أمرٍ مترجَمًا في الطريق.
+  // نمسح **أوراقَ واجهته وحدها** (شريطُ الأسطر المطويّة ومراجعةُ المقارنة) لا سطورَه:
+  // سطورُ المقارنة كودُ المستخدم، وقد تعلّمنا من `.view-lines` و`.xterm-rows` أنّها تُغرِق
+  // الماسحَ ببلاغاتٍ كاذبة. يشترط مستودعًا ذا تغييرات، وإلّا فـ«لم ينفتح» بصراحة.
+  ["محرّر المقارنة", [], "scm-diff", `V(".monaco-diff-editor")`],
+  // ── الحوار المشروط: **والعذرُ الثاني الذي نقضه القياس** ────────────────────────
+  // كُتب هنا ثلاثةَ أعذارٍ لعدم قياسه، أوسطُها: «الدفترُ الجديد لا يتّسخ بـ`insertText`
+  // لأنّ المحرّر يستعمل `native-edit-context`». قِسناه فاتّسخ من أوّل محرف (‏`dirty` على
+  // التبويب). والعذرُ الأوّل («`Ctrl+W` يأكل تبويبَ العيّنة») صحيحٌ للعيّنة لا للدفتر:
+  // الدفترُ الجديد ملكُنا وحدنا، وإغلاقُه لا يمسّ ملفًّا للمستخدم.
+  //
+  // وما كان يحجب السطحَ فعلًا شيءٌ آخر لم يخطر في الأعذار الثلاثة: افتراضُ
+  // `window.dialogStyle` = `native` ⇒ **الحوارُ حوارُ ويندوز**، بلغته وباتّجاه LTR، لا
+  // أثرَ له في DOM. أي أنّ محرابًا كان يخرج من التعريب كلِّه في لحظة فقدِ عمل. رقّعنا
+  // الافتراضَ (`build/patch_dialog_style.py`)، فصار الحوارُ عربيًّا RTL — وصار قابلًا
+  // للقياس أصلًا. فإن عاد «لم ينفتح» فهو انحدارُ الرُقعة لا هشاشةُ مِجَسّ.
+  //
+  // يبقى آخرَ سطحٍ في القائمة، ويُغلَق بـ`Escape` (إلغاءُ الإغلاق) داخل مِجَسّه: مودالٌ
+  // متروكٌ مفتوحًا يُعطّل كلَّ ما بعده — قِسنا ذلك أيضًا (تعطّل أوّلُ وترٍ تالٍ بمهلة).
+  ["الحوار المشروط", [], "dialog", `V(".monaco-dialog-box")`],
+  // ── صفحةُ الترحيب: سطحُ **النثر الكتليّ**، وحيث للمحاذاة مقامٌ كبير ────────────────
+  // ‏`.gettingStartedContainer` أُدخِلت النطاقَ حارسًا دائمًا لأنّ بلاغَ المستخدم وقع فيها
+  // (القاعدة 32). لكنّ إدخالَ النطاق وحده **لا يقيس شيئًا**: قِسناه فكان إسهامُها صفرًا
+  // في الوصفة القياسيّة — لأنّ محرابًا يفتحها تبويبًا **غيرَ نشط** حين يُمرَّر ملفّ، ومحرّرُ
+  // التبويب غير النشط لا يُصيَّر أصلًا. وهو الفخُّ الموثَّق ثلاث مرّاتٍ هنا: نطاقٌ بلا
+  // محتوًى يُبلِّغ «نظيف» بلا أن يمسح شيئًا. فالسطحُ يحتاج **محفِّزًا** كغيره: تنشيطُ تبويبه.
+  // يبقى بعد الحوار مباشرةً وآخرَ القائمة، ثمّ يُعاد تنشيطُ تبويب العيّنة بعد الحلقة حتّى
+  // لا تَرِث التأكيداتُ التالية محرّرًا نشطًا ليس محرّرَ نصّ.
+  ["صفحة الترحيب (نثر)", [], "welcome", `V(".gettingStartedContainer")`],
+  // **التحويم — سطحٌ كان في النطاق منذ الجولة الأولى بلا أن يُفتَح قطّ.** كنّا نعلّل ذلك
+  // بأنّ حركةَ الفأرة المُصطنَعة لا تُنتج تحويمًا في Monaco (قِسناه على هدفين مستقلّين)،
+  // فبقي يُبلَّغ ضمن «‏0 معرَّضة» وهو **مجهولٌ لا نظيف**. وللتحويم أمرٌ باختصارٍ ثابت.
+  ["تحويم المحرّر", [], "hover", `V(".monaco-hover")`],
+  // **صفحةُ تفاصيل الامتداد** — نثرٌ عريضٌ آخر في جزء المحرّر. أوراقُ اللوحات تشرنق على
+  // محتواها فلا فسحةَ فيها تُقاس؛ والنثرُ العريض هو حيث للمحاذاة مقامٌ أصلًا.
+  ["تفاصيل الامتداد (نثر)", [], "ext-details", `V(".extension-editor")`],
+];
+
+export async function panelAssertions(cdp) {
+  const out = [];
+  const offenders = [];
+  const misaligned = [];
+  let alignable = 0;
+  let opened = 0;
+  const notOpened = [];
+  // **القياس الخامل** — ما يمسحه الماسح بلا أيّ محفّز. الأسطحُ الحاضرة دائمًا (شريط
+  // الحالة، التلميح، فتات المسار) تُعيد نصوصها في كلّ تشغيلة؛ فلو اكتفينا بـ`scanned > 0`
+  // لحُسِب كلُّ محفّزٍ فاشلٍ سطحًا مفتوحًا. نطرح هذا الأساس من كلّ قياسٍ تالٍ.
+  let baseline = new Set();
+  try { await escape(cdp); await sleep(500);
+        const b = await bidiPanels(cdp);
+        if (b && b.texts) baseline = new Set(b.texts); } catch { /* */ }
+  for (const [label, chord, mode, fingerprint] of PANELS) {
+    try {
+      // **الإرجاعُ إلى حالٍ معلومة قبل كلّ سطح** — لا `escape` وحدها. أثرُ السطح السابق
+      // (لوحةٌ سفلى مفتوحة، ودجةُ بحثٍ عالقة) كان يتراكم فتقيسُ التشغيلةُ الثانية حالةً
+      // غيرَ الأولى، وقد أهدرنا بذلك ثلاثَ تشغيلات.
+      await resetWorkbench(cdp);
+      if (typeof mode === "string" && mode.startsWith("click:")) {
+        const sel = mode.slice(6);
+        await cdp.evaluate(`document.querySelector(${JSON.stringify(sel)})?.click(), 1`);
+      } else if (typeof mode === "string" && mode.startsWith("editor:")) {
+        // ودجاتٌ تُصيَّر **داخل** حاوية المحرّر: تحتاج تركيزًا فيه أوّلًا، وإلّا ابتلع
+        // الشريطُ الجانبيُّ المركَّزُ عليه الوترَ فيُبلَّغ «لم ينفتح» بلا سبب ظاهر.
+        if (!(await focusEditor(cdp))) { notOpened.push(label); continue; }
+        const [vk, code, mods] = mode.slice(7).split(",");
+        await key(cdp, +vk, code, +mods);
+      } else if (mode === "scm-diff") {
+        if (!(await openDiffFromScm(cdp))) { notOpened.push(label); continue; }
+      } else if (mode === "hover") {
+        if (!(await editorHover(cdp))) { notOpened.push(label); continue; }
+      } else if (mode === "ext-details") {
+        if (!(await openExtensionDetails(cdp))) { notOpened.push(label); continue; }
+      } else if (mode === "welcome") {
+        if (!(await activateWelcomeTab(cdp))) { notOpened.push(label); continue; }
+      } else if (mode === "dialog") {
+        const ok = await confirmDialog(cdp);
+        if (!ok) { notOpened.push(label); continue; }
+        // الأثرُ يُزال بعد القياس لا قبل التشغيلة التالية — انظر `discardUntitled`.
+      } else if (typeof mode === "string" && mode.startsWith("find:")) {
+        await findWidget(cdp);
+        await key(cdp, 70, "KeyF", MOD.CTRL);
+        await sleep(900);
+        // **الإقرارُ يُقرأ لا يُهمَل.** حقلُ البحث حقلٌ حقيقيّ فيُقَرّ تلقائيًّا، لكنّ
+        // تجاهُلَ الحكم يُعيدنا إلى ما قبل الإصلاح: ودجةٌ بلا استعلامٍ صحيح تُمسَح ويُبلَّغ
+        // «‏0 معرَّضة» — خضرةٌ على سطحٍ لم يُقَس فعلًا. «لم ينفتح» أصدقُ منها.
+        if ((await insertText(cdp, mode.slice(5))) === false) { notOpened.push(label + " (لم يُقَرّ الاستعلام)"); continue; }
+      } else {
+        for (const [vk, code, mods] of chord) { await key(cdp, vk, code, mods); await sleep(300); }
+      }
+      // **انتظارُ الشرط لا الزمن.** كانت هنا مهلةٌ ثابتة ‎2500ms‎ لعشرين سطحًا: تُبطئ
+      // التشغيلةَ بلا داعٍ حيث السطحُ فوريّ، ولا تكفي حيث يتأخّر. والبصمةُ نفسها هي
+      // الشرطُ — فننتظرها ثمّ نؤكّدها، وإن تأخّرت مضينا وترك الحكمَ للحارس أدناه.
+      if (fingerprint) await waitFor(cdp, FP(fingerprint), 6000);
+      else await sleep(2500);
+      // لوحة الأوامر لا تُظهر شارة العدد قبل استعلام — بلا كتابةٍ يُمسَح سطحٌ فارغ ويُبلَّغ
+      // «‎0 معرَّضة» زورًا. نكتب استعلامًا ثابتًا (لاتينيًّا: الأوامر تُخبَز عربيّةً في
+      // البناء المشحون وإنجليزيّةً في التطوير، و«‎git‎» يطابق في الاثنين).
+      // ولوحةُ الأوامر والفتحُ السريع كذلك: استعلامٌ لم يُقَرّ ⇒ نتائجُ استعلامٍ آخر
+      // (أو لا نتائج)، فيُمسَح سطحٌ ليس السطحَ المقصود ويُحتسَب نظيفًا.
+      if (mode === "query") {
+        if ((await insertText(cdp, "git")) === false) { notOpened.push(label + " (لم يُقَرّ الاستعلام)"); continue; }
+        await sleep(1500);
+      }
+      await sleep(700);
+      // **استقرارٌ لا انتظارٌ ثابت.** قراءةٌ واحدة بعد مهلةٍ ثابتة أعطتنا خضرةً كاذبة:
+      // لوحةُ المشاكل في أوّل فتحٍ لها تُصيَّر متأخّرةً، فمُسِحت قبل أن توجد رسالتُها
+      // وأُبلِغ «‎14/14 · 0 معرَّضة» — بينما تشغيلةٌ تالية على النسخة نفسها أعادت ستّ
+      // أوراق. نقرأ حتى يثبت عددُ الأوراق قراءتين متتاليتين (أو تنفد المحاولات).
+      let r = await bidiPanels(cdp);
+      for (let i = 0; i < 4; i++) {
+        await sleep(900);
+        const again = await bidiPanels(cdp);
+        if (again && r && again.scanned === r.scanned) { r = again; break; }
+        r = again;
+      }
+      // ‏`scanned === 0` ⇒ السطح لم يُفتَح (اختصارٌ ابتلعه المحرّر مثلًا)، فلا نحتسبه
+      // «مسحًا نظيفًا». وإلّا صار كلُّ اختصارٍ فاشل نجاحًا صامتًا.
+      if (!r || !r.scanned) { notOpened.push(label); continue; }
+      // **الشرطُ الحاسم: نصٌّ جديد.** سطحٌ يُعيد ما في الأساس وحده لم ينفتح مهما كان
+      // `scanned` كبيرًا. أمسك هذا الشرطُ حوارَ التأكيد الذي كان يُحتسَب زورًا.
+      const fresh = (r.texts || []).filter(t => !baseline.has(t));
+      // **«لم ينفتح» و«انفتح بلا نصٍّ يُمسَح» حالتان مختلفتان، وخلطُهما أضاع علينا ثلاثَ
+      // تشغيلات.** كان محرّرُ المقارنة يُبلَّغ «لم ينفتح» بينما `.monaco-diff-editor` في
+      // الصفحة فعلًا — النقصُ في **النطاق** لا في المحفّز. نُميّزهما في النصّ صراحةً.
+      if (!fresh.length) { notOpened.push(label + " (انفتح بلا نصٍّ في النطاق)"); continue; }
+      // **بصمةُ الهويّة — «انفتح شيء» غيرُ «انفتح هذا».** الحارسُ أعلاه يُثبت أنّ نصًّا
+      // جديدًا ظهر، لا أنّه نصُّ السطح المقصود. وقد أمسكنا حالةً واحدة بالمصادفة (تفريغٌ
+      // أعمى محا بادئةَ «‏>» فصارت لوحةُ الأوامر بحثَ ملفّات، والطقمُ أخضر) — فلولا شاهدٌ
+      // إيجابيّ لَما ظهرت. لذا يحمل كلُّ سطحٍ تعبيرًا يجب أن يصدق بعد محفّزه.
+      // ‏MIHRAB_ID_DUMP=1 يطبع الهويّاتِ المرشّحة بدل التأكيد — بها كُتبت البصماتُ قياسًا
+      // لا تخمينًا (ما لم يُقَس منها كان سيُبلَّغ «لم ينفتح» زورًا).
+      if (process.env.MIHRAB_ID_DUMP) {
+        const d = await cdp.evaluate(ID_PROBE);
+        console.log(`  [هويّة] ${label} :: ${d}`);
+      } else if (fingerprint) {
+        // ‏`V`/`ID` يشترطان **حجمًا مرئيًّا** لا وجودًا في DOM: ودجةُ البحث في المحرّر
+        // موجودةٌ دائمًا (قِسناها حاضرةً في كلّ سطحٍ سبقها)، فمجرّدُ العثور عليها ليس دليلَ
+        // فتح — و`.visible` هو الفارق. و`Q` نصُّ حقل الإدخال السريع: به وحده تُميَّز لوحةُ
+        // الأوامر (بادئة «‏>») من الفتح السريع، وهما ودجةٌ واحدة بصنفٍ واحد.
+        const okId = await cdp.evaluate(FP(fingerprint));
+        if (!okId) { notOpened.push(label + " (انفتح سطحٌ آخر)"); continue; }
+      }
+      opened++;
+      for (const o of r.offenders) offenders.push({ ...o, surface: label });
+      for (const m of (r.misaligned || [])) misaligned.push({ ...m, surface: label });
+      alignable += (r.alignable || 0);
+      // أثرُ مِجَسّ الحوار (ملفٌّ بلا عنوان متّسخ) يُزال فورَ قياسه: تركُه يزاحم تبويبَ
+      // المعاينة فيبتلع **صفحةَ الترحيب** — مِجَسٌّ أسقط سطحَ مِجَسٍّ آخر، وقد قِسناه.
+      if (mode === "dialog") await discardUntitled(cdp);
+    } catch { notOpened.push(label); }
+  }
+  // **سطحٌ مُعلَنٌ غيرَ مقيس أصدقُ من سطحٍ أخضرَ لم يُفتَح.** التحويمُ مُدرَجٌ ليُحاوَل في
+  // كلّ تشغيلة (فإن صار قابلًا للفتح يومًا دخل القياسَ تلقائيًّا)، لكنّ إخفاقَه لا يُدفَن
+  // في «لم تنفتح» بل يُبلَّغ سطرًا مستقلًّا في الحصيلة: الفجوةُ المرئيّة تُطالِب، والمدفونةُ
+  // تُنسى — وقد بقي هذا السطحُ «نظيفًا» في كلّ تشغيلاتنا وهو مجهولٌ لا نظيف.
+  if (notOpened.some(n => n.startsWith("تحويم المحرّر")))
+    out.push(skip("تحويم المحرّر — غير مقيس (فجوة معلَنة)",
+      "‏.monaco-hover قائمةٌ بحجم 0×0 دائمًا؛ لم يفتحها فأرةٌ مُصطنَعة (هدفان) ولا وترُ الأمر (ص وjson) — القياسُ سلبيّ لا صامت", true));
+
+  // **تنظيفٌ لازم لا مجاملة.** آخرُ سطحٍ في القائمة مودالٌ يحجب النافذة؛ لولا هذا
+  // الإغلاق لتعطّل كلُّ تأكيدٍ بعد `panelAssertions` بمهلةِ `Input.dispatchKeyEvent`.
+  await escape(cdp); await sleep(400);
+  // وسطحُ الترحيب يترك **تبويبَه** نشطًا لا مجرّدَ لوحةٍ مفتوحة، فنعيد تبويبَ العيّنة
+  // قبل أيّ تأكيدٍ تالٍ: محرّرٌ نشطٌ ليس محرّرَ نصّ يُسقِط مِجَسّاتٍ لا علاقةَ لها بالترحيب.
+  try { await activateSadTab(cdp); await sleep(600); } catch { /* */ }
+  if (!opened) out.push(skip("محايدات اللوحات (القاعدة 24)", "لم يُفتَح أيّ سطح", true));
+  // **الفشلُ يذكر ما لم ينفتح أيضًا.** كانت الرسالةُ تذكر المعرَّضَ وحده، فتُخفي أنّ
+  // سطحًا لم يُفتَح أصلًا خلف رقمٍ في البسط — أي تُخفي ثغرةَ تغطيةٍ خلف عطبٍ آخر.
+  else if (offenders.length) out.push(fail("محايدات اللوحات (القاعدة 24)",
+    `${opened}/${PANELS.length} أسطح · ${offenders.length} ورقة معرَّضة بلا معالجة: ` +
+    // **آخرُ ثلاثِ حلقاتٍ من السلسلة لا واحدة.** الورقةُ وحدها (`span.monaco-highlighted-label`)
+    // تتكرّر في عشرات الأسطح فلا تدلّ على قاعدةٍ تُكتَب؛ وسلسلةُ الآباء هي ما يُحدّد المحدِّد.
+    offenders.slice(0, 5).map(o =>
+      `[${o.surface}] ${o.path.split(" > ").slice(-3).join(" > ")}«${o.text}»`).join(" | ") +
+    (notOpened.length ? ` · لم تنفتح: ${notOpened.join("، ")}` : "")));
+  else out.push(pass("محايدات اللوحات (القاعدة 24)",
+    `${opened}/${PANELS.length} أسطح مسحت، 0 ورقة معرَّضة` +
+    (notOpened.length ? ` · لم تنفتح: ${notOpened.join("، ")}` : "")));
+
+  // **البُعد الثالث معمَّمًا: من أيّ حافّةٍ يبدأ السطر؟** جاء بلاغُ جولة الترحيب من
+  // المستخدم لا من الماسح، لأنّ كلّ ما نسأل عنه كان `direction` وترتيبَ المحارف. هذا
+  // التأكيد يطرح سؤالَ المحاذاة على **كلّ** الأسطح التي نفتحها، بالحبر لا بالإعلان:
+  // ورقةٌ في فقرةٍ RTL حبرُها ملتصقٌ بالحافّة اليسرى وبينه وبين اليمنى فسحةٌ حقيقيّة.
+  if (!opened) out.push(skip("محاذاة اللوحات: تبدأ من اليمين", "لم يُفتَح أيّ سطح", true));
+  // **لا نُعلن نظافةً بلا موضوعٍ يُقاس.** ورقةٌ صندوقُها بمقاس حبرها لا محاذاةَ فيها؛
+  // وجُلُّ أوراق اللوحات كذلك (عناصرُ مرنة أو سطريّة تنكمش على نصّها). فإن لم تحمل
+  // أيُّ ورقةٍ فسحةً، فالسؤالُ لم يُطرح على شيء — تخطٍّ صريح لا خضرةٌ كاذبة. وهو
+  // الحارسُ نفسه الذي فرضه `scanned` في بُعد الانقلاب، مطبَّقًا على البُعد الجديد.
+  else if (!alignable) out.push(skip("محاذاة اللوحات: تبدأ من اليمين",
+    `${opened}/${PANELS.length} أسطح · لا ورقةَ تحمل فسحةً تُقاس فيها المحاذاة`, true));
+  else if (misaligned.length) out.push(fail("محاذاة اللوحات: تبدأ من اليمين",
+    `${opened}/${PANELS.length} أسطح · ${misaligned.length}/${alignable} ورقة ملصَقةً يسارًا: ` +
+    misaligned.slice(0, 5).map(m =>
+      `[${m.surface}] ${m.path.split(" > ").slice(-3).join(" > ")} ta=${m.ta} فسحة ${m.headGap}px«${m.text}»`).join(" | ")));
+  else out.push(pass("محاذاة اللوحات: تبدأ من اليمين",
+    `${opened}/${PANELS.length} أسطح · ${alignable} ورقة ذات فسحة، 0 ملصَقةً يسارًا`));
+
+  // شاهدٌ **بصريّ** على حقل بحث الامتدادات: `getComputedStyle` وحده لا يكفي هنا — قِسنا
+  // أنّه يعيد `plaintext` على `.view-line` بينما العرض لا يتغيّر (سمة `dir` من Monaco
+  // تغلبها)، فالتأكيد على الخاصّية المحسوبة كان سينجح زورًا. نقيس ترتيب المحارف نفسه.
+  try {
+    await escape(cdp);
+    await key(cdp, 88, "KeyX", MOD.CTRL | MOD.SHIFT);
+    await sleep(2000);
+    // **نكتب الاستعلام بأنفسنا لا نقيس ما تركه المستخدم.** قِسنا أوّلًا ما كان في الحقل
+    // فكان استعلامًا مختلطًا خلّفه مِجَسٌّ يدويّ سابق — أي أنّ نتيجة الفحص كانت رهنَ حالةٍ
+    // عابرة لا رهنَ الشيفرة. `@builtin` هو ما أصلحناه وما ندّعيه، فهو ما نقيسه.
+    const focused = await cdp.evaluate(`(() => {
+      const el = document.querySelector(".suggest-input-container .native-edit-context,"
+        + " .suggest-input-container textarea");
+      if (!el) return false;
+      el.focus();
+      return !!document.activeElement && el.contains(document.activeElement)
+        || document.activeElement === el;
+    })()`);
+    await sleep(400);
+    // ⚠️ **حارسٌ مكلفٌ تعلّمناه بالخسارة.** كان `Ctrl+A` ثمّ `insertText` يُرسَلان بلا
+    // شرط. وحين لا ينفتح جزءُ الامتدادات (أو لا يُركَّز حقلُه) يذهب الاثنان إلى
+    // **المحرّر**: «حدِّد الكلّ» ثمّ استبدالٌ بـ«‎@builtin‎» — أي محوُ الملفّ المفتوح.
+    // رصدناه حيًّا: وجدنا `package.json` موسَّخًا بعد تشغيلةٍ على ملفّ مستخدمٍ نظيف،
+    // ولم يكن في المِجَسّ ما يُوسِّخ سواه. القرص سليمٌ (المخزن غير محفوظ) لكنّ التشغيلة
+    // تُفسَد وما بعدها يُقاس على ملفٍّ ممسوح.
+    if (!focused) {
+      out.push(skip("ترتيب استعلام الامتدادات (القاعدة 24)",
+        "لم يُركَّز حقلُ بحث الامتدادات — تخطٍّ بدل إرسال Ctrl+A إلى المحرّر", true));
+    } else {
+    // ‏**`Ctrl+A` صار داخل الإقرار لا قبله.** لو بقي هنا لقرأ الإقرارُ الحقلَ **بعد**
+    // التحديد — والتحديدُ لا يمحو، فيقرأ النصَّ القديم ويتّخذه مرجعًا. الاستبدالُ
+    // وإقرارُه فعلٌ واحدٌ لا فعلان.
+    // **إقرارٌ على النصّ المُصيَّر، لا مهلةٌ ثابتة.** هنا وقعت الشذوذةُ التي أضاعت
+    // تشغيلتين: «‏ك@builtinتابت» — استعلامٌ حُقن في حقلٍ يحمل بقيّةَ سابقه. فإن لم
+    // يُقَرّ بعد المحاولات، **تخطٍّ صريح**: قياسُ ترتيبٍ على نصٍّ ليس نصَّنا لا معنى له،
+    // وإعلانُه نجاحًا أو فشلًا كلاهما كذب.
+    // ‏`.view-line` لا الحاوية: الحاويةُ تضمّ **نصَّ الإرشاد** («البحث عن إضافات…»)
+    // فلا تطابق شيئًا أبدًا. قِسناه: الحاوية تعود «…المتجر@builtin» والسطرُ «@builtin».
+    const typed = await insertText(cdp, "@builtin",
+      { selector: ".suggest-input-container .view-line", replace: true });
+    await sleep(600);
+    const g = typed === false ? null : await glyphOrder(cdp, ".suggest-input-container .view-line");
+    if (typed === false) out.push(skip("ترتيب استعلام الامتدادات (القاعدة 24)",
+      "لم يُقَرّ وصولُ «@builtin» إلى حقل البحث (سباق إدخال) — لا يُقاس ترتيبُ نصٍّ ليس نصَّنا", true));
+    else if (!g) out.push(skip("ترتيب استعلام الامتدادات (القاعدة 24)", "لا حقل اقتراح مفتوح", true));
+    else if (!/^[؀-ۿ]/.test(g.text) && !g.ltr)
+      out.push(fail("ترتيب استعلام الامتدادات (القاعدة 24)",
+        `«${g.text}» يُعرَض معكوسًا (أوّل محرف عند ${g.first}، آخره عند ${g.last}) — ` +
+        `صيغة الترشيح «@…» تُقرأ خطأً`));
+    else out.push(pass("ترتيب استعلام الامتدادات (القاعدة 24)",
+      `«${g.text}» بترتيب ${g.ltr ? "LTR" : "RTL"} مطابقٍ لأوّل حرفٍ قويّ فيه`));
+    }
+  } catch (e) { out.push(skip("ترتيب استعلام الامتدادات (القاعدة 24)", "تعذّر: " + e.message, true)); }
+
+  // أعِد المستكشف وتبويب العيّنة: تركُ لوحةٍ مفتوحة يغيّر ما تقيسه أيّ تشغيلة تالية.
+  try { await escape(cdp); await key(cdp, 69, "KeyE", MOD.CTRL | MOD.SHIFT); await sleep(800);
+        await activateSadTab(cdp); } catch { /* */ }
+  return out;
+}
+
+/**
+ * **بُعدٌ ثالثٌ للترتيب: أين يقع البند، لا كيف يُكتَب.** كلُّ ما قِسناه حتّى الآن يسأل عن
+ * اتّجاه النصّ داخل الورقة؛ وسطحان يبقيان صحيحَي النصّ منقلبَي **الترتيب** فلا يمسّهما
+ * ماسحُنا: أزرارُ الحوار (الفعلُ المؤكِّد يجب أن يكون أيمنَ إخوته في RTL، والتركيزُ عليه)
+ * وشريطُ الحالة (البنودُ المُرساةُ `left` منطقيًّا تُصيَّر يمينًا). كلاهما يُقرَأ أوّلًا
+ * في تجربة المستخدم، وكلاهما كان خارج السؤال.
+ */
+export async function rtlOrderAssertions(cdp) {
+  const out = [];
+  // شريطُ الحالة أوّلًا: حاضرٌ دائمًا فلا يحتاج محفّزًا.
+  try {
+    const sb = await statusbarOrder(cdp);
+    if (!sb || !sb.present) out.push(skip("شريط الحالة: مرساة البنود", "لا شريط حالة"));
+    else if (!sb.nLeft || !sb.nRight)
+      out.push(skip("شريط الحالة: مرساة البنود",
+        `مجموعةٌ فارغة (يسار ${sb.nLeft}، يمين ${sb.nRight}) — لا يُقارَن ترتيبٌ بمجموعةٍ واحدة`, true));
+    else if (sb.leftMid > sb.rightMid)
+      out.push(pass("شريط الحالة: مرساة البنود",
+        `dir=${sb.dir} · ‏${sb.nLeft} بندًا «left» عند ${sb.leftMid}px يمينَ ${sb.nRight} بندًا «right» عند ${sb.rightMid}px`));
+    else
+      out.push(fail("شريط الحالة: مرساة البنود",
+        `المرساة لم تنقلب: «left» عند ${sb.leftMid}px ليست يمينَ «right» عند ${sb.rightMid}px`));
+  } catch (e) { out.push(skip("شريط الحالة: مرساة البنود", e.message)); }
+  // الحوارُ يحتاج فتحًا، ويُغلَق فورًا: مودالٌ متروكٌ يُعطّل كلَّ ما بعده (مقيس).
+  try {
+    if (!(await confirmDialog(cdp))) {
+      out.push(skip("ترتيب أزرار الحوار (RTL)", "لم يظهر الحوار — راجع رُقعة dialogStyle", true));
+    } else {
+      const d = await dialogButtons(cdp);
+      const bs = (d && d.buttons) || [];
+      if (bs.length < 2) out.push(skip("ترتيب أزرار الحوار (RTL)", `${bs.length} زرًّا — لا ترتيبَ يُقاس`, true));
+      else {
+        // ترتيبُ DOM هو ترتيبُ الأولويّة؛ في RTL يجب أن يقابله ترتيبٌ بصريّ **متناقص**.
+        const desc = bs.every((b, i) => i === 0 || bs[i - 1].left > b.left);
+        const names = bs.map(b => `«${b.t}»@${b.left}`).join(" ← ");
+        if (desc) out.push(pass("ترتيب أزرار الحوار (RTL)", `dir=${d.dir} · ${bs.length} أزرار من اليمين: ${names}`));
+        else out.push(fail("ترتيب أزرار الحوار (RTL)", `الأوّل ليس أيمنَ إخوته: ${names}`));
+      }
+      await escape(cdp); await sleep(400);
+      await discardUntitled(cdp);
+    }
+  } catch (e) { out.push(skip("ترتيب أزرار الحوار (RTL)", e.message, true)); }
+  try { await escape(cdp); await activateSadTab(cdp); } catch { /* */ }
+  return out;
+}
+
 export async function runAll(cdp) {
+  // نُنشِّط تبويب العيّنة العربيّة أوّلًا: محراب يستعيد المحرّر النشط من الحالة المحفوظة،
+  // فقد يكون ملفًّا لاتينيًّا مهما كان ترتيب الوسائط (مقيس) — وحينها تُبلَّغ مِجَسّات
+  // ‏bidi و[AR-04] «لا سطر عربيّ» زورًا. النقر حتميّ ومستقلّ عن الحالة.
+  try { await activateSadTab(cdp); } catch { /* لا تبويب عيّنة — المِجَسّات تتخطّى بنفسها */ }
+  // **ثبِّت تبويب العيّنة (`Ctrl+K Enter` = keepEditor).** الملفّات التي تُمرَّر في سطر
+  // الأوامر تُفتَح في وضع **المعاينة**، ووضعُ المعاينة تبويبٌ واحدٌ يُستبدَل بأيّ محرّرٍ
+  // جديد. ومِجَسّاتنا تفتح **الإعداداتِ والاختصاراتِ وهما محرّران لا لوحتان**، فكانتا
+  // تبتلعان تبويبَ العيّنة في كلّ تشغيلة. رصدناه بمقارنة تشغيلتين متتاليتين على النسخة
+  // نفسها: الأولى تجد العيّنة والثانية لا تجدها، فتنقلب خمسةُ تأكيداتٍ إلى تخطٍّ بلا
+  // سببٍ ظاهر في التقرير — وهو صنفُ التدهور الصامت الذي يُقرأ «تحسُّنًا» لأنّ الأحمر يقلّ.
+  // **بنقرةٍ مزدوجة على التبويب لا بوترِ مفاتيح.** جرّبنا `Ctrl+K Enter` فلم يثبّت في
+  // التشغيلة الأولى (الوترُ يُبتلَع حين يكون التركيز في المحرّر لحظتَها)، فبقي العطب.
+  // النقرةُ المزدوجة هي إيماءةُ التثبيت نفسُها التي يستعملها المستخدم، وتصل الـDOM مباشرةً.
+  try {
+    await cdp.evaluate(`(() => {
+      const t = [...document.querySelectorAll(".tabs-container .tab")]
+        .find(x => /\\u0635\\b|\\.\\u0635/.test(x.textContent || ""));
+      if (!t) return 0;
+      for (const type of ["mousedown", "mouseup", "click", "dblclick"])
+        t.dispatchEvent(new MouseEvent(type, { bubbles: true, detail: type === "dblclick" ? 2 : 1 }));
+      return 1;
+    })()`);
+    await sleep(600);
+  } catch { /* */ }
+  // **وتبويبُ الترحيب يُثبَّت كذلك — بقياسٍ ردّه علينا التشغيلُ المتتابع.** تشغيلةٌ ثانية
+  // على النسخة نفسها أبلغت «صفحة الترحيب: لم تنفتح» بينما الأولى قاستها: السببُ أنّ
+  // ‏`.extension-editor` وغيرَه يُفتَح في **تبويب المعاينة**، وتبويبُ المعاينة واحدٌ يُستبدَل
+  // — فابتلع الترحيبَ. تثبيتُه (نقرةٌ مزدوجة) يجعل التشغيلتين قابلتين للمقارنة، وهو
+  // شرطُ أن يُقرأ اختلافُ التشغيلتين انحدارًا لا صدفة.
+  try {
+    await cdp.evaluate(`(() => {
+      const t = [...document.querySelectorAll(".tabs-container .tab")]
+        // ⚠️ تسميةُ التبويب **«مرحباً»** لا «ترحيب»: قِسناها، فبنمطٍ يطابق «ترحيب» وحدها
+        // كان التثبيتُ لا يعمل ولا يُبلِّغ (‏find يعود undefined فيعود المِجَسّ 0 بهدوء).
+        .find(x => /\\u0645\\u0631\\u062d\\u0628|\\u062a\\u0631\\u062d\\u064a\\u0628|Welcome|Get Started/i.test(x.textContent || ""));
+      if (!t) return 0;
+      for (const type of ["mousedown", "mouseup", "click", "dblclick"])
+        t.dispatchEvent(new MouseEvent(type, { bubbles: true, detail: type === "dblclick" ? 2 : 1 }));
+      return 1;
+    })()`);
+    await sleep(500);
+    await activateSadTab(cdp); await sleep(400);
+  } catch { /* */ }
   const geo = await editorGeometry(cdp);
   const results = geometryAssertions(geo);
   const inter = await interactionAssertions(cdp);
-  return [...results, ...inter];
+  const design = await designAssertions(cdp);
+  // اللوحات آخرًا: فتحُها يبدّل الشريط الجانبيّ واللوحة السفلى، فتقديمها يفسد ما بعدها.
+  const panels = await panelAssertions(cdp);
+  const ux = await rtlOrderAssertions(cdp);
+  return [...results, ...inter, ...design, ...panels, ...ux];
 }

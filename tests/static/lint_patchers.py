@@ -27,7 +27,7 @@ BUILD = os.path.join(ROOT, "build")
 
 # أصناف هويّة محراب المحقونة (عناصر نملكها) — تُعفى قواعدها من قصر [dir=rtl] لأنّها غير
 # اتّجاهيّة وتستهدف عناصرنا لا عناصر VSCode العامّة. أضِف هنا كلّ صنف هويّة جديد.
-IDENTITY_CLASSES = ("mihrab-welcome-mark",)
+IDENTITY_CLASSES = ("mihrab-welcome-mark", "mihrab-welcome-pattern")
 sys.path.insert(0, os.path.dirname(HERE))  # tests/
 import patch_manifest as M  # noqa: E402
 
@@ -53,6 +53,104 @@ def _compile_all():
     assert pys, "لا مرقِّعات في build/"
     for f in pys:
         py_compile.compile(os.path.join(BUILD, f), doraise=True)
+
+
+@check("لا شاهدة خلفيّة في تعليقٍ داخل قالب نصّيّ (فخّ أسقط ملفَّين فعلًا)")
+def _no_backtick_in_templates():
+    """يمنع فخًّا **وقعنا فيه مرّتين** فأسقط الملفّ كلَّه بـSyntaxError.
+
+    ‏JS ونحن نكتب DOM/CSS داخل قوالب نصّيّة (`` evaluate(`…`) `` و``webview.html = `…` ``)،
+    ونشرح داخلها بالعربيّة. وأيّ شاهدةٍ خلفيّة في تعليقٍ **داخل القالب** تُنهي القالب هناك،
+    فينهار ما بعده نحويًّا ويصير الخطأ في سطرٍ لا علاقة له بالسبب — أضلَّنا مرّتين:
+    مرّةً في `chat.js` (أمسكها اختبار الوحدة) ومرّةً في `harness.mjs` (أمسكها التشغيل الحيّ).
+    الفحص ساكن ورخيص، فيسبق الاثنين.
+
+    نمسح **سطور التعليق وحدها** داخل القوالب: الشاهدة في شيفرةٍ فعليّة داخل القالب قد تكون
+    مقصودة (قالب متداخل)، أمّا في تعليقٍ فلا فائدة منها أبدًا — البديل ‎U+200E‎ حولها.
+    """
+    import re as _re
+    targets = [os.path.join(ROOT, "tests", "runtime", "harness.mjs"),
+               os.path.join(ROOT, "tests", "runtime", "launch.mjs"),
+               os.path.join(ROOT, "tests", "runtime", "rtl.spec.mjs"),
+               os.path.join(ROOT, "extensions", "mihrab-nebras", "chat.js")]
+    OPEN = _re.compile(r"(?:evaluate\(|html\s*=\s*|return\s+)`")
+    for path in targets:
+        if not os.path.isfile(path):
+            continue
+        inside, offenders = False, []
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if not inside:
+                m = OPEN.search(line)
+                # ⚠️ **القالبُ ذو السطر الواحد يُغلَق في سطره.** كان الفحص يفتح الحالة ثمّ
+                # `continue` بلا فحص الإغلاق، فيبقى «داخل قالب» حتى يصادف سطرًا يُغلِق —
+                # فيُبلِّغ عن كلّ تعليقٍ بينهما زورًا. أوقعَنا فيه أوّلُ سطرٍ من صنف
+                # ``evaluate(`…`), 1`` أضفناه: أشعل إنذارًا على تعليقٍ قديمٍ سليم بعده
+                # بأربعين سطرًا. **الحارسُ الكاذب أخطرُ من غيابه**: يُعلِّم القارئَ أنّ
+                # حمرةَ هذا الفحص ضجيج، فيتجاهلها يوم تصدق.
+                if m and "`" not in line[m.end():]:
+                    inside = True
+                continue
+            # نهاية القالب: سطر يُغلقه (`)` أو `;` بعد شاهدة) — تقريبٌ كافٍ لملفّاتنا.
+            if _re.search(r"`\s*[);]", line) or line.strip() == "`;":
+                inside = False
+                continue
+            if line.lstrip().startswith("//") and "`" in line:
+                offenders.append(i)
+        assert not offenders, (
+            f"{os.path.basename(path)}: شاهدة خلفيّة في تعليقٍ داخل قالب نصّيّ عند "
+            f"السطور {offenders} — تُنهي القالب وتُسقِط الملفّ بـSyntaxError")
+
+
+@check("لا هروب نمطيّ بشرطةٍ واحدة داخل قالب نصّيّ (فرعُ كشفٍ ماتَ صامتًا)")
+def _no_single_escape_in_templates():
+    """يمنع الفخّ **الأخطر** في قوالبنا: لا يُسقِط الملفّ، بل يُضعِف الكشف صامتًا.
+
+    ما نكتبه داخل ``evaluate(`…`)`` يمرّ بمرحلتَي تأويل: قالبُ JS عندنا، ثمّ الشيفرة في
+    الصفحة. فـ`\\p{L}` بشرطةٍ واحدة يبتلعها القالب ويصل إلى الصفحة `p{L}` — **صنفُ محارفٍ
+    حرفيّ** لا فئةٌ يونيكوديّة. لا خطأ نحويّ ولا تحذير: تعبيرٌ صحيحٌ يطابق شيئًا آخر.
+
+    وقع هذا عندنا مرّتين وكلتاهما كلَّفت:
+      • `\\s` ⇒ `s` ⇒ `split(/s+/)` شَطَر أسماءَ الأصناف على حرف «s» فصار
+        ‎composite-bar‎ ⇒ ‎compo.ite-bar‎، وأعاد الماسحُ ‎25‎ بلاغًا كاذبًا.
+      • `\\p{L}` ⇒ `p{L}` ⇒ `strong` صار `null` في كلّ نصٍّ خالٍ من ‎p/L‎، فـ`startsLTR`
+        `False` أبدًا، ففرعُ «المحايد الطرفيّ» **ميّتٌ كلُّه** — والفحص أخضر.
+
+    الثاني هو الأسوأ: أخضرُ يعني «مسحنا ولم نجد» بينما الحقيقة «لم نبحث». فلا نتّكل على
+    أن نتذكّر المضاعفة — نفرضها ساكنًا.
+
+    نحصر الحروف المرصودة في `pPsSdDwWbB` (لا معنى لأيٍّ منها كهروبٍ نصّيّ)، ونستثني
+    `\\n` و`\\t` و`\\u` — فهذه مقصودةٌ حرفيًّا داخل القوالب.
+    """
+    import re as _re
+    targets = [os.path.join(ROOT, "tests", "runtime", "harness.mjs"),
+               os.path.join(ROOT, "tests", "runtime", "launch.mjs"),
+               os.path.join(ROOT, "tests", "runtime", "rtl.spec.mjs"),
+               os.path.join(ROOT, "extensions", "mihrab-nebras", "chat.js")]
+    OPEN = _re.compile(r"(?:evaluate\(|html\s*=\s*|return\s+)`")
+    # شرطةٌ **فردٌ** (عددٌ زوجيّ من الشرطات قبلها ⇒ مُضاعَفة ⇒ سليمة) يتبعها حرفُ فئة.
+    BAD = _re.compile(r"(?<!\\)(?:\\\\)*\\([pPsSdDwWbB])")
+    for path in targets:
+        if not os.path.isfile(path):
+            continue
+        inside, offenders = False, []
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if not inside:
+                # نفس تصحيح القالب ذي السطر الواحد المشروح في `_no_backtick_in_templates`.
+                m = OPEN.search(line)
+                if m and "`" not in line[m.end():]:
+                    inside = True
+                continue
+            if _re.search(r"`\s*[);]", line) or line.strip() == "`;":
+                inside = False
+                continue
+            if line.lstrip().startswith("//"):
+                continue                      # الشرح لا يصل الصفحةَ فلا يضرّ
+            for m in BAD.finditer(line):
+                if m.group(0).count("\\") % 2:   # فردٌ فعلًا
+                    offenders.append((i, m.group(1)))
+        assert not offenders, (
+            f"{os.path.basename(path)}: هروبٌ بشرطةٍ واحدة داخل قالب نصّيّ عند "
+            f"{offenders} — يصل الصفحةَ حرفًا عاديًّا فيموت فرعُ الكشف صامتًا. ضاعِف الشرطة.")
 
 
 # ───────────────────── L0-2: بنية FILES في patch_editor_rtl ─────────────────────
@@ -213,6 +311,54 @@ def _css_lint():
                 f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…»")
 
 
+@check("إبراز يونيكود [AR-04]: إعفاء ص من nonBasicASCII — مقصورًا على اللغة لا عالميًّا")
+def _unicode_highlight():
+    """‏[AR-04] يحرس إعفاءً **مقيسًا** من `editor.unicodeHighlight` — وحدَّه في آن.
+
+    **العطب:** `editor.unicodeHighlight.nonBasicASCII` افتراضُه `inUntrustedWorkspace`، وهو
+    يُبرِز **كلّ** محرف خارج ‎U+0020–U+007E‎. وقياسنا على مِلفّ ص واقعيّ: **62% من محارفه
+    غير-ASCII**. أي أنّ فتح مجلّد ص غير موثوق — وهي الحالة الافتراضيّة لأيّ مشروع مُنزَّل —
+    يُغرِق الملفّ كلَّه في إبرازات تحذير. وهذا مسارٌ قاطع لا احتماليّ: في
+    `unicodeTextModelHighlighter.ts` يعود `shouldHighlightNonBasicASCII` بـNonBasicASCII
+    **قبل** استدلال سياق الكلمة، فلا شيء يُنقِذ منه.
+
+    **ولماذا اقتصر الإصلاح على هذا المفتاح وحده — قياسٌ لا حَدْس:**
+      • ‏`ambiguousCharacters` **تُرِكت مفعَّلة عمدًا.** صحيح أنّ جدول `_common` (المدموج بلا
+        شرط لأيّ محليّة) يحوي **33 نقطة كود عربيّة** فيها ألف «ا»→`l` وهاء «ه»→`o` وأرقام
+        ‏٠١٥٧ — لكنّ استدلال سياق الكلمة يُعفي الكلمة التي لا ASCII فيها وفيها محرفٌ
+        غير-مُلتبِس. **قِسناه على كلّ مصادر ص في المستودع: كلمة واحدة من 1238 تُعلَّم.**
+        فلا يستحقّ إسقاط حماية حقيقيّة من التماثل البصريّ (‏trojan-source).
+      • ‏`allowedLocales: {ar: true}` **عديم الأثر** لا حلّ: بيانات المحليّات في
+        `strings.ts` لا تحوي `ar` أصلًا (‏cs/de/es/fr/it/ja/ko/pl/pt-BR/ru/tr/zh…)،
+        والمُرشِّح `Object.hasOwn(data, l)` يُسقِط أيّ محليّة غير موجودة. أثبتناه بالقراءة.
+
+    **ولماذا مقصورًا على `[sad]`:** خيارات المحرّر `LANGUAGE_OVERRIDABLE`
+    (‏editorConfigurationSchema.ts:19)، فالإعفاء ينحصر في اللغة التي **غير-ASCII هي متنُها**.
+    إسقاطه عالميًّا يُطفئ حمايةً حقيقيّة في كلّ لغة أخرى — ولذا يمنعه هذا الفحص صراحةً.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    sad_pkg = os.path.join(ROOT, "extensions", "sad-lang", "package.json")
+    if not (os.path.isfile(shell) and os.path.isfile(sad_pkg)):
+        return
+    # مُعرّف اللغة من مصدره الوحيد (مساهمة sad-lang) لا من سلسلة مُختلَقة — كما في _lang_identity.
+    lang_id = json.load(open(sad_pkg, encoding="utf-8"))["contributes"]["languages"][0]["id"]
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
+    KEY = "editor.unicodeHighlight.nonBasicASCII"
+    scoped = defaults.get(f"[{lang_id}]", {})
+    assert scoped.get(KEY) is False, (
+        f"لا إعفاء `{KEY}: false` داخل `[{lang_id}]` في mihrab-shell — فتح مجلّد ص "
+        f"غير موثوق يُبرِز 62% من محارف الملفّ كتحذير يونيكود [AR-04]")
+    assert KEY not in defaults, (
+        f"‏`{KEY}` مضبوط **عالميًّا** — هذا يُطفئ حماية التماثل البصريّ في كلّ لغة. "
+        f"احصره في `[{lang_id}]` [AR-04]")
+    # الحماية التي نُبقيها عمدًا: لا نُطفئ الملتبِس ولا الخفيّ، لا عالميًّا ولا في ص.
+    for keep in ("editor.unicodeHighlight.ambiguousCharacters",
+                 "editor.unicodeHighlight.invisibleCharacters"):
+        assert keep not in defaults and keep not in scoped, (
+            f"‏`{keep}` مُعطَّل — قياسنا (1/1238 كلمة) لا يبرّر إسقاط حماية التماثل "
+            f"البصريّ/المحارف الخفيّة [AR-04]")
+
+
 @check("خطّ ص العربيّ المحزوم [AR-02]: config ↔ حقن data:URI ↔ لا url() كاسر للبناء")
 def _arabic_font():
     # قيم متوقَّعة (بيانات فحص تطابق مصدر الإعداد؛ استثناء literal مقبول للاختبارات).
@@ -312,6 +458,26 @@ def _themes():
     default = contrib.get("configurationDefaults", {}).get("workbench.colorTheme")
     labels = {t.get("label") for t in themes}
     assert default in labels, f"السمة الافتراضيّة «{default}» ليست من labels السمات {labels}"
+    # ── السمات المفضَّلة لكلّ وضع نظام — **الوصلة التي بدونها تصير سمتا التباين العالي حبرًا
+    # على ورق.** ‏`window.autoDetectHighContrast` مفعَّل افتراضًا؛ فحين يكون نظام التشغيل في
+    # وضع التباين العالي، يبدّل VS Code إلى `workbench.preferredHighContrastColorTheme`
+    # لا إلى `workbench.colorTheme`. وافتراض ذلك المفتاح هو ثابت المنبع
+    # ‏`ThemeSettingDefaults.COLOR_THEME_HC_DARK = 'Default High Contrast'`. أي أنّ **أحوج
+    # المستخدمين إلى تصميم مقصود كان يُنقَل تلقائيًّا خارج سمات محراب** — وهو عين الفجوة
+    # التي بُنيت سمتا hcDark/hcLight لسدّها. والأمر نفسه لـautoDetectColorScheme (داكن/فاتح).
+    # كلّ قيمة تُطابَق بالـlabel: خطأ مطبعيّ ⇒ VS Code يسقط للأساس **صامتًا** بلا خطأ.
+    UI_THEME_OF = {"vs-dark": "workbench.preferredDarkColorTheme",
+                   "vs": "workbench.preferredLightColorTheme",
+                   "hc-black": "workbench.preferredHighContrastColorTheme",
+                   "hc-light": "workbench.preferredHighContrastLightColorTheme"}
+    defaults = contrib.get("configurationDefaults", {})
+    for t in themes:
+        key = UI_THEME_OF.get(t.get("uiTheme"))
+        if not key:
+            continue
+        assert defaults.get(key) == t["label"], (
+            f"‏`{key}` = «{defaults.get(key)}» لا «{t['label']}» — عند تبديل النظام إلى هذا "
+            f"الوضع يخرج المستخدم من سمات محراب إلى سمة المنبع العامّة")
     gscopes = _grammar_scopes()  # نحو ص الفعليّ
     grammar_sad = {s for s in gscopes if s.endswith(".sad")} if gscopes is not None else set()
     # نطاقات نحو لا تُلوَّن عمدًا (حاويات بنيويّة نلوّن محتواها لا هي): تُعفى من التغطية العكسيّة.
@@ -322,7 +488,8 @@ def _themes():
         assert os.path.isfile(tp), f"ملفّ سمة مفقود: {t['path']}"
         td = json.load(open(tp, encoding="utf-8"))
         assert td.get("name"), f"سمة بلا name: {t['path']}"
-        assert td.get("type") in ("dark", "light"), f"type غير صالح في {t['path']}"
+        # أنواع سمات VS Code الأربعة (dark/light + نظيراهما عاليا التباين).
+        assert td.get("type") in ("dark", "light", "hcDark", "hcLight"),             f"type غير صالح في {t['path']}"
         assert td.get("colors") and td.get("tokenColors"), f"بلا colors/tokenColors: {t['path']}"
         # نطاقات ص في **هذه السمة** (التغطية تُفحَص لكلّ سمة، لا اتّحادهما).
         this_scopes = set()
@@ -341,6 +508,413 @@ def _themes():
             assert not missing, (
                 f"نطاقات نحو ص بلا لون في {t['path']} (سترث افتراضيًّا متنافرًا): {sorted(missing)} "
                 f"— أضِف لونًا في gen_themes.py أو أعفِها صراحةً")
+
+
+@check("طباعة القشرة العربيّة [AR-03]: مكدّس :lang(ar) للمنصّات الثلاث + وحدة الوجه الأحاديّ")
+def _arabic_chrome_typography():
+    """يحرس القاعدة 20 في mihrab-rtl.css — سدُّ ثغرة `:lang(ar)` الغائبة عن المنبع.
+
+    المنبع (style.css:12-29) يخصّص `--monaco-font` لـzh/ja/ko × (mac/windows/linux) ولا يخصّصه
+    للعربيّة. أخطر أثر على **لينكس**: مكدّسه `Ubuntu`/`Droid Sans` بلا محارف عربيّة ⇒ الاختيار
+    يؤول إلى fontconfig (غير حتميّ). هذا الفحص يمنع سقوط القاعدة أو نقصان منصّة منها.
+    """
+    BUNDLED_FONT_FAMILY = "Kawkab Mono"  # يطابق [AR-02] — الوجه المحزوم نفسه
+    # المنصّات الثلاث التي يعرّف لها المنبع مكدّسًا؛ نقص أيٍّ منها = منصّة بلا عربيّة حتميّة.
+    PLATFORMS = ("windows", "mac", "linux")
+    # الوجه العربيّ الصريح المتوقَّع لكلّ منصّة (السند الذي يجعل الناتج حتميًّا لا ضمنيًّا).
+    ARABIC_FACE = {"windows": "Tahoma", "mac": "SF Arabic", "linux": "Noto Sans Arabic"}
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+
+    for plat in PLATFORMS:
+        sel = f'.monaco-workbench[dir="rtl"].{plat}:lang(ar)'
+        assert sel in css, (
+            f"لا قاعدة `{sel}` في {M.CSS_PATCH} — منصّة {plat} تسقط لمكدّس المنبع "
+            f"اللاتينيّ بلا عربيّة معلَنة [AR-03]")
+        # جسم كلّ قاعدة تخصّ هذه المنصّة (قاعدتان: المتناسب والأحاديّ).
+        bodies = [css[css.index(sel, p) + len(sel):][:css[css.index(sel, p) + len(sel):].index("}")]
+                  for p in _all_positions(css, sel)]
+        prop = "".join(bodies)
+        assert "--monaco-font:" in prop, f"قاعدة {plat}:lang(ar) بلا `--monaco-font` [AR-03]"
+        assert "--monaco-monospace-font:" in prop, \
+            (f"قاعدة {plat}:lang(ar) بلا `--monaco-monospace-font` — شيفرة ص العربيّة داخل "
+             f"القشرة (تلميحات/اختصارات/فتات) ستُعرَض بوجه مغاير للمحرّر [AR-03]")
+        assert ARABIC_FACE[plat] in prop, (
+            f"مكدّس {plat}:lang(ar) بلا الوجه العربيّ الصريح «{ARABIC_FACE[plat]}» — "
+            f"التغطية تعود ضمنيّة/غير حتميّة [AR-03]")
+
+    # وحدة الوجه: الأحاديّ في القشرة يبدأ بالخطّ المحزوم نفسه الذي يبدأ به editor.fontFamily
+    # (‏[AR-02]) — وإلّا اختلف وجه المعرّف العربيّ بين المحرّر والتلميح.
+    for m in _all_positions(css, "--monaco-monospace-font:"):
+        stack = css[m + len("--monaco-monospace-font:"):]
+        stack = stack[:stack.index(";")]
+        first = stack.split(",")[0].strip().strip("'\"")
+        assert first == BUNDLED_FONT_FAMILY, (
+            f"«{BUNDLED_FONT_FAMILY}» ليس أوّل مكدّس --monaco-monospace-font (وُجد «{first}») — "
+            f"وجه الشيفرة في القشرة يخالف المحرّر [AR-03]")
+        assert stack.rstrip().endswith("monospace"), \
+            "مكدّس --monaco-monospace-font لا ينتهي بـmonospace [AR-03]"
+
+
+@check("حشوات تسمية الأيقونة [القاعدة 23]: شارة التزيين والأيقونة والوصف + استثناء التبويب")
+def _icon_label_margins():
+    """يحرس القاعدة 23 — قيمٌ فيزيائيّة في أكثر ودجةٍ حضورًا في المحرّر.
+
+    ‏`monaco-icon-label` تحمل أسماء الملفّات في المستكشف والتبويبات والفتات والبحث وGit
+    ولوحة الأوامر. وثلاث قيمٍ فيها فيزيائيّة تنقلب دلالتها مع القشرة — **رُصدت أوّلًا في
+    لقطة البناء المشحون**: شارة «‎+9‎» ملتصقة بالاسم («‎+9rtl_fixture.ص‎»)، ثمّ أُكِّدت من
+    ‏`iconlabel.css:105`: `margin: auto 16px 0 5px` ⇒ في RTL ‎16px‎ تفصل الشارة عن الاسم
+    و‎5px‎ عن الحافّة، أي عكس المقصود تمامًا.
+
+    **والاستثناء جزءٌ من الحارس لا زينة:** المنبع يُصفِّر `margin-right` في التبويبات/الفتات
+    بأولويّة ‎(0,6,1)‎، وهي تغلب قاعدتنا العامّة ‎(0,3,1)‎ وتُلغي فجوة الاسم في RTL. قِسنا
+    ذلك حيًّا بعد تطبيق الإصلاح الأوّل (`0 0 0 5px` ⇒ `0 0 0 16px` — ما زالت ملتصقة)، فلزم
+    استثناءٌ صريح. سقوطُه يُعيد العطب في التبويبات وحدها بينما يبدو المستكشف سليمًا.
+    """
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    RTL = '.monaco-workbench[dir="rtl"]'
+    assert f"{RTL} .monaco-icon-label::after" in css, \
+        "شارة تزيين تسمية الأيقونة بلا عكس في RTL — تلتصق بالحافّة وتنفصل عن الاسم [القاعدة 23]"
+    assert "margin-inline: 5px 16px" in css, (
+        "قيمتا شارة التزيين ليستا معكوستين (متوقَّع `margin-inline: 5px 16px` — الداخليّة "
+        "أوّلًا) [القاعدة 23]")
+    assert f"{RTL} .monaco-icon-label-iconpath" in css, \
+        "فجوة أيقونة التسمية (`margin-right: 6px`) بلا عكس في RTL [القاعدة 23]"
+    assert ".label-description" in css and "margin-inline-start: 0.5em" in css, \
+        "فجوة الوصف الخافت (`margin-left: 0.5em`) بلا عكس في RTL [القاعدة 23]"
+    # الاستثناء: يجب أن تُصفَّر الجهة **اليسرى** في التبويبات/الفتات وتُعاد اليمنى.
+    assert f"{RTL} .part.editor > .content .editor-group-container > .title.tabs .monaco-icon-label::after" in css, (
+        "لا استثناء للتبويبات — تصفيرُ المنبع لـ`margin-right` بأولويّة أعلى يُلغي فجوة "
+        "الشارة عن الاسم في RTL (مقيس) [القاعدة 23]")
+
+
+@check("الرموز الاتّجاهيّة [القاعدة 22]: مثلّث الشجرة + أدلّتها + الأسهم المعكوسة — بلا قلبٍ جملة")
+def _directional_glyphs():
+    """يحرس القاعدة 22 — الأسهم التي لا يمسّها `dir=rtl` لأنّها مرسومة بـ`transform`.
+
+    كلّ بند هنا **مقيس بـCDP حيًّا** قبل كتابته (لا مستنتَج من قراءة المصدر):
+      • مثلّث الشجرة: قِسنا صندوق الرمز ‎[1133‥1149]‎ في العمقين ٠ و١ ⇒ لا يتدرّج مع العمق
+        (‏`paddingLeft` فيزيائيّة والحافّة اليمنى مثبَّتة). و`scaleX(-1)` على الحاوية يُصلح
+        التدرّج **واتّجاه الرمز معًا**؛ قِسنا بعده ‎[1125‥1141]‎ ثمّ ‎[1117‥1133]‎ (خطوة ‎8px‎).
+      • أدلّة التشجير: كانت عند ‎x=868‎ بينما صفوف الشجرة عند ‎1155‎ — الحافّة المقابلة.
+      • الأسهم: `view-pane-container-collapsed` قِسناه `none` ⇒ صار `matrix(-1,0,0,1,0,0)`.
+
+    ويمنع الفحص **القلب الجملة**: `.codicon-chevron-right` صنفٌ عامّ يخدم استعمالات غير
+    اتّجاهيّة، فقلبه يكسر ما لم يكن مكسورًا.
+    """
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    RTL = '.monaco-workbench[dir="rtl"]'
+    # (أ) المثلّث: قلبٌ على الحاوية لا دورانٌ على ::before — الأوّل يُصلح التدرّج أيضًا.
+    tw = f"{RTL} .monaco-tl-twistie"
+    assert tw in css, "لا قاعدة لمثلّث الشجرة في RTL [القاعدة 22]"
+    body = css[css.index(tw) + len(tw):]
+    body = body[:body.index("}")]
+    assert "scaleX(-1)" in body, (
+        "قلب مثلّث الشجرة `scaleX(-1)` غائب — الرمز يشير عكس اتّجاه التوسّع **ولا يتدرّج مع "
+        "العمق** (حشوة `paddingLeft` فيزيائيّة تُثبِّت الرمز) [القاعدة 22]")
+    assert "translateX(-3px)" in body, (
+        "إزاحة المنبع `translateX(3px)` لم تُعكَس إلى `-3px` — قلبُ الحاوية بلا عكس الإزاحة "
+        "يزحزح الرمز ‎6px‎ عن محلّه [القاعدة 22]")
+    # (ب) أدلّة التشجير: إرساءٌ مقلوب + حدٌّ على الحافّة المقابلة.
+    ind = f"{RTL} .monaco-tl-indent"
+    assert ind in css, "لا إعادة إرساء لأدلّة التشجير في RTL [القاعدة 22]"
+    ind_body = css[css.index(ind) + len(ind):]
+    ind_body = ind_body[:ind_body.index("}")]
+    assert "left: auto" in ind_body and "right:" in ind_body, (
+        "أدلّة التشجير ما زالت مرساةً بـ`left` — تُرسَم على الحافّة المقابلة للشجرة "
+        "(قِسنا فارق ‎≈230px‎) [القاعدة 22]")
+    assert "border-right:" in css, \
+        "حدّ دليل التشجير لم يُنقَل إلى الحافّة المقابلة (border-right) [القاعدة 22]"
+    # (ج) الأسهم المخصَّصة للاتّجاه — أصنافٌ سجّلها المنبع لهذا الغرض وحده.
+    for icon in ("codicon-breadcrumb-separator", "codicon-view-pane-container-collapsed",
+                 "codicon-search-hide-replace", "codicon-suggest-more-info"):
+        assert f"{RTL} .{icon}::before" in css, \
+            f"السهم الاتّجاهيّ `{icon}` غير معكوس في RTL [القاعدة 22]"
+    # زرّ «رجوع» في الجولة: صنفه (`chevron-left`) عامٌّ فيُحصَر بحاويته. كان **آخر سهمٍ بلا
+    # عكس في القشرة المشحونة** — أثبته مسحٌ حيّ لكلّ `codicon-chevron/arrow/triangle` الظاهرة
+    # (‏3 نتائج: سهما مركز الأوامر معكوسان بالقاعدة 8، وهذا `transform: none`).
+    assert f"{RTL} .gettingStartedContainer .prev-button > .codicon-chevron-left::before" in css, \
+        "سهم «رجوع» في الجولة غير معكوس — يشير عكس جهة السابق في RTL [القاعدة 22]"
+    # (د) لا قلب جملة: الصنف العامّ يخدم استعمالات غير اتّجاهيّة.
+    assert ".codicon-chevron-right" not in css, (
+        "قلبٌ جملة لـ`.codicon-chevron-right` — الصنف عامّ (زخارف «مزيد»، مؤشّرات فتح) "
+        "فقلبه يكسر ما لم يكن مكسورًا؛ اقصِر القلب على الأصناف المخصَّصة [القاعدة 22]")
+
+
+@check("اتّجاه التسميات المحايدة [القاعدة 21]: تغطية الأهداف المرصودة + حصر أزرار الأيقونة")
+def _bidi_neutrals():
+    """يحرس القاعدة 21 — و**انحدارًا رصدناه حيًّا مرّة فلا يعود**.
+
+    الخلاصة المُكلِفة: `unicode-bidi: plaintext` على `.button-link` نفسه (لا على ورقة نصّه)
+    يجعل فقرة الزرّ كلَّها LTR فتنقلب الأيقونة من الحافّة القائدة إلى التابعة — أصلحنا النصّ
+    وكسرنا التخطيط. فالقاعدة هنا شرطيّة لا مجرّد وجود:
+
+      • الزرّ **ذو الأيقونة** يُستهدَف عبر ابنه النصّيّ فقط: `.button-link > span`.
+      • الزرّ **بلا أيقونة** (نصُّه عقدةُ نصّ مباشرة، كـ«‎More...‎») يُستهدَف مباشرةً، لكن
+        **مشروطًا بـ`:not(:has(.codicon))`** — فيسقط ذاتيًّا إن اكتسب أيقونة لاحقًا.
+
+    ويمنع الفحص استهداف `.button-link` عاريًا (بلا `>` ولا `:not(`) — وهو الشكل المكسور نفسه.
+    """
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    # الأهداف التي رُصد عطبها بالقياس الحيّ — سقوط أيٍّ منها انحدارٌ مُثبَت لا احتمال.
+    REQUIRED = (
+        ".monaco-icon-label .label-name",          # أسماء الملفّات (وتبويبات المحرّر: tab-label
+                                                   #  صنفٌ إضافيّ على ResourceLabel ⇒ يرثها)
+        ".monaco-icon-label .label-description",   # المسار بجانب الاسم
+        ".gettingStartedContainer .button-link > span",
+        ".gettingStartedContainer .button-link:not(:has(.codicon))",
+        ".part.statusbar .statusbar-item-label",    # اسم فرع Git واللواحق المحايدة
+        ".activitybar .badge-content",             # شارة العدد «3K+» — رصدها المسح الشامل
+        ".gettingStartedContainer .path.detail",   # مسارات «المفتوحة مؤخّرًا»
+    )
+    # جسم القاعدة الحاوية لـplaintext (نتحقّق أنّ الأهداف داخلها لا في مكان آخر من الورقة).
+    idx = css.find("unicode-bidi: plaintext")
+    assert idx >= 0, f"لا `unicode-bidi: plaintext` في {M.CSS_PATCH} — القاعدة 21 سقطت"
+    for sel in REQUIRED:
+        assert sel in css, (
+            f"القاعدة 21 بلا الهدف «{sel}» — نصٌّ رُصد عطبه حيًّا يعود لوراثة اتّجاه الفقرة "
+            f"RTL فتقفز محايداته الطرفيّة")
+
+    # حصر أزرار الأيقونة: أيّ `.button-link` يتلقّى plaintext يجب أن يكون إمّا ورقةَ نصّ
+    # (`> span`) وإمّا مشروطًا بغياب الأيقونة. الشكل العاري = الانحدار المرصود.
+    for m in _all_positions(css, ".button-link"):
+        tail = css[m + len(".button-link"):]
+        nxt = tail[:2].strip()
+        assert nxt.startswith(">") or nxt.startswith(":"), (
+            "‏`.button-link` مستهدَف عاريًا في القاعدة 21 — هذا يقلب الأيقونة من الحافّة "
+            "القائدة إلى التابعة (انحدار مرصود بلقطة). استعمل `> span` أو "
+            "`:not(:has(.codicon))`")
+
+
+@check("محايدات bidi في اللوحات والقوائم [24+25]: تغطية الأسطح + نطاق حقل الاقتراح")
+def _bidi_panels():
+    """يحرس القاعدة 24 — أسطحُ اللوحات التي لم تكن مقيسةً حين كُتبت القاعدة 21.
+
+    مسحٌ عامّ حيّ (‏`bidiPanels` في الحزام) أعاد خمسة أسطح، وكلّ هدفٍ هنا مقيسٌ لا مُفترَض:
+    اسمُ الامتداد `‎.ipynb Support‎` كان يُعرَض `‎ipynb Support.‎`؛ ووصفُه اللاتينيّ كان
+    يُقَصّ من **بدايته**؛ ورسالةُ البحث كانت `‎results in 194 files … 9838‎` والعدد في آخرها.
+
+    وفحصٌ ثانٍ يحرس **نطاق** حقل الاقتراح: `plaintext` على `.view-line` نفسها لا يغلب
+    سمة `dir="rtl"` التي يبصمها Monaco (‏`viewLine.ts:181`) — قِسناه: تُحسَب ولا تفعل شيئًا.
+    فالهدف الصحيح هو `<span>` الداخليّة. واستهدافُ `.view-line` عاريًا خطأٌ مزدوج: قاعدةٌ
+    ميّتة، **و**اتّساعٌ يبتلع محرّر الشيفرة الرئيس (شأنُ `patch_editor_rtl.py`).
+    """
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    REQUIRED = (
+        ".extension-list-item .name",                    # «.ipynb Support» ⇒ «ipynb Support.»
+        ".extension-list-item .description",             # قُصَّ من بدايته لا نهايته
+        ".suggest-input-container .view-line > span",    # «@builtin» ⇒ «builtin@»
+        ".markers-panel .marker-message",                # «error [SYN001]: <source>:19:1»
+        ".markers-panel .marker-line",                   # «[Ln 1, Col 1]»
+        ".search-view .monaco-list-row a.match",         # سطر المطابقة المقتطَع من الطرفين
+        ".search-view .messages .message",               # «329 results…» والعدد يقفز للآخر
+        ".pane-header > .title",                         # عناوين الأجزاء مختلطة اللغة
+        ".monaco-count-badge",                           # «83 Results» والعدد يقفز للآخر
+        ".settings-editor .setting-item-category",       # «Editor:» والنقطتان تقفزان
+        ".settings-editor .setting-item-description",    # وصفٌ لاتينيّ يُقَصّ من بدايته
+        ".keybindings-editor .when-label",               # تعبير when: && و== وفواصل عليا
+        ".keybindings-editor .when-label *",             # النصّ في ابنٍ يعزل بنفسه (مقيس)
+        ".keybindings-editor .command-label",            # «Auto Fix...»
+        ".pane-body .message-container > .message",      # «No extensions found.»
+        # القاعدة 25 — قوائم السياق. أربعةُ بنودٍ من ثلاثة عشر انقلبت وتسعةٌ لم تتحرّك:
+        # النقاطُ الثلاث في ذيل نصٍّ لاتينيّ تقفز إلى مقدّمته «‎New File...‎» ⇒ «‎...New File‎».
+        ".monaco-menu .action-label",
+        ".monaco-menu .action-label *",                  # النصّ في ابنٍ يعزل بنفسه
+        ".monaco-menu .keybinding",                      # «Shift+Alt+R» في الصفّ نفسه
+        # القاعدة 26 — الإشعارات (المركز والفقاعات معًا). شاهدٌ موجب مقيس: ذيلُ
+        # «‎ESLint: unable to resolve configuration...‎» عند ‎198‎ ورأسُه عند ‎207‎ ⇒ النقاط
+        # تسبق الرأس بصريًّا؛ وبعد الإصلاح ‎315‎ مقابل ‎95‎ ⇒ تتبعه.
+        ".notification-list-item-message",
+        ".notification-list-item-message *",             # الرسالة تُصيَّر Markdown في span
+        ".notification-list-item-source",                # اسم الامتداد — لاتينيٌّ في صفٍّ عربيّ
+        # القاعدة 27 — تلميح التبويب. مقيس: رأسُ المسار ‎C‎ عند ‎732‎ وذيلُه عند ‎685‎ ⇒
+        # المسار **مقلوبٌ كلَّه**؛ وبعد الإصلاح ‎522‎ مقابل ‎1007‎.
+        ".monaco-hover .hover-contents",
+        ".monaco-hover .hover-contents *",
+        # القاعدة 28 — رسالة الحالة الفارغة. مقيس: رأسُ الجملة عند 800 والنقطةُ عند 797
+        # ⇒ النقطة في مقدّمة الجملة بصريًّا؛ وبعد الإصلاح 320 مقابل 612.
+        ".message-box-container",
+        ".message-box-container *",
+        # القاعدة 29 — شريط العنوان: تسميةٌ محتواها اسمُ مساحة عمل أو **عنوانُ النافذة
+        # كاملًا** أو **اسمُ الملفّ** (‏commandCenterControl.ts:216-234). قِسنا
+        # ‏`rtl_fixture.ص`: بلا القاعدة ينفصل الامتدادُ العربيّ ويقفز قبل الجذع (899 مقابل 918).
+        ".search-label",
+        ".window-title",
+        # القاعدة 30 — العطبُ المعاكس: نصٌّ **عربيّ** في حاوية **LTR** (ودجات المحرّر).
+        # «‏3 من 146» تُقرأ «‏3 146 من» لأنّ الرقم بعد حرفٍ عربيّ يصير `AN` فيلتحق بمقطعه.
+        ".find-widget .matchesCount",
+        # القاعدة 31 — بقيّةُ ودجات الحاوية LTR، وقد فُتحت أخيرًا بمحفّزاتٍ مقيسة
+        # (`Ctrl+.` و`F8`). عنوانُ إجراء الكود تنقلب جملتُه كاملةً فتُرمى التسميةُ
+        # العربيّة إلى أقصى اليسار؛ وترويسةُ النظرة «‏1 مشكلة من 10» قاعدةُ W2 نفسها؛
+        # ومتنُ المُشخِّص عليه `isolate` من المنبع — تعزل ولا تشتقّ اتّجاهًا.
+        ".action-widget .monaco-list-row .title",
+        ".zone-widget .peekview-title .dirname",
+        ".zone-widget .descriptioncontainer .message div",
+    )
+    assert "unicode-bidi: plaintext" in css, (
+        f"لا `unicode-bidi: plaintext` في {M.CSS_PATCH} — القاعدة 24 سقطت")
+    # ⚠️ **الاحتواءُ النصّيُّ وحده حارسٌ كاذب.** كشفه اختبارُ نفيٍ للقاعدة 29: غيّرنا
+    # ‏`.search-label` إلى `.search-labelXX` — وهو **صنفٌ غير موجود إطلاقًا** فالقاعدة
+    # ميّتة — ومع ذلك أعاد الفحص ‎30/30‎، لأنّ الاسم المكسور يحوي الاسمَ الصحيح جزءًا منه.
+    # نشترط أن يلي المُحدِّدَ **فاصلُ مُحدِّدات** (فاصلة أو مسافة أو `{`) لا حرفَ اسم.
+    for sel in REQUIRED:
+        ok = any(css[p + len(sel):p + len(sel) + 1] in (",", " ", "{", "\n", "\t", ":", ">")
+                 for p in _all_positions(css, sel))
+        assert ok, (
+            f"القاعدة 24 بلا الهدف «{sel}» — سطحٌ رُصد عطبه حيًّا يعود لوراثة اتّجاه "
+            f"الفقرة RTL فتقفز محايداته أو يُقَصّ نصُّه من الطرف الخطأ")
+
+    # حصر النطاق: كلّ `.view-line` في الورقة يجب أن يكون داخل حقل الاقتراح **وبـ`> span`**.
+    for m in _all_positions(css, ".view-line"):
+        # **حدُّ النظر إلى الوراء هو المُحدِّد نفسه لا نافذةٌ بعدد أحرف.** كتبناه أوّلًا
+        # بنافذة ‎90‎ حرفًا فسقط الفحص في اختبار النفي: مُحدِّدٌ عارٍ مضافٌ **بعد** الصحيح
+        # يرى `.suggest-input-container` في **سطر جاره** فيمرّ. المُحدِّد يبدأ بعد آخر
+        # فاصلة/قوس/سطر — فهذا هو المدى الصحيح.
+        head = css[max((css.rfind(c, 0, m) for c in ",{}\n"), default=-1) + 1:m]
+        tail = css[m + len(".view-line"):m + len(".view-line") + 8].strip()
+        assert ".suggest-input-container" in head, (
+            "‏`.view-line` مستهدَف خارج `.suggest-input-container` — هذا يبتلع محرّر "
+            "الشيفرة الرئيس، واتّجاه أسطره شأنُ patch_editor_rtl.py [القاعدة 24]")
+        assert tail.startswith(">"), (
+            "‏`.view-line` مستهدَف عاريًا — عليها سمة `dir=\"rtl\"` من Monaco فلا تفعل "
+            "`plaintext` شيئًا (مقيس). الهدف هو `> span` الداخليّة [القاعدة 24]")
+
+
+def _all_positions(hay, needle):
+    """كلّ مواضع `needle` في `hay` (لا أوّلها فقط) — القاعدة مكرّرة لكلّ منصّة."""
+    out, i = [], hay.find(needle)
+    while i != -1:
+        out.append(i)
+        i = hay.find(needle, i + 1)
+    return out
+
+
+# ───────── L0-8ب: تباين السمتين وتمايز لوحتهما (أرقام لا ذوق) ─────────
+# عتبتان تحرسان قرارَي تصميمٍ سبق أن انكسرا صامتين، فصارا مُلزَمَين عدديًّا:
+#   AA_MIN  — WCAG 2.1 معيار 1.4.3 لنصّ عاديّ صغير (كود المحرّر كلّه كذلك).
+#   DE_MIN  — أدنى فارق ΔE76 مقبول بين فئتين دلاليّتين. اللوحة السابقة جعلت «مفتاح» و«رقم»
+#             على بُعد 9.4 فقط (ذهبان متطابقان عمليًّا) و«نصّ» و«دالّة» على بُعد 11.6؛ عتبة 25
+#             هي أدنى فارق يبقى مُدرَكًا على شاشة مكتبيّة مع تفاوت المعايرة.
+AA_MIN = 4.5
+DE_MIN = 25.0
+# سمتا التباين العالي تُلزَمان بعتبة **AAA (‏1.4.6)** لا AA: من يختارهما يختارهما لحاجة بصريّة،
+# فالوفاء بالحدّ الأدنى العامّ فيهما يُفرِغهما من معناهما. تُشتقّ العتبة من `type` في ملفّ السمة.
+AAA_MIN = 7.0
+HC_TYPES = ("hcDark", "hcLight")
+# الفئات الدلاليّة الخمس التي يجب أن تتمايز. الرماديّات (تعليق/عامل/متغيّر) مستثناة عمدًا:
+# هدوؤها مقصود، وتمايزها بالوظيفة والمَيْل (italic) لا باللون.
+SEMANTIC_KINDS = ("keyword", "type", "function", "string", "number")
+
+
+def _srgb_to_lin(c):
+    c /= 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _parse_hex(h):
+    """‏#RRGGBB → (r,g,b) بايتات. يرفض ما عداه (الشفافيّة #RRGGBBAA غير مدعومة هنا)."""
+    h = h.lstrip("#")
+    assert len(h) == 6, f"لون غير سداسيّ صريح: #{h}"
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _luminance(h):
+    r, g, b = (_srgb_to_lin(c) for c in _parse_hex(h))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(fg, bg):
+    a, b = sorted((_luminance(fg), _luminance(bg)), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
+def _lab(h):
+    r, g, b = (_srgb_to_lin(c) for c in _parse_hex(h))
+    # sRGB → XYZ (D65) → CIELAB، بمرجع أبيض D65.
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+
+    def f(t):
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    fx, fy, fz = f(x), f(y), f(z)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def colors_of(td):
+    return td.get("colors", {})
+
+
+def _delta_e(c1, c2):
+    """ΔE76 (إقليديّ في CIELAB) — كافٍ لحارس «هل اللونان متمايزان؟»؛ لا نحتاج دقّة CIEDE2000."""
+    return sum((a - b) ** 2 for a, b in zip(_lab(c1), _lab(c2))) ** 0.5
+
+
+@check("سمتا محراب: تباين AA لكلّ رمز + تمايز اللوحة (ΔE) + اشتقاق القشرة من اللوحة")
+def _theme_contrast():
+    ext = os.path.join(ROOT, "extensions", "mihrab-themes")
+    if not os.path.isdir(ext):
+        return  # لا إضافة سمات في هذا الفرع — تخطٍّ
+    pkg = json.load(open(os.path.join(ext, "package.json"), encoding="utf-8"))
+    for t in pkg.get("contributes", {}).get("themes", []):
+        tp = os.path.join(ext, *t["path"].lstrip("./").split("/"))
+        td = json.load(open(tp, encoding="utf-8"))
+        label = td.get("name", t["path"])
+        bg = td["colors"]["editor.background"]
+        # العتبة تتبع نوع السمة: AAA لعاليتَي التباين، AA لغيرهما.
+        is_hc = td.get("type") in HC_TYPES
+        thr, thr_name = (AAA_MIN, "WCAG AAA") if is_hc else (AA_MIN, "WCAG AA")
+
+        # (1) تباين — كلّ لون رمزٍ نحويّ ودلاليّ على خلفيّة محرّره الفعليّة.
+        def _assert_aa(color, what, thr=thr, thr_name=thr_name):
+            ratio = _contrast(color, bg)
+            assert ratio >= thr, (
+                f"[{label}] {what} = {color} على {bg} تباينه {ratio:.2f}:1 < {thr}:1 "
+                f"({thr_name}) — أغمِق/فتِّح اللون في gen_themes.py")
+
+        for rule in td["tokenColors"]:
+            fg = rule.get("settings", {}).get("foreground")
+            if fg:
+                _assert_aa(fg, f"نطاق نحويّ «{rule.get('name')}»")
+        for kind, val in td.get("semanticTokenColors", {}).items():
+            fg = val.get("foreground") if isinstance(val, dict) else val
+            if fg:
+                _assert_aa(fg, f"رمز دلاليّ «{kind}»")
+
+        # (2) تمايز اللوحة — الفئات الخمس الدلاليّة متباعدة ΔE76 ≥ DE_MIN، وإلّا انهارت
+        #     اللوحة إلى كتل متشابهة وضاع معنى التلوين (الانحدار الذي أوقعته لوحة سابقة).
+        sem = td.get("semanticTokenColors", {})
+        present = {k: sem[k] for k in SEMANTIC_KINDS if isinstance(sem.get(k), str)}
+        assert len(present) == len(SEMANTIC_KINDS), (
+            f"[{label}] فئات دلاليّة مفقودة من semanticTokenColors: "
+            f"{sorted(set(SEMANTIC_KINDS) - set(present))}")
+        kinds = sorted(present)
+        for i, a in enumerate(kinds):
+            for b in kinds[i + 1:]:
+                d = _delta_e(present[a], present[b])
+                assert d >= DE_MIN, (
+                    f"[{label}] «{a}» ({present[a]}) و«{b}» ({present[b]}) متقاربان: "
+                    f"ΔE76={d:.1f} < {DE_MIN} — لونان لا يُميَّزان أثناء القراءة؛ "
+                    f"باعِد بينهما في gen_themes.py")
+
+        # (3) اشتقاق القشرة من اللوحة — الذهب/الأزرق في عناصر بيئة العمل يجب أن يساويا
+        #     نبرتَي «مفتاح»/«نوع» حرفيًّا. تُمسَك بذلك القشرةُ التي تتخلّف عن إعادة تلوين
+        #     اللوحة (انجراف حدث فعلًا: بقي #785006/#0B626E من لوحة سابقة بعد تبديلها).
+        colors = td["colors"]
+        # (2ب) سمة تباين عالٍ بلا `contrastBorder` ليست عالية التباين فعلًا: VS Code يرسم
+        #      الحدود حول العناصر انطلاقًا منه؛ بدونه تعود القشرة تعتمد فروق خلفيّة خافتة.
+        if is_hc:
+            for req in ("contrastBorder", "contrastActiveBorder"):
+                assert colors_of(td).get(req), (
+                    f"[{label}] سمة عالية التباين بلا «{req}» — لن تُرسَم الحدود "
+                    f"فتفقد السمة سبب وجودها")
+
+        for ui_key, kind in (("list.highlightForeground", "keyword"),
+                             ("progressBar.background", "keyword"),
+                             ("textLink.foreground", "type")):
+            if ui_key in colors and kind in present:
+                assert colors[ui_key].lower() == present[kind].lower(), (
+                    f"[{label}] {ui_key} = {colors[ui_key]} ≠ لون «{kind}» ({present[kind]}) — "
+                    f"القشرة منجرفة عن اللوحة؛ اشتقّها في gen_themes.py")
 
 
 # ───────────── L0-9: سمة أيقونات محراب ─────────────
@@ -396,6 +970,36 @@ def _icon_theme():
             assert os.path.isfile(svg), f"أيقونة SVG مفقودة: {ip}"
             head = _read(svg).lstrip()
             assert head.startswith("<?xml") or head.startswith("<svg"), f"ليس SVG صالحًا: {ip}"
+
+        # ── [AR-06] اتّساع التغطية: السمة **افتراضيّة**، فتغطيتها الضيّقة تجعل مستكشف محراب
+        # أقلّ إفادةً من المحرّر القياسيّ (‏seti). كانت تُخرِّط نوعًا واحدًا (ص) فتصير الشجرة
+        # صفًّا من صفحاتٍ متطابقة. هذا الحدّ الأدنى يمنع الارتداد إلى تلك الحال.
+        MIN_EXTENSIONS = 30
+        MUST_COVER = ("ص", "json", "md", "py", "svg", "log")   # عائلة واحدة على الأقلّ من كلٍّ
+        fe = td.get("fileExtensions", {})
+        assert len(fe) >= MIN_EXTENSIONS, (
+            f"سمة الأيقونات تُخرِّط {len(fe)} امتدادًا فقط (الحدّ {MIN_EXTENSIONS}) — الشجرة "
+            f"تصير صفحاتٍ متطابقة وتضيع أسرع إشارة بصريّة في المستكشف [AR-06]")
+        for e in MUST_COVER:
+            assert e in fe, f"امتداد «{e}» غير مخرَّط — عائلة كاملة بلا أيقونة [AR-06]"
+        # تكافؤ الأرضيّتين: كلّ ما تخرّطه الداكنة تخرّطه الفاتحة (وإلّا سقطت الفاتحة للعامّ).
+        lfe = (td.get("light") or {}).get("fileExtensions", {})
+        if lfe:
+            missing_light = set(fe) - set(lfe)
+            assert not missing_light, \
+                f"امتدادات مخرَّطة في الداكنة وحدها: {sorted(missing_light)[:6]} [AR-06]"
+
+    # ── المولّد مصدر الحقيقة: الملفّات المشتقّة تحمل رأسه، ولا تُحرَّر يدويًّا (اصطلاح
+    # مقتطفات ص نفسه). ‏sad.svg مستثنًى صراحةً — علامة الهوية مكتوبة يدويًّا لا مشتقّة.
+    gen = os.path.join(ext, "gen_icons.py")
+    if os.path.isfile(gen):
+        BANNER = "مولَّد بـgen_icons.py"
+        assert BANNER in _read(gen), "رأس المولَّد غير معرَّف في gen_icons.py [AR-06]"
+        for fn in sorted(os.listdir(os.path.join(ext, "icons"))):
+            if fn.startswith("sad") or fn.startswith("file") or fn.startswith("folder"):
+                continue  # أصولٌ يدويّة سابقة للمولّد (الهوية + الافتراضيّان)
+            assert BANNER in _read(os.path.join(ext, "icons", fn)), \
+                f"‏{fn} بلا رأس المولَّد — حُرِّر يدويًّا فسيُدهَس عند أوّل توليد [AR-06]"
 
 
 # ───────────── L0-7: أصول الهوية البصريّة (أيقونة التطبيق) ─────────────
@@ -966,6 +1570,32 @@ def _nebras_ext():
     assert not missing, f"أوامر معلَنة في مانيفست نِبراس بلا registerCommand في JS: {missing}"
     for c in contrib.get("commands", []):
         assert c.get("title"), f"أمر نِبراس بلا عنوان: {c.get('command')}"
+
+    # (٣.٥) [AR-05] لوحة دردشة نِبراس: عربيّة **مقروءة** لا عربيّة الاتّجاه فقط.
+    #   ردّ نِبراس نصٌّ مختلط بطبيعته (شرحٌ عربيّ + أسطر شيفرة لاتينيّة)، واللوحة كلّها RTL.
+    #   بلا `unicode-bidi: plaintext` تُصيَّر كلّ أسطر الشيفرة في فقرةٍ RTL واحدة فتقفز أقواسها
+    #   وفواصلها المنقوطة إلى الطرف المقابل — شيفرة غير قابلة للنسخ بصريًّا. ومع
+    #   ‏`white-space: pre-wrap` يصير كلّ سطر **فقرة bidi** مستقلّة، فيأخذ اتّجاهه من محتواه.
+    chat_path = os.path.join(ext, "chat.js")
+    if os.path.isfile(chat_path):
+        chat = _read(chat_path)
+        assert 'lang="ar"' in chat and 'dir="rtl"' in chat, \
+            "لوحة دردشة نِبراس بلا lang=ar/dir=rtl على <html> [AR-05]"
+        # نتحقّق من **جسم قاعدة `.msg` نفسها** لا من ورود السلسلة في مكانٍ ما من الورقة:
+        # وجودها على `#ctx` وحده كان سيُرضي فحصًا فضفاضًا بينما الفقاعات ما زالت مكسورة
+        # (‏أثبتناه باختبار فشل مقصود).
+        msg_rule = _re.search(r"\.msg\s*\{([^}]*)\}", chat)
+        assert msg_rule, "لا قاعدة CSS للصنف .msg في لوحة نِبراس [AR-05]"
+        assert "unicode-bidi: plaintext" in msg_rule.group(1), \
+            ("فقاعات دردشة نِبراس (.msg) بلا `unicode-bidi: plaintext` — أسطر الشيفرة داخل "
+             "الردّ العربيّ ستُبعثَر محايداتها في فقرة RTL واحدة [AR-05]")
+        assert 'dir="auto"' in chat, \
+            "صندوق سؤال نِبراس بلا dir=auto — لصقةُ شيفرة لاتينيّة تُفرَض عليها RTL [AR-05]"
+        assert "Noto Sans Arabic" in chat, \
+            ("مكدّس خطّ لوحة نِبراس بلا وجه عربيّ صريح — نظير [AR-03]: system-ui وحده لا "
+             "يضمن محارف عربيّة على لينكس [AR-05]")
+        # ملحوظة: فخّ الشاهدة الخلفيّة داخل قالب HTML (تُنهي القالب ⇒ SyntaxError) **مغطّى
+        # أصلًا** بفحص الصحّة النحويّة العامّ في هذا الملفّ — تحقّقنا بفشل مقصود — فلا نكرّره.
 
     # (٤) [SAD-11] «أصلِح بنِبراس» موصول فعلًا: extension.js يستدعي registerFixDiagnostic (وإلّا يبقى
     #     الأمر مُسجَّلًا في وحدة غير مستدعاة ⇒ «command not found» زمن التشغيل رغم خضرة L0).

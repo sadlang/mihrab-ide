@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """رُقعة نواة محراب: هوية صفحة الترحيب (Get Started) — الطبقة 3.
 
-تستبدل ترويسة صفحة الترحيب المولّدة في gettingStarted.ts: تُضيف عنصر شعار القوس
-(‏.mihrab-welcome-mark، يُنسَّق في mihrab-rtl.css كخلفيّة SVG)، وتبدّل العنوان الفرعيّ
+تستبدل ترويسة صفحة الترحيب المولّدة في gettingStarted.ts: تُضيف طبقة زخرفة نجميّة محيطيّة
+(‏.mihrab-welcome-pattern، بلاطة نجمة ثمانيّة خافتة) + عنصر شعار القوس
+(‏.mihrab-welcome-mark، يُنسَّقان في mihrab-rtl.css كخلفيّة SVG)، وتبدّل العنوان الفرعيّ
 «Editing evolved» بالجملة الافتتاحيّة الاستعاريّة لمحراب. العنوان نفسه = productService.nameLong
 (= «محراب» من هوية product.json) فيبقى كما هو.
 
@@ -53,8 +54,9 @@ WELCOME_TAGLINE = "للمِحرابِ اتّجاه، ولكودِك وِجهة. 
 _TAGLINE_JS = json.dumps(WELCOME_TAGLINE, ensure_ascii=False)
 
 REPLACEMENT = (
-    "\t\t// mihrab-welcome: شعار القوس + العنوان (nameLong=محراب) + الجملة الاستعاريّة بدل «Editing evolved».\n"
+    "\t\t// mihrab-welcome: زخرفة نجميّة محيطيّة + شعار القوس + العنوان (nameLong=محراب) + الجملة الاستعاريّة بدل «Editing evolved».\n"
     "\t\tconst header = $('.header', {},\n"
+    "\t\t\t$('.mihrab-welcome-pattern', { 'aria-hidden': 'true' }),\n"
     "\t\t\t$('.mihrab-welcome-mark', { 'aria-hidden': 'true' }),\n"
     "\t\t\t$('h1.product-name.caption', {}, this.productService.nameLong),\n"
     "\t\t\t/* allow-any-unicode-next-line */\n"

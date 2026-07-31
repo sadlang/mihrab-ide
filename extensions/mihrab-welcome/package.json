@@ -49,7 +49,7 @@
           {
             "id": "mihrab.step.newProject",
             "title": "أنشئ أوّل مشروع ص",
-            "description": "أمر واحد ينشئ مجلّدًا فيه برنامج ص يعمل فورًا، مشروحًا بالعربية.\n[أنشئ مشروع ص جديد](command:mihrab.newSadProject)",
+            "description": "أمر واحد ينشئ مجلّدًا فيه برنامج ص يعمل فورًا، مشروحًا بالعربيّة.\n[أنشئ مشروع ص جديد](command:mihrab.newSadProject)",
             "media": { "markdown": "media/step-project.md" },
             "completionEvents": ["onCommand:mihrab.newSadProject"]
           },
@@ -69,7 +69,7 @@
           {
             "id": "mihrab.step.errors",
             "title": "افهم الأخطاء الودودة",
-            "description": "حين تخطئ، يشرح محراب ما حدث وأين وكيف تُصلحه — بالعربية. الخطأ معلّمٌ لطيف لا إهانة.",
+            "description": "حين تخطئ، يشرح محراب ما حدث وأين وكيف تُصلحه — بالعربيّة. الخطأ معلّمٌ لطيف لا إهانة.",
             "media": { "markdown": "media/step-errors.md" }
           }
         ]

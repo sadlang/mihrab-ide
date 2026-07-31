@@ -26,6 +26,12 @@ PATCHERS = [
      ["src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts"]),
     ("patch_welcome_rtl.py", "file",
      ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts"]),
+    # تصريح <html lang> من product.defaultLocale (يُفعّل :lang(ar) ويُصلح نطق قارئات الشاشة).
+    ("patch_html_lang.py", "file",
+     ["src/vs/code/electron-browser/workbench/workbench.ts"]),
+    # افتراضُ الحوار المشروط = custom: بدونه يعرض ويندوز حوارَه بلغته وباتّجاه LTR.
+    ("patch_dialog_style.py", "file",
+     ["src/vs/workbench/electron-browser/desktop.contribution.ts"]),
     # جذر: يشتقّ ملفّاته الثمانية من FILES (تُستخرَج ديناميكيًّا في L1).
     ("patch_editor_rtl.py", "root", None),
 ]

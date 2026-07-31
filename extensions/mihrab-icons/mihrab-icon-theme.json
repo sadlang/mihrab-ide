@@ -1,19 +1,120 @@
 {
   "iconDefinitions": {
-    "mihrab-sad": { "iconPath": "./icons/sad.svg" },
-    "mihrab-file": { "iconPath": "./icons/file.svg" },
-    "mihrab-folder": { "iconPath": "./icons/folder.svg" },
-    "mihrab-folder-open": { "iconPath": "./icons/folder-open.svg" },
-    "mihrab-sad-light": { "iconPath": "./icons/sad-light.svg" },
-    "mihrab-file-light": { "iconPath": "./icons/file-light.svg" },
-    "mihrab-folder-light": { "iconPath": "./icons/folder-light.svg" },
-    "mihrab-folder-open-light": { "iconPath": "./icons/folder-open-light.svg" }
+    "mihrab-sad": {
+      "iconPath": "./icons/sad.svg"
+    },
+    "mihrab-file": {
+      "iconPath": "./icons/file.svg"
+    },
+    "mihrab-folder": {
+      "iconPath": "./icons/folder.svg"
+    },
+    "mihrab-folder-open": {
+      "iconPath": "./icons/folder-open.svg"
+    },
+    "mihrab-sad-light": {
+      "iconPath": "./icons/sad-light.svg"
+    },
+    "mihrab-file-light": {
+      "iconPath": "./icons/file-light.svg"
+    },
+    "mihrab-folder-light": {
+      "iconPath": "./icons/folder-light.svg"
+    },
+    "mihrab-folder-open-light": {
+      "iconPath": "./icons/folder-open-light.svg"
+    },
+    "mihrab-code": {
+      "iconPath": "./icons/code.svg"
+    },
+    "mihrab-code-light": {
+      "iconPath": "./icons/code-light.svg"
+    },
+    "mihrab-data": {
+      "iconPath": "./icons/data.svg"
+    },
+    "mihrab-data-light": {
+      "iconPath": "./icons/data-light.svg"
+    },
+    "mihrab-doc": {
+      "iconPath": "./icons/doc.svg"
+    },
+    "mihrab-doc-light": {
+      "iconPath": "./icons/doc-light.svg"
+    },
+    "mihrab-image": {
+      "iconPath": "./icons/image.svg"
+    },
+    "mihrab-image-light": {
+      "iconPath": "./icons/image-light.svg"
+    },
+    "mihrab-meta": {
+      "iconPath": "./icons/meta.svg"
+    },
+    "mihrab-meta-light": {
+      "iconPath": "./icons/meta-light.svg"
+    }
   },
   "file": "mihrab-file",
   "folder": "mihrab-folder",
   "folderExpanded": "mihrab-folder-open",
   "fileExtensions": {
-    "ص": "mihrab-sad"
+    "ص": "mihrab-sad",
+    "py": "mihrab-code",
+    "js": "mihrab-code",
+    "mjs": "mihrab-code",
+    "cjs": "mihrab-code",
+    "ts": "mihrab-code",
+    "mts": "mihrab-code",
+    "cts": "mihrab-code",
+    "sh": "mihrab-code",
+    "bash": "mihrab-code",
+    "ps1": "mihrab-code",
+    "c": "mihrab-code",
+    "h": "mihrab-code",
+    "cpp": "mihrab-code",
+    "hpp": "mihrab-code",
+    "rs": "mihrab-code",
+    "go": "mihrab-code",
+    "java": "mihrab-code",
+    "rb": "mihrab-code",
+    "lua": "mihrab-code",
+    "json": "mihrab-data",
+    "jsonc": "mihrab-data",
+    "yaml": "mihrab-data",
+    "yml": "mihrab-data",
+    "toml": "mihrab-data",
+    "ini": "mihrab-data",
+    "cfg": "mihrab-data",
+    "conf": "mihrab-data",
+    "xml": "mihrab-data",
+    "csv": "mihrab-data",
+    "env": "mihrab-data",
+    "properties": "mihrab-data",
+    "md": "mihrab-doc",
+    "markdown": "mihrab-doc",
+    "txt": "mihrab-doc",
+    "rst": "mihrab-doc",
+    "adoc": "mihrab-doc",
+    "pdf": "mihrab-doc",
+    "html": "mihrab-doc",
+    "htm": "mihrab-doc",
+    "css": "mihrab-doc",
+    "svg": "mihrab-image",
+    "png": "mihrab-image",
+    "jpg": "mihrab-image",
+    "jpeg": "mihrab-image",
+    "gif": "mihrab-image",
+    "webp": "mihrab-image",
+    "ico": "mihrab-image",
+    "bmp": "mihrab-image",
+    "avif": "mihrab-image",
+    "log": "mihrab-meta",
+    "lock": "mihrab-meta",
+    "gitignore": "mihrab-meta",
+    "gitattributes": "mihrab-meta",
+    "editorconfig": "mihrab-meta",
+    "map": "mihrab-meta"
   },
   "languageIds": {
     "sad": "mihrab-sad"
@@ -23,11 +124,88 @@
     "folder": "mihrab-folder-light",
     "folderExpanded": "mihrab-folder-open-light",
     "fileExtensions": {
-      "ص": "mihrab-sad-light"
+      "ص": "mihrab-sad-light",
+      "py": "mihrab-code-light",
+      "js": "mihrab-code-light",
+      "mjs": "mihrab-code-light",
+      "cjs": "mihrab-code-light",
+      "ts": "mihrab-code-light",
+      "mts": "mihrab-code-light",
+      "cts": "mihrab-code-light",
+      "sh": "mihrab-code-light",
+      "bash": "mihrab-code-light",
+      "ps1": "mihrab-code-light",
+      "c": "mihrab-code-light",
+      "h": "mihrab-code-light",
+      "cpp": "mihrab-code-light",
+      "hpp": "mihrab-code-light",
+      "rs": "mihrab-code-light",
+      "go": "mihrab-code-light",
+      "java": "mihrab-code-light",
+      "rb": "mihrab-code-light",
+      "lua": "mihrab-code-light",
+      "json": "mihrab-data-light",
+      "jsonc": "mihrab-data-light",
+      "yaml": "mihrab-data-light",
+      "yml": "mihrab-data-light",
+      "toml": "mihrab-data-light",
+      "ini": "mihrab-data-light",
+      "cfg": "mihrab-data-light",
+      "conf": "mihrab-data-light",
+      "xml": "mihrab-data-light",
+      "csv": "mihrab-data-light",
+      "env": "mihrab-data-light",
+      "properties": "mihrab-data-light",
+      "md": "mihrab-doc-light",
+      "markdown": "mihrab-doc-light",
+      "txt": "mihrab-doc-light",
+      "rst": "mihrab-doc-light",
+      "adoc": "mihrab-doc-light",
+      "pdf": "mihrab-doc-light",
+      "html": "mihrab-doc-light",
+      "htm": "mihrab-doc-light",
+      "css": "mihrab-doc-light",
+      "svg": "mihrab-image-light",
+      "png": "mihrab-image-light",
+      "jpg": "mihrab-image-light",
+      "jpeg": "mihrab-image-light",
+      "gif": "mihrab-image-light",
+      "webp": "mihrab-image-light",
+      "ico": "mihrab-image-light",
+      "bmp": "mihrab-image-light",
+      "avif": "mihrab-image-light",
+      "log": "mihrab-meta-light",
+      "lock": "mihrab-meta-light",
+      "gitignore": "mihrab-meta-light",
+      "gitattributes": "mihrab-meta-light",
+      "editorconfig": "mihrab-meta-light",
+      "map": "mihrab-meta-light"
     },
     "languageIds": {
       "sad": "mihrab-sad-light"
+    },
+    "fileNames": {
+      "README.md": "mihrab-doc-light",
+      "LICENSE": "mihrab-doc-light",
+      "LICENSE.md": "mihrab-doc-light",
+      "CHANGELOG.md": "mihrab-doc-light",
+      "CONTRIBUTING.md": "mihrab-doc-light",
+      "package-lock.json": "mihrab-meta-light",
+      ".gitignore": "mihrab-meta-light",
+      ".gitattributes": "mihrab-meta-light",
+      ".editorconfig": "mihrab-meta-light"
     }
   },
-  "hidesExplorerArrows": false
+  "hidesExplorerArrows": false,
+  "fileNames": {
+    "README.md": "mihrab-doc",
+    "LICENSE": "mihrab-doc",
+    "LICENSE.md": "mihrab-doc",
+    "CHANGELOG.md": "mihrab-doc",
+    "CONTRIBUTING.md": "mihrab-doc",
+    "package-lock.json": "mihrab-meta",
+    ".gitignore": "mihrab-meta",
+    ".gitattributes": "mihrab-meta",
+    ".editorconfig": "mihrab-meta"
+  }
 }

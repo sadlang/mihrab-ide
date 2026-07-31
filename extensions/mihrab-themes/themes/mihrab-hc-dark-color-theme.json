@@ -1,0 +1,191 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "محراب الداكنة عالية التباين",
+  "type": "hcDark",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#000000",
+    "editor.foreground": "#FFFFFF",
+    "contrastBorder": "#6FE7D2",
+    "contrastActiveBorder": "#FFD479",
+    "focusBorder": "#FFD479",
+    "foreground": "#FFFFFF",
+    "editorLineNumber.foreground": "#9FB3BA",
+    "editorLineNumber.activeForeground": "#FFFFFF",
+    "editor.lineHighlightBorder": "#6FE7D2",
+    "editor.selectionBackground": "#00463E",
+    "editor.selectionForeground": "#FFFFFF",
+    "editorCursor.foreground": "#FFD479",
+    "editorWhitespace.foreground": "#4A5A5F",
+    "editorIndentGuide.background1": "#4A5A5F",
+    "editorIndentGuide.activeBackground1": "#6FE7D2",
+    "editorBracketMatch.background": "#000000",
+    "editorBracketMatch.border": "#FFD479",
+    "titleBar.activeBackground": "#000000",
+    "titleBar.activeForeground": "#FFFFFF",
+    "titleBar.inactiveBackground": "#000000",
+    "titleBar.inactiveForeground": "#9FB3BA",
+    "activityBar.background": "#000000",
+    "activityBar.foreground": "#FFFFFF",
+    "activityBar.inactiveForeground": "#9FB3BA",
+    "activityBar.activeBorder": "#FFD479",
+    "activityBarBadge.background": "#FFD479",
+    "activityBarBadge.foreground": "#000000",
+    "sideBar.background": "#000000",
+    "sideBar.foreground": "#FFFFFF",
+    "sideBarSectionHeader.background": "#0D0D0D",
+    "sideBarTitle.foreground": "#FFFFFF",
+    "statusBar.background": "#000000",
+    "statusBar.foreground": "#FFFFFF",
+    "statusBar.border": "#6FE7D2",
+    "statusBar.noFolderBackground": "#000000",
+    "statusBar.debuggingBackground": "#000000",
+    "tab.activeBackground": "#000000",
+    "tab.inactiveBackground": "#000000",
+    "tab.activeForeground": "#FFFFFF",
+    "tab.inactiveForeground": "#9FB3BA",
+    "tab.activeBorderTop": "#FFD479",
+    "tab.border": "#6FE7D2",
+    "editorGroupHeader.tabsBackground": "#000000",
+    "panel.background": "#000000",
+    "panel.border": "#6FE7D2",
+    "panelTitle.activeForeground": "#FFFFFF",
+    "terminal.background": "#000000",
+    "terminal.foreground": "#FFFFFF",
+    "input.background": "#000000",
+    "input.foreground": "#FFFFFF",
+    "input.border": "#6FE7D2",
+    "dropdown.background": "#000000",
+    "dropdown.border": "#6FE7D2",
+    "list.activeSelectionBackground": "#00463E",
+    "list.activeSelectionForeground": "#FFFFFF",
+    "list.hoverBackground": "#0D0D0D",
+    "list.highlightForeground": "#FFD479",
+    "button.background": "#000000",
+    "button.foreground": "#FFFFFF",
+    "button.border": "#6FE7D2",
+    "button.hoverBackground": "#0D0D0D",
+    "badge.background": "#FFD479",
+    "badge.foreground": "#000000",
+    "progressBar.background": "#FFD479",
+    "textLink.foreground": "#7FC4EC",
+    "textLink.activeForeground": "#FFD479",
+    "scrollbarSlider.background": "#4A5A5F",
+    "scrollbarSlider.hoverBackground": "#9FB3BA",
+    "editorWidget.background": "#000000",
+    "editorWidget.border": "#6FE7D2",
+    "editorSuggestWidget.background": "#000000",
+    "editorSuggestWidget.border": "#6FE7D2",
+    "editorSuggestWidget.selectedBackground": "#00463E",
+    "editorHoverWidget.background": "#000000",
+    "editorHoverWidget.border": "#6FE7D2",
+    "peekViewEditor.background": "#000000"
+  },
+  "tokenColors": [
+    {
+      "name": "تعليق",
+      "scope": [
+        "comment",
+        "comment.line.number-sign.sad",
+        "comment.block.sad",
+        "comment.line.documentation.sad",
+        "comment.block.documentation.sad"
+      ],
+      "settings": {
+        "foreground": "#9FB3BA",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "كلمة مفتاحيّة",
+      "scope": [
+        "keyword.control.sad",
+        "keyword.control.directive.sad",
+        "keyword.other.sad",
+        "keyword.operator.word.sad",
+        "storage.modifier.sad",
+        "storage.modifier.lifetime.sad",
+        "constant.language",
+        "constant.language.sad"
+      ],
+      "settings": {
+        "foreground": "#FFD479"
+      }
+    },
+    {
+      "name": "نوع",
+      "scope": [
+        "storage.type.sad",
+        "support.type.sad"
+      ],
+      "settings": {
+        "foreground": "#7FC4EC"
+      }
+    },
+    {
+      "name": "عامل",
+      "scope": [
+        "keyword.operator.sad"
+      ],
+      "settings": {
+        "foreground": "#C3D2D7"
+      }
+    },
+    {
+      "name": "نصّ",
+      "scope": [
+        "string",
+        "string.quoted.double.sad",
+        "string.quoted.raw.sad",
+        "string.quoted.interpolated.sad"
+      ],
+      "settings": {
+        "foreground": "#B8E986"
+      }
+    },
+    {
+      "name": "هروب",
+      "scope": [
+        "constant.character.escape.sad"
+      ],
+      "settings": {
+        "foreground": "#FFAE85"
+      }
+    },
+    {
+      "name": "رقم",
+      "scope": [
+        "constant.numeric",
+        "constant.numeric.decimal.sad",
+        "constant.numeric.hex.sad",
+        "constant.numeric.binary.sad",
+        "constant.numeric.octal.sad"
+      ],
+      "settings": {
+        "foreground": "#FFAE85"
+      }
+    }
+  ],
+  "semanticTokenColors": {
+    "function": "#6FE7D2",
+    "method": "#6FE7D2",
+    "class": "#7FC4EC",
+    "struct": "#7FC4EC",
+    "enum": "#7FC4EC",
+    "interface": "#7FC4EC",
+    "type": "#7FC4EC",
+    "typeParameter": "#7FC4EC",
+    "namespace": "#7FC4EC",
+    "variable": "#FFFFFF",
+    "parameter": "#FFFFFF",
+    "property": "#FFFFFF",
+    "enumMember": "#FFAE85",
+    "keyword": "#FFD479",
+    "number": "#FFAE85",
+    "string": "#B8E986",
+    "comment": {
+      "foreground": "#9FB3BA",
+      "fontStyle": "italic"
+    }
+  }
+}

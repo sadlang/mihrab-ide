@@ -34,10 +34,20 @@ else
 fi
 echo
 
-echo "─── L3 (وقتيّ، يدويّ): أطلق النسخة ثمّ شغّل ───"
-echo "  Mihrab.exe --remote-debugging-port=9222 --remote-allow-origins=* \\"
-echo "    tests/runtime/fixtures/rtl_fixture.sad"
-echo "  node tests/runtime/run.mjs"
+echo "─── L3 (وقتيّ) — مساران ───"
+echo "  (أ) تشغيل حيّ مؤتمَت (يُصرِّف ويُطلق ويلتقط بنفسه — لا حاجة لإطلاق يدويّ):"
+echo "      python build/dev_sync.py                       # زامِن الطبقتين 2/3 مع شجرة المنبع"
+echo "      node tests/runtime/launch.mjs --build --spec   # صرِّف + أطلق + شغّل التأكيدات"
+echo "      node tests/runtime/launch.mjs --folder . --tabs <ملفّ> --spec   # تشغيلة المحرّر"
+echo "      node tests/runtime/launch.mjs --welcome --spec                 # تشغيلة الترحيب"
+echo "        (تشغيلتان لا واحدة: صفحة الترحيب والمحرّر لا يكونان نشطين معًا في مجموعة"
+echo "         تبويبات واحدة، ومحراب لا يفتح الترحيب أصلًا حين يُمرَّر ملفّ.)"
+echo "        (‏--folder لازم لمِجَسّات القاعدة 22: مثلّث الشجرة وأدلّتها وأسهم اللوحات)"
+echo "      node tests/runtime/launch.mjs --shot welcome --keep   # لقطة وأبقِ النسخة مفتوحة"
+echo "  (ب) نسخة مُطلَقة يدويًّا (كما كان):"
+echo "      Mihrab.exe --remote-debugging-port=9222 --remote-allow-origins=* \\"
+echo "        tests/runtime/fixtures/rtl_fixture.ص"
+echo "      node tests/runtime/run.mjs"
 echo
 
 if [[ $rc -eq 0 ]]; then echo "╚═══ ✅ الطبقات غير الوقتيّة نجحت ═══╝"; else echo "╚═══ ❌ فشل — راجع أعلاه ═══╝"; fi

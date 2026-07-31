@@ -247,6 +247,8 @@ fi
 [[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
 [[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
+[[ -f "$ROOT/build/patch_html_lang.py" ]] && cp -f "$ROOT/build/patch_html_lang.py" "$UP/.mihrab-patch-html-lang.py"
+[[ -f "$ROOT/build/patch_dialog_style.py" ]] && cp -f "$ROOT/build/patch_dialog_style.py" "$UP/.mihrab-patch-dialog-style.py"
 [[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
 # [AR-02] جهّز خطّ ص العربيّ المحزوم لوثيقة الـworkbench: patch_bundle يشتقّ منه base64 ويحقن
 # @font-face بمصدر data: URI في نسخة media من mihrab-rtl.css (لا url() نسبيّ: يكسر بناء esbuild —
