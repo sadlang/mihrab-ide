@@ -7,6 +7,18 @@
   "defaultLocale": "ar",
   "linuxIconName": "mihrab",
   "quality": "stable",
+
+  "_comment_update": "⚠️ عطبٌ حقيقيّ أبلغه المستخدم: «تحديثُ التطبيق» كان يُنزِّل المنبع لا محراب. السببُ أنّ updateUrl يُورَث من VSCodium ويشير إلى تغذيةِ إصداراته، وcommit موجود — فالمُحدِّث يعمل ويستبدل محرابًا بـVSCodium صامتًا. ولا تغذيةَ تحديثٍ لمحراب أصلًا، فالصوابُ تعطيلُ المُحدِّث لا توجيهُه إلى عنوانٍ لا وجود له: updateUrl=null يوقعه في State.Disabled(MissingConfiguration) (انظر abstractUpdateService.ts: !productService.updateUrl). وبقيّةُ العناوين تُصحَّح لأنّ روابطَ هويّةٍ تشير إلى منبعٍ آخر عطبُ هويّةٍ من الصنف نفسه.",
+  "updateUrl": null,
+  "serverDownloadUrlTemplate": null,
+  "downloadUrl": "https://github.com/sadlang/mihrab-ide/releases",
+  "reportIssueUrl": "https://github.com/sadlang/mihrab-ide/issues/new",
+  "licenseUrl": "https://github.com/sadlang/mihrab-ide/blob/main/LICENSE",
+  "documentationUrl": "https://github.com/sadlang/mihrab-ide#readme",
+  "requestFeatureUrl": "https://github.com/sadlang/mihrab-ide/issues/new",
+  "releaseNotesUrl": "https://github.com/sadlang/mihrab-ide/releases",
+  "twitterUrl": null,
+
   "urlProtocol": "mihrab",
   "serverApplicationName": "mihrab-server",
   "serverDataFolderName": ".mihrab-server",

@@ -305,6 +305,33 @@ def _built_locale():
         "defaultLocale ليس ar في المخرَج (خبز/هوية فشل)"
 
 
+@check("product.json المبنيّ: «حدِّث» لا يجلب المنبع (المُحدِّث معطَّل + روابطُ محراب)")
+def _built_update_identity():
+    """
+    ⚠️ العطبُ الذي أبلغه المستخدم يعيش في **المشحون** لا في ملفّ التجاوزات: التجاوزُ
+    قد يكون سليمًا ودمجُه ساقطًا. فالسؤالُ هنا يُوجَّه إلى ما يُشغّله المستخدم فعلًا.
+
+    وشرطُ التعطيل ليس `updateUrl` وحده: `abstractUpdateService` يعطّل عند `!updateUrl ||
+    !commit`. فنقبل غيابَ أيّهما، ونرفض أن يكون العنوانُ حيًّا ويشير إلى منبع.
+    """
+    pj = os.path.join(APP, "product.json")
+    assert os.path.isfile(pj), "لا product.json مبنيّ"
+    prod = json.load(open(pj, encoding="utf-8"))
+    upd = prod.get("updateUrl")
+    assert not upd, f"المُحدِّث فعّال: updateUrl={upd} — «حدِّث» سيستبدل محرابًا بالمنبع"
+    # روابطُ الهويّة التي نملكها. (‏keyboardShortcutsUrl*/documentation المتروكةُ عمدًا
+    # توثيقُ المحرّر نفسِه لا هويّةُ منتجٍ منافس — تُستثنى صراحةً لا صمتًا.)
+    owned = ("downloadUrl", "reportIssueUrl", "licenseUrl", "requestFeatureUrl",
+             "releaseNotesUrl", "serverDownloadUrlTemplate", "twitterUrl")
+    for k in owned:
+        v = prod.get(k)
+        if not v:
+            continue
+        low = str(v).lower()
+        assert not any(u in low for u in ("vscodium", "microsoft", "visualstudio")), \
+            f"{k} يقود المستخدمَ إلى المنبع: {v}"
+
+
 def main():
     print("═══ L2: تأكيدات الحزمة المشحونة ═══")
     packaged = os.path.isdir(OUT)

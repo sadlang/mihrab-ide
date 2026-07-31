@@ -133,7 +133,10 @@ if [[ -f "$OVERRIDES" ]]; then
   [[ -f "$UP/product.json" ]] || { echo "❌ $UP/product.json غير موجود — فشلت خطوة (ج) تحضير المنبع؟" >&2; exit 1; }
   # نكتب لملفّ مؤقّت ثمّ نُعيد التسمية ذرّيًّا: فشل jq (JSON تالف/خطأ قرص) يُجهض
   # قبل mv فلا يُداس product.json الصالح بناتج ناقص. ننظّف tmp عند الفشل.
-  if ! jq -s '.[0] * .[1] | del(._comment)' "$UP/product.json" "$OVERRIDES" > "$UP/product.json.tmp"; then
+  # نحذف **كلّ** مفتاحٍ يبدأ بـ_comment لا `._comment` وحده: أضفنا تعليقًا ثانيًا
+  # (‏_comment_update) فكاد يتسرّب حقلٌ غير معروف إلى المنتج — حذفٌ بالاسم الواحد
+  # يصمت عن الثاني ولا يُبلِّغ.
+  if ! jq -s '.[0] * .[1] | with_entries(select(.key | startswith("_comment") | not))' "$UP/product.json" "$OVERRIDES" > "$UP/product.json.tmp"; then
     rm -f "$UP/product.json.tmp"
     echo "❌ فشل دمج هوية محراب عبر jq — تحقّق من صحّة $OVERRIDES و$UP/product.json." >&2
     exit 1

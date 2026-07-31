@@ -213,6 +213,34 @@ def _json_valid():
     assert prod.get("defaultLocale") == "ar", "defaultLocale ليس 'ar' (انحدار تعريب)"
 
 
+# ───────── L0-4ب: هويّةُ التحديث والروابط — «حدِّث» يجب ألّا يجلب المنبع ─────────
+@check("هويّة المنتج: المُحدِّث معطَّل ولا رابطَ يشير إلى المنبع")
+def _product_identity_not_upstream():
+    """
+    ⚠️ عطبٌ حقيقيّ أبلغه المستخدم: زرُّ «تحديث التطبيق» كان يُنزِّل **المنبع** لا محرابًا.
+
+    السبب: `updateUrl` يُورَث من VSCodium إلى تغذيةِ إصداراته، و`commit` موجود — فالمُحدِّث
+    **يعمل** ويستبدل محرابًا بـVSCodium بلا أن يسأل. ولا تغذيةَ تحديثٍ لمحراب، فالصوابُ
+    تعطيلُه صراحةً (‏`updateUrl: null` ⇒ `State.Disabled(MissingConfiguration)`) لا توجيهُه
+    إلى عنوانٍ لا وجود له — وعنوانٌ ميّت يعطي «فشل التحديث» بدل «لا تحديث»، وهما ليسا سواء.
+
+    وروابطُ الهويّة (تنزيل/إبلاغ/رخصة/ملاحظات) من الصنف نفسه: رابطٌ يقود المستخدمَ إلى
+    منتجٍ آخر عطبُ هويّة، لا تجميل.
+    """
+    prod = json.load(open(os.path.join(ROOT, "product-overrides", "product.json"), encoding="utf-8"))
+    assert "updateUrl" in prod and prod["updateUrl"] is None, \
+        "updateUrl ليس null — المُحدِّث سيعمل على تغذية المنبع ويستبدل محرابًا"
+    assert prod.get("serverDownloadUrlTemplate", "x") is None, \
+        "serverDownloadUrlTemplate ليس null — لا بناءَ خادمٍ لمحراب"
+    upstream = ("vscodium", "microsoft", "visualstudio")
+    for k, v in prod.items():
+        if k.startswith("_comment") or not isinstance(v, str):
+            continue
+        if k.endswith(("Url", "UrlTemplate")) or k.endswith(("UrlLinux", "UrlMac", "UrlWin")):
+            low = v.lower()
+            assert not any(u in low for u in upstream), f"{k} يشير إلى المنبع: {v}"
+
+
 # ───────────── L0-5: مانيفست حزمة اللغة ↔ الملفّات (فحص Amelia مؤتمَتًا) ─────────────
 @check("حزمة اللغة: كلّ ترجمة معلَنة موجودة، ولا ملفّ غير معلَن")
 def _langpack_manifest_matches_files():

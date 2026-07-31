@@ -122,7 +122,9 @@ def sync_product(up):
     # ندمج دائمًا فوق **الأصل** لا فوق ناتج دمج سابق ⇒ إزالة مفتاح من التجاوزات تسري فعلًا.
     base = json.load(open(backup, encoding="utf-8"))
     over = json.load(open(os.path.join(ROOT, "product-overrides", "product.json"), encoding="utf-8"))
-    over.pop("_comment", None)
+    # كلّ مفتاحٍ يبدأ بـ_comment تعليقٌ لا حقلُ منتج (صار أكثر من واحد).
+    for k in [k for k in over if k.startswith("_comment")]:
+        over.pop(k)
     base.update(over)
     with open(prod, "w", encoding="utf-8", newline="\n") as f:
         json.dump(base, f, ensure_ascii=False, indent=2)
