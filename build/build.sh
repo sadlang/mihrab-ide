@@ -188,7 +188,10 @@ fi
 BCL="$UP/build_cli.sh"
 if [[ -f "$BCL" ]] && grep -qE '^mkdir openssl$' "$BCL"; then
   log "ترقيع build_cli.sh (mkdir -p openssl)"
-  sed -i 's/^mkdir openssl$/mkdir -p openssl/' "$BCL"
+  # ⚠️ لا `sed -i`: صيغتُه تختلف بين GNU وBSD — الأخيرةُ (macOS) تُلزِم بلاحقةٍ بعد
+  # ‏-i، فتبتلع النمطَ التالي وتموت بـ«-I or -i may not be used with stdin».
+  # وأمسكها حارسُ المنصّات في أوّل تشغيلٍ له، بعد ثلاث ثوانٍ من بدء بناء macOS.
+  sed 's/^mkdir openssl$/mkdir -p openssl/' "$BCL" > "$BCL.tmp" && mv -f "$BCL.tmp" "$BCL"
 fi
 
 # ── (ز) بيئة البناء + كشف Visual Studio و Python تلقائيًّا ──
