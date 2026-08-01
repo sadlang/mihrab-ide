@@ -78,9 +78,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: لينكس x64,      os: ubuntu-22.04,  asset: linux-x64-tar,   out: VSCode-linux-x64 }
-          - { name: macOS arm64,    os: macos-14,      asset: mac-arm64,       out: VSCode-darwin-arm64 }
-          - { name: ويندوز x64,     os: windows-2022,  asset: win-x64-zip,     out: VSCode-win32-x64 }
+          # jobs=2 على لينكس لا 4: عدّاءُ أوبنتو مات بـ«runner received a shutdown
+          # signal» في منتصف حزم esbuild — وهي بصمةُ نفادِ ذاكرةٍ لا خطأِ بناء.
+          # أربعُ وظائفَ متوازية × 8GB لكومة V8 تتجاوز ذاكرةَ العدّاء.
+          - { name: لينكس x64,      os: ubuntu-22.04,  asset: linux-x64-tar,   out: VSCode-linux-x64,    jobs: 2 }
+          - { name: macOS arm64,    os: macos-14,      asset: mac-arm64,       out: VSCode-darwin-arm64, jobs: 3 }
+          - { name: ويندوز x64,     os: windows-2022,  asset: win-x64-zip,     out: VSCode-win32-x64,    jobs: 4 }
 
     defaults:
       run: { shell: bash }
@@ -114,10 +117,22 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev fakeroot rpm
 
+      # ذاكرةُ العدّاء لا تكفي ذروةَ الحزم. والمبادلةُ أبطأُ من الذاكرة لكنّها
+      # تُنهي البناء — والبديلُ عدّاءٌ يموت بلا سجلٍّ مفيد بعد أربعين دقيقة.
+      - name: مبادلة 8 غيغابايت (لينكس)
+        if: runner.os == 'Linux'
+        run: |
+          sudo swapoff -a || true
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile >/dev/null
+          sudo swapon /swapfile
+          free -h
+
       - name: بناءُ محراب
         run: bash build/build.sh
         env:
-          MIHRAB_JOBS: '4'
+          MIHRAB_JOBS: ${{ matrix.jobs }}
 
       # ── تحقّقُ الهويّة على المخرَج ──
       # build.sh يفحص product.json وnls؛ هنا نفحص ما يخصّ المنصّة: أنّ أيقونتها
@@ -144,7 +159,11 @@ jobs:
         id: stamp
         run: |
           OUT=".upstream/${{ matrix.out }}"
-          APP=$(find "$OUT" -name product.json -path '*resources/app*' -print -quit)
+          # ‏[Rr] لا `resources`: macOS يكتبها `Contents/Resources/app`، وlinux/win
+          # يكتبانها صغيرة. ومطابقةُ حالةِ الأحرف أسقطت بناءَ macOS **الناجح**
+          # في خطوةِ بصمةٍ لا في البناء — فشلٌ في الحارس لا في المحروس.
+          APP=$(find "$OUT" -path '*/[Rr]esources/app/product.json' -print -quit)
+          test -n "$APP" || { echo "❌ لم يُعثر على product.json المشحون في $OUT"; exit 1; }
           V=$(python -c "import json,sys;print(json.load(open(sys.argv[1],encoding='utf-8'))['version'])" "$APP")
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "الإصدار: $V"
