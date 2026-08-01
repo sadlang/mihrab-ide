@@ -12,6 +12,14 @@
 
 	var themeBtn = document.getElementById('theme-toggle');
 	if (themeBtn) {
+		/* التسميةُ تصف **الوجهة** لا الحالة. والقالبُ يكتب «فاتح» ابتدائيًّا لأنّ
+		   الداكنَ افتراضُنا؛ فإن كان المحفوظُ فاتحًا وجب تصحيحُها قبل أوّل نقرة،
+		   وإلّا عرض الزرُّ «فاتح» على صفحةٍ فاتحةٍ أصلًا. */
+		var startDark = root.getAttribute('data-theme')
+			? root.getAttribute('data-theme') === 'dark'
+			: !window.matchMedia('(prefers-color-scheme: light)').matches;
+		themeBtn.textContent = startDark ? 'فاتح' : 'داكن';
+
 		themeBtn.addEventListener('click', function () {
 			var isDark = root.getAttribute('data-theme')
 				? root.getAttribute('data-theme') === 'dark'

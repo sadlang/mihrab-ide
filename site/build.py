@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""مولِّدُ موقع توثيق محراب العربيّ → GitHub Pages.
+"""مولِّدُ موقع محراب العربيّ — واجهةُ المنتج + التوثيق.
 
 لماذا مولِّدٌ لنا لا قالبٌ جاهز (Docsy/Just-the-Docs/Docusaurus)؟ قرارُ سالي، وسببُه
 أنّ دعمَ RTL في تلك القوالب طبقةُ `[dir=rtl]` مضافةٌ لاحقًا: تغطّي التخطيطَ ولا تغطّي
@@ -28,8 +28,19 @@ ASSETS = os.path.join(HERE, "assets")
 DATA = os.path.join(HERE, "data")
 OUT = os.path.join(HERE, "public")
 
-SITE_URL = "https://sadlang.github.io/mihrab-ide"
 UPSTREAM_DOCS = "https://github.com/microsoft/vscode-docs/blob/main/"
+
+# ═════════════════════ البيانات ═════════════════════
+# النصُّ التسويقيّ ومصفوفةُ المنصّات بياناتٌ لا كود: تغييرُ جملةٍ في الصفحة الأولى
+# يجب ألّا يمرَّ بمراجعةِ بايثون.
+with open(os.path.join(DATA, "site.json"), encoding="utf-8") as _f:
+    SITE = json.load(_f)
+with open(os.path.join(DATA, "releases.json"), encoding="utf-8") as _f:
+    RELEASES = json.load(_f)
+
+# ⚠️ كلُّ المسارات نسبيّة (`.` و`..`) عمدًا: المخرَجُ نفسُه يُخدَم من
+# `sad-lang.org/mihrab/` ومن `sadlang.github.io/mihrab-ide/` بلا إعادةِ بناء.
+# مسارٌ مطلقٌ واحد يربط المخرَج بمضيفٍ بعينه ويكسر المرآة صامتًا.
 
 # التنقّل: ثلاثةُ أقسامٍ عليا فقط. أكثرُ من ثلاثةٍ يُجبر المستخدمَ على قرارٍ قبل أن
 # يعرف ما يريد. والتسميةُ أفعالُ أمرٍ لا أسماءَ مجرّدة: الفعلُ يخاطب القارئ،
@@ -270,32 +281,315 @@ def drift_banner_html(meta):
             % html.escape(UPSTREAM_DOCS + meta.get("source_path", "")))
 
 
-def page_shell(title, body, active, base, description=""):
+FOOTER_LINKS = [
+    ("المنتج", [
+        ("{base}/", "الصفحة الأولى"),
+        ("{base}/download/", "نزِّل محراب"),
+        ("{base}/docs/", "التوثيق"),
+        ("{base}/keyboard/", "بطاقةُ الاختصارات"),
+    ]),
+    ("ابدأ", [
+        ("{base}/start/", "البدء في دقيقة"),
+        ("{base}/interface/", "جولةٌ في الواجهة"),
+        ("{base}/settings/", "الإعدادات"),
+        ("{base}/extensions/", "الامتدادات"),
+    ]),
+    ("المشروع", [
+        ("%s" % SITE["repo"], "المستودع على GitHub"),
+        ("%s/issues/new" % SITE["repo"], "أبلِغ عن عطب"),
+        ("%s/blob/main/LICENSE" % SITE["repo"], "الرخصة"),
+        ("https://sad-lang.org/", "لغةُ ص"),
+    ]),
+]
+
+
+def header_html(base, active, with_search):
+    """ترويسةٌ واحدة لكلّ الصفحات.
+
+    البحثُ يظهر في صفحات التوثيق وحدها: حقلُ بحثٍ في صفحةٍ لا فهرسَ لها يَعِد
+    بما لا يفي، وحقلٌ فارغٌ في الصفحة الأولى يزاحم الزرَّ الوحيد الذي أتى له الزائر.
+    """
+    mid = ('<div class="header-search search-box">'
+           '<input type="search" id="site-search" placeholder="ابحث في التوثيق…  /" '
+           'aria-label="بحث">'
+           '<div class="search-results" id="search-results" hidden></div></div>'
+           if with_search else '<div class="header-spacer"></div>')
+
+    def link(href, text, cls="", key=None):
+        cur = ' aria-current="true"' if key and key == active else ""
+        c = ' class="%s"' % cls if cls else ""
+        return '<a href="%s"%s%s>%s</a>' % (href, c, cur, html.escape(text))
+
+    links = ('<nav class="site-links" aria-label="أقسام الموقع">%s%s</nav>' % (
+        link(base + "/docs/", "التوثيق", "docs-link", "docs"),
+        link(base + "/download/", "نزِّل", "cta", "download"),
+    ))
+
+    return ('<header class="site-header">'
+            '<a class="brand" href="%s/">%s<span>محراب</span></a>'
+            '%s%s'
+            '<button class="icon-btn" id="theme-toggle" type="button">فاتح</button>'
+            '<button class="icon-btn" id="nav-toggle" type="button" aria-expanded="false" '
+            'aria-controls="site-nav">القائمة</button>'
+            '</header>' % (base, MARK_SVG % "mark", mid, links))
+
+
+def footer_html(base):
+    cols = []
+    for heading, items in FOOTER_LINKS:
+        lis = "".join('<li><a href="%s">%s</a></li>'
+                      % (href.format(base=base), html.escape(text))
+                      for href, text in items)
+        cols.append("<div><h4>%s</h4><ul>%s</ul></div>" % (html.escape(heading), lis))
+    return (
+        '<footer class="site-footer"><div class="footer-in">'
+        '<div class="footer-brand">'
+        '<a class="brand" href="%s/">%s<span>محراب</span></a>'
+        '<p>محرّرُ أكوادٍ عربيُّ الواجهة والاتّجاه، مبنيٌّ على VSCodium. '
+        'مجّانيٌّ ومفتوحُ المصدر.</p></div>'
+        '%s</div>'
+        # النِسبةُ والتبرّؤ في كلّ صفحة لا في صفحات التوثيق وحدها: زائرُ الصفحة
+        # الأولى هو من قد يظنّ محرابًا منتجَ مايكروسوفت، لا قارئُ صفحةِ الاختصارات.
+        '<div class="footer-legal">محراب مشروعٌ مستقلٌّ لا صلةَ له بمايكروسوفت ولا '
+        'برعايتها. مبنيٌّ على <a href="https://vscodium.com/">VSCodium</a>، '
+        'والتوثيقُ مترجَمٌ عن <a href="https://github.com/microsoft/vscode-docs">vscode-docs</a> '
+        'بترخيص CC BY 3.0 US.</div></footer>'
+        % (base, MARK_SVG % "mark", "".join(cols)))
+
+
+def page_shell(title, body, base, description="", active=None, canon_path="",
+               with_search=True, extra_js=()):
+    """قالبُ الصفحة.
+
+    `product=True` يضيف ورقةَ أنماط المنتج ويحذف درجَ التوثيق. وفُصلت الورقتان
+    عمدًا: التوثيقُ يُقرأ والصفحةُ الأولى تُقنِع، ودمجُهما يجعل كلَّ تعديلٍ تسويقيّ
+    يخاطر بتخطيط صفحات التوثيق كلِّها.
+    """
+    css = ['<link rel="stylesheet" href="%s/assets/fonts.css">' % base,
+           '<link rel="stylesheet" href="%s/assets/mihrab-docs.css">' % base,
+           '<link rel="stylesheet" href="%s/assets/mihrab-home.css">' % base]
+    scripts = ['<script src="%s/assets/docs.js" defer></script>' % base]
+    scripts += ['<script src="%s/assets/%s" defer></script>' % (base, j) for j in extra_js]
+
+    full_title = title if title.startswith("محراب") else "%s — محراب" % title
     return """<!doctype html>
 <html lang="ar" dir="rtl">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — توثيق محراب</title>
+<title>{title}</title>
 <meta name="description" content="{desc}">
-<link rel="stylesheet" href="{base}/assets/fonts.css">
-<link rel="stylesheet" href="{base}/assets/mihrab-docs.css">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ar_AR">
+<meta name="theme-color" content="#0F1C24">
+<link rel="canonical" href="{canon}">
+{css}
 <body data-base="{base}">
-<header class="site-header">
-  <a class="brand" href="{base}/">{mark}<span>محراب</span></a>
-  <div class="header-search search-box">
-    <input type="search" id="site-search" placeholder="ابحث في التوثيق…  /" aria-label="بحث">
-    <div class="search-results" id="search-results" hidden></div>
-  </div>
-  <button class="icon-btn" id="theme-toggle" type="button">فاتح</button>
-  <button class="icon-btn" id="nav-toggle" type="button" aria-expanded="false"
-          aria-controls="site-nav">القائمة</button>
-</header>
+{header}
 <div class="nav-scrim" hidden></div>
 {body}
-<script src="{base}/assets/docs.js" defer></script>
+{footer}
+{scripts}
 </html>
-""".format(title=html.escape(title), desc=html.escape(description), base=base,
-           mark=MARK_SVG % "mark", body=body)
+""".format(title=html.escape(full_title), desc=html.escape(description), base=base,
+           canon=html.escape(SITE["canonical"].rstrip("/") + "/" + canon_path),
+           css="\n".join(css),
+           header=header_html(base, active, with_search),
+           body=body, footer=footer_html(base), scripts="\n".join(scripts))
+
+
+# ═════════════════════════════════════════════════════════════════════════
+#  واجهةُ المنتج — الصفحةُ الأولى وصفحةُ التنزيل
+# ═════════════════════════════════════════════════════════════════════════
+
+def data_island(el_id, obj):
+    """بياناتٌ لـsite.js داخل الصفحة لا في طلبٍ ثانٍ.
+
+    `</` تُهرَّب: سلسلةٌ في JSON تحوي `</script>` تُنهي الوسمَ مبكّرًا وتفتح ثغرةَ
+    حقنٍ — وهو عطبٌ لا يظهر إلّا حين يكتب أحدُهم وسمًا في نصٍّ تسويقيّ بعد سنة.
+    """
+    payload = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    return ('<script type="application/json" id="%s">%s</script>'
+            % (el_id, payload.replace("</", "<\\/")))
+
+
+def hero_visual():
+    """برهانٌ بصريّ: لقطةٌ حقيقيّة إن وُرِّدت، ورسمٌ مبسّطٌ إن لم تُورَّد.
+
+    ولا `<img>` لملفٍّ غائب — السببُ نفسُه الذي منع `@font-face` لخطٍّ غائب:
+    الوسمُ لا يفشل بصوت، بل يترك مستطيلًا مكسورًا في أهمّ موضعٍ في الصفحة.
+    الرسمُ البديل **مبسّطٌ صراحةً** ومكتوبٌ تحته أنّه كذلك: صورةٌ تدّعي أنّها لقطةُ
+    شاشة وليست كذلك كذبٌ بصريّ، وهو أسوأُ من رسمٍ يعلن عن نفسه.
+    """
+    shot = os.path.join(ASSETS, "shots", "editor.png")
+    if os.path.isfile(shot):
+        inner = ('<img src="../assets/shots/editor.png" width="1600" height="1000" '
+                 'alt="محراب مفتوحٌ على ملفّ لغة ص: شريطُ النشاط يمينًا، '
+                 'والمستكشفُ يمينَه، والطرفيّةُ أسفل." loading="lazy">')
+        note = ""
+    else:
+        inner = _mock_svg()
+        note = ('<div class="shot-note">رسمٌ تخطيطيّ للتخطيط — لا لقطةَ شاشة. '
+                'حمّل محرابًا لترى الأصل.</div>')
+    return ('<div class="shot"><div class="shot-bar"><i></i><i></i><i></i>'
+            '<span class="t">محراب — مرحبا.ص</span></div>%s%s</div>' % (inner, note))
+
+
+def _mock_svg():
+    """تخطيطُ محراب في SVG: شريطُ النشاط **يمينًا** — وهي الدعوى كلُّها في صورة."""
+    g = []
+    # شريطُ النشاط (يمينًا) — خمسُ أيقوناتٍ مجرّدة
+    g.append('<rect x="1352" y="0" width="48" height="900" fill="#12212B"/>')
+    for k in range(5):
+        c = "#E3BE68" if k == 0 else "#3A4C55"
+        g.append('<rect x="1366" y="%d" width="20" height="20" rx="4" fill="%s"/>'
+                 % (26 + k * 46, c))
+    # المستكشف
+    g.append('<rect x="1132" y="0" width="220" height="900" fill="#12212B"/>')
+    g.append('<rect x="1152" y="24" width="86" height="9" rx="4" fill="#5C7078"/>')
+    for k, w in enumerate([120, 96, 140, 108, 84, 130]):
+        fill = "#31A796" if k == 2 else "#3A4C55"
+        g.append('<rect x="%d" y="%d" width="%d" height="9" rx="4" fill="%s"/>'
+                 % (1332 - w, 56 + k * 26, w, fill))
+    # ألسنةُ التبويب
+    g.append('<rect x="0" y="0" width="1132" height="36" fill="#12212B"/>')
+    g.append('<rect x="1004" y="0" width="128" height="36" fill="#0F1C24"/>')
+    g.append('<rect x="1024" y="14" width="70" height="9" rx="4" fill="#D4DEDF"/>')
+    g.append('<rect x="884" y="14" width="58" height="9" rx="4" fill="#5C7078"/>')
+    # المحرّر — أسطرٌ من اليسار (الكودُ جزيرةُ LTR) وتعليقٌ عربيٌّ من اليمين
+    rows = [(0, 210), (1, 300), (1, 250), (0, 0), (0, 340), (1, 190),
+            (1, 270), (0, 0), (0, 230), (1, 320), (1, 160)]
+    y = 74
+    for indent, w in rows:
+        if w:
+            g.append('<rect x="%d" y="%d" width="%d" height="10" rx="5" fill="%s"/>'
+                     % (64 + indent * 34, y, w, "#31A796" if indent else "#7E939B"))
+        y += 30
+    # تعليقٌ عربيّ محاذًى لليمين داخل المحرّر — العزلُ الاتّجاهيّ مرئيًّا
+    g.append('<rect x="880" y="164" width="190" height="10" rx="5" fill="#5C7078"/>')
+    g.append('<rect x="946" y="374" width="124" height="10" rx="5" fill="#5C7078"/>')
+    # الطرفيّة
+    g.append('<rect x="0" y="640" width="1132" height="260" fill="#12212B"/>')
+    g.append('<rect x="0" y="640" width="1132" height="2" fill="#263A42"/>')
+    g.append('<rect x="1004" y="662" width="106" height="9" rx="4" fill="#E3BE68"/>')
+    for k, w in enumerate([300, 180, 420, 240]):
+        g.append('<rect x="64" y="%d" width="%d" height="9" rx="4" fill="#5C7078"/>'
+                 % (700 + k * 30, w))
+    # شريطُ الحالة
+    g.append('<rect x="0" y="876" width="1400" height="24" fill="#182A34"/>')
+    g.append('<rect x="1280" y="884" width="104" height="8" rx="4" fill="#31A796"/>')
+    return ('<svg class="mock" viewBox="0 0 1400 900" role="img" '
+            'aria-label="تخطيطُ محراب: شريطُ النشاط والمستكشف على اليمين، '
+            'والمحرّرُ والطرفيّة على اليسار.">'
+            '<rect width="1400" height="900" fill="#0F1C24"/>%s</svg>' % "".join(g))
+
+
+def build_landing():
+    hero = SITE["hero"]
+    trust = "".join("<span>%s</span>" % html.escape(t) for t in hero["trust"])
+
+    feats = "".join(
+        '<div class="feature"><h3>%s</h3><p>%s</p></div>'
+        % (html.escape(f["title"]), inline(f["body"]))
+        for f in SITE["features"])
+
+    steps = []
+    for s in SITE["steps"]:
+        more = ('<a href="../%s/">اقرأ أكثر ←</a>' % s["href"]) if s.get("href") else ""
+        steps.append('<div class="step"><div class="n">%s</div><h3>%s</h3><p>%s</p>%s</div>'
+                     % (html.escape(s["n"]), html.escape(s["title"]),
+                        inline(s["body"]), more))
+
+    body = (
+        '<main class="page">'
+        '<section class="hero">' + (MARK_SVG % "mark-lg")
+        + '<h1>محراب</h1>'
+        + '<p class="tagline">%s</p>' % html.escape(hero["tagline"])
+        + '<p class="lede">%s</p>' % html.escape(hero["lede"])
+        # النصُّ الابتدائيّ للزرّ محافظ: يعمل بلا جافاسكربت، وsite.js يستبدله
+        # بالبناء المطابق لنظام الزائر حين يعرفه. زرٌّ يقول «نزِّل لويندوز» قبل
+        # أن نعرف النظامَ يكذب على نصف الزوّار.
+        + '<div class="cta-row">'
+          '<a class="btn btn-primary" data-dl-primary href="./download/">نزِّل محراب</a>'
+          '<a class="btn btn-ghost" href="./docs/">تصفّح التوثيق</a>'
+          '</div>'
+        + '<p class="cta-meta" data-dl-meta></p>'
+        + '<div class="trust">%s</div>' % trust
+        + '</section>'
+        + hero_visual().replace('src="../assets/', 'src="./assets/')
+        + '<section class="section"><h2>لماذا محراب</h2>'
+          '<p class="sub">كلُّ دعوى هنا قابلةٌ للفحص في أوّل دقيقة استعمال.</p>'
+          '<div class="feature-grid">%s</div></section>' % feats
+        + '<section class="section"><h2>ثلاثُ خطوات</h2>'
+          '<p class="sub">من التنزيل إلى أوّل سطرٍ يعمل.</p>'
+          '<div class="steps">%s</div></section>' % "".join(steps)
+        + '<section class="closer"><h2>ابدأ الآن</h2>'
+          '<p>مجّانيٌّ ومفتوحُ المصدر. بلا حساب، وبلا تتبّع.</p>'
+          '<div class="cta-row"><a class="btn btn-primary" href="./download/">نزِّل محراب</a>'
+          '<a class="btn btn-ghost" href="%s">شفرةُ المصدر</a></div></section>' % SITE["repo"]
+        + '</main>'
+        + data_island("site-platforms", SITE["platforms"])
+        + data_island("baked-releases", RELEASES)
+    )
+    return page_shell(
+        "محراب — محرّرُ أكوادٍ عربيُّ الواجهة والاتّجاه", body, ".",
+        SITE["hero"]["lede"], active="home", canon_path="",
+        with_search=False, extra_js=("site.js",))
+
+
+def build_download():
+    reqs = "".join("<tr><td>%s</td><td>%s</td></tr>"
+                   % (html.escape(a), html.escape(b)) for a, b in SITE["requirements"])
+
+    body = (
+        '<main class="page">'
+        '<section class="dl-hero"><h1>نزِّل محراب</h1>'
+        '<p data-dl-version>مجّانيٌّ ومفتوحُ المصدر · بلا حساب</p></section>'
+
+        '<div class="dl-pick" data-dl-pick hidden></div>'
+
+        '<div data-dl-wrap hidden>'
+        '<div class="table-wrap"><table class="dl-table">'
+        '<thead><tr><th>المنصّة</th><th>الحجم</th><th></th></tr></thead>'
+        '<tbody data-dl-table></tbody></table></div></div>'
+
+        # حالةُ الفراغ مكتوبةٌ في HTML لا مولَّدةٌ بجافاسكربت: زائرٌ بلا سكربتات
+        # يجب أن يقرأ الحقيقةَ لا صفحةً بيضاء.
+        '<div class="dl-empty" data-dl-empty>'
+        '<b>لا إصدارَ منشورًا بعد</b>'
+        '<p>محراب في طورِ ما قبل الإصدار الأوّل. الشفرةُ كاملةٌ ومفتوحة، ويمكنك بناؤه '
+        'بنفسك اليوم — البناءُ الكامل يستغرق نحوَ خمسين دقيقة على جهازٍ حديث.</p>'
+        '<a class="btn btn-ghost" href="%s/blob/main/build/README.md">تعليماتُ البناء</a>'
+        '</div>' % SITE["repo"]
+
+        + '<section class="section dl-verify"><h2>تحقّق ممّا نزّلت</h2>'
+          '<p class="sub">بصمةُ SHA-256 لكلّ ملفٍّ منشورةٌ في الجدول أعلاه. قارِنها '
+          'بما نزّلتَه قبل التنصيب — تطابقُها يثبت أنّ الملفّ وصلك كما غادرَنا.</p>'
+          '<pre><code>'
+          '# ويندوز (PowerShell)\n'
+          'Get-FileHash -Algorithm SHA256 .\\Mihrab-Setup.exe\n\n'
+          '# لينكس / macOS\n'
+          'sha256sum mihrab.tar.gz'
+          '</code></pre></section>'
+
+        + '<section class="section"><h2>المتطلّبات</h2>'
+          '<div class="table-wrap"><table><tbody>%s</tbody></table></div></section>' % reqs
+
+        + '<section class="section"><h2>الخصوصيّة</h2>'
+          '<p>محراب لا يجمع قياسَ استعمالٍ ولا يرسل تقاريرَ أعطالٍ تلقائيّة، وخدمةُ '
+          'التحديث التلقائيّ معطَّلةٌ فيه. تحديثُ النسخة يكون بتنزيلٍ منك أنت.</p>'
+          '</section>'
+
+        + '</main>'
+        + data_island("site-platforms", SITE["platforms"])
+        + data_island("baked-releases", RELEASES)
+    )
+    return page_shell(
+        "نزِّل محراب", body, "..",
+        "نزِّل محراب — محرّرُ الأكواد العربيّ. ويندوز ولينكس وmacOS، مجّانيٌّ ومفتوحُ المصدر.",
+        active="download", canon_path="download/",
+        with_search=False, extra_js=("site.js",))
 
 
 # ═════════════════════ صفحة الاختصارات ═════════════════════
@@ -326,7 +620,10 @@ def build_keyboard_page():
                    _chord_inner(win), _chord_inner(mac), html.escape(e["id"])))
         out.append(
             '<section class="kbd-section"><h2 id="%s">%s</h2>'
-            '<div class="table-wrap"><table class="kbd-table">'
+            # ⚠️ `data-kbd-table` ليس زينة: docs.js يبحث عنه ليقرّر أنّه في صفحة
+            # الاختصارات، وبدونه يخرج مبكّرًا فيموت مبدِّلُ النظام والترشيحُ
+            # و«التقط اختصارًا» معًا — بصمتٍ تامّ، والصفحةُ تبدو سليمة.
+            '<div class="table-wrap"><table class="kbd-table" data-kbd-table>'
             '<thead><tr><th>الأمر</th><th>الاختصار</th><th>معرّف الأمر</th></tr></thead>'
             '<tbody>%s</tbody></table></div></section>'
             % (html.escape(group["id"]), html.escape(group["title"]), "".join(rows)))
@@ -395,7 +692,8 @@ def write_fonts_css(dst_assets):
                     open(os.path.join(dst_dir, fn), "wb") as f_out:
                 f_out.write(f_in.read())
 
-    header = ("/* مولَّد من build.py — لا تحرّره. %d/%d وجهًا مورَّدًا. */\n"
+    header = ('@charset "UTF-8";\n'
+              "/* مولَّد من build.py — لا تحرّره. %d/%d وجهًا مورَّدًا. */\n"
               % (len(present), len(FONT_FACES)))
     with open(os.path.join(dst_assets, "fonts.css"), "w", encoding="utf-8", newline="\n") as f:
         f.write(header + "\n".join(faces) + "\n")
@@ -470,20 +768,23 @@ def main():
         layout = ('<div class="layout"><nav class="site-nav" id="site-nav" '
                   'aria-label="التنقّل">%s</nav>%s%s</div>'
                   % (nav_html(slug, base), article, toc_html(headings)))
-        page = page_shell(title, layout, slug, base, meta.get("description", ""))
+        page = page_shell(title, layout, base, meta.get("description", ""),
+                          active="docs", canon_path=slug + "/")
         d = os.path.join(OUT, slug)
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, "index.html"), "w", encoding="utf-8", newline="\n") as f:
             f.write(page)
 
-    # الصفحةُ الأولى: بحثٌ مركَّزٌ تلقائيًّا وثلاثُ بطاقات. لا صورَ بطلٍ ولا لقطاتِ
-    # شاشة فوق الطيّة — تدفع المحتوى النافع خارج الشاشة.
+    # ── مركزُ التوثيق: `/docs/` ──
+    # الجذرُ صار للمنتج، والتوثيقُ نزل درجةً. ومسارُ كلِّ صفحةِ توثيق **لم يتغيّر**
+    # (`/start/` ‏· `/keyboard/`…) عمدًا: تلك المسارات مخبوزةٌ في product.json وفي
+    # قائمة «مساعدة» داخل المحرّرات المشحونة سلفًا، ونقلُها يكسرها بلا فائدة.
     cards = [
         ("start", "البدء في دقيقة", "أوّلُ ملفٍّ وأوّلُ تشغيل."),
         ("keyboard", "اختصارات لوحة المفاتيح", "بطاقةٌ مرجعيّة عربيّة، قابلةٌ للطباعة."),
         ("terminal", "الطرفيّة المدمجة", "شغّل الأوامر دون مغادرة المحرّر."),
     ]
-    home_body = (
+    docs_body = (
         '<main class="home">' + (MARK_SVG % "mark-lg")
         + "<h1>توثيق محراب</h1>"
         + '<p class="tagline">للمِحرابِ اتّجاه، ولكودِك وِجهة.</p>'
@@ -493,26 +794,46 @@ def main():
           'placeholder="ابحث في التوثيق…" aria-label="بحث">'
           '<div class="search-results" id="search-results" hidden></div></div>'
         + '<div class="cards">'
-        + "".join('<a class="card" href="%s/"><b>%s</b><span>%s</span></a>' % c for c in cards)
+        + "".join('<a class="card" href="../%s/"><b>%s</b><span>%s</span></a>' % c
+                  for c in cards)
         + "</div>"
         + '<p class="dim" style="margin-top:48px">التوثيقُ مترجَمٌ عن '
           '<a href="https://github.com/microsoft/vscode-docs">vscode-docs</a> '
           'بترخيص CC BY 3.0 US.</p>'
         + "</main>"
     )
-    home = page_shell("توثيق محراب", home_body, None, ".",
-                      "توثيقُ محرّر محراب بالعربيّة: البدء، المحرّر، الاختصارات، الطرفيّة.")
-    with open(os.path.join(OUT, "index.html"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(home)
+    docs_home = page_shell(
+        "توثيق محراب", docs_body, "..",
+        "توثيقُ محرّر محراب بالعربيّة: البدء، المحرّر، الاختصارات، الطرفيّة.",
+        active="docs", canon_path="docs/")
+    write(os.path.join(OUT, "docs", "index.html"), docs_home)
 
-    with open(os.path.join(OUT, "search-index.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(index, f, ensure_ascii=False, separators=(",", ":"))
+    # ── واجهةُ المنتج ──
+    write(os.path.join(OUT, "index.html"), build_landing())
+    write(os.path.join(OUT, "download", "index.html"), build_download())
+
+    # مانيفستُ الإصدار بجوار الصفحة: نسخةٌ متماسكة للمرآة. وعلى الخادم الأصليّ
+    # يُستبدَل بالحيّ عند رفع بناءٍ جديد — ولذلك يستثني سكربتُ النشر `dl/`.
+    write(os.path.join(OUT, "dl", "releases.json"),
+          json.dumps(RELEASES, ensure_ascii=False, indent=2) + "\n")
+
+    write(os.path.join(OUT, "search-index.json"),
+          json.dumps(index, ensure_ascii=False, separators=(",", ":")))
 
     # .nojekyll — نحن نولّد HTML جاهزًا، ومعالجةُ Jekyll تحذف ما يبدأ بشرطةٍ سفليّة.
     open(os.path.join(OUT, ".nojekyll"), "w").close()
 
-    print("✅ بُني الموقع: %d صفحة + الصفحة الأولى → %s" % (len(pages), OUT))
+    print("✅ بُني الموقع: صفحةٌ أولى + تنزيل + مركزُ توثيق + %d صفحة → %s"
+          % (len(pages), OUT))
+    if not RELEASES.get("version"):
+        print("  ℹ️  لا إصدارَ في releases.json — صفحةُ التنزيل تعرض حالةَ الفراغ.")
     return 0
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
 
 
 if __name__ == "__main__":

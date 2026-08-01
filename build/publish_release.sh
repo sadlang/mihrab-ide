@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# رفعُ بناءٍ إلى صفحة التنزيل — https://sad-lang.org/mihrab/download/
+#
+#   build/publish_release.sh 1.121.05071 win-x64-zip:/c/out/Mihrab-1.121-win-x64.zip \
+#                                        win-x64-setup:/c/out/MihrabSetup-1.121.exe
+#
+# كلُّ وسيطٍ `معرّف_المنصّة:مسار`. المعرّفاتُ المسموحة هي `id` في
+# site/data/site.json (win-x64-setup ‏· win-x64-zip ‏· linux-x64-deb …) — ومعرّفٌ
+# خارجَها يوقف السكربت: أصلٌ بمعرّفٍ مجهول يظهر في الجدول بلا اسمِ منصّةٍ ولا نوع،
+# فيرى الزائر صفًّا مبهمًا ويُنزّل شيئًا لا يعرف ما هو.
+#
+# ما يفعله: يرفع الملفّات إلى `dl/`، يحسب SHA-256 **على الخادم بعد الرفع** (لا
+# محلّيًّا: البصمةُ يجب أن تصف ما وصل لا ما غادر — وهذا كلُّ معنى نشرِها)، ثمّ يكتب
+# `dl/releases.json` ذرّيًّا. الصفحةُ تلتقط الجديدَ في أوّل تحميلٍ بلا إعادةِ بناء.
+set -euo pipefail
+
+HOST="${MIHRAB_SITE_HOST:-PUBLISH_HOST}"
+PORT="${MIHRAB_SITE_PORT:-22}"
+DL="${MIHRAB_SITE_ROOT:-/opt/sad-website}/${MIHRAB_SITE_SUBDIR:-mihrab}/dl"
+ORIGIN="${MIHRAB_SITE_ORIGIN:-https://sad-lang.org/mihrab/}"
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SSH=(ssh -p "$PORT" -o BatchMode=yes)
+
+(( $# >= 2 )) || { echo "الاستعمال: $0 <الإصدار> <معرّف:مسار> [معرّف:مسار …]" >&2; exit 2; }
+VERSION="$1"; shift
+
+VALID=$(python - "$HERE/site/data/site.json" <<'PY'
+import json, sys
+print(" ".join(p["id"] for p in json.load(open(sys.argv[1], encoding="utf-8"))["platforms"]))
+PY
+)
+
+"${SSH[@]}" "$HOST" "mkdir -p '$DL'"
+
+ENTRIES=()
+for arg in "$@"; do
+  id="${arg%%:*}"; path="${arg#*:}"
+  [[ " $VALID " == *" $id "* ]] || { echo "❌ معرّفُ منصّةٍ مجهول: $id" >&2
+                                     echo "   المسموح: $VALID" >&2; exit 1; }
+  [[ -f "$path" ]] || { echo "❌ ملفٌّ غير موجود: $path" >&2; exit 1; }
+
+  file="$(basename "$path")"
+  # scp لا rsync: rsync ليس في Git Bash على ويندوز، وهذه أجهزةُ البناء عندنا.
+  # الرفعُ إلى اسمٍ مؤقّت ثمّ تسميةٌ ذرّيّة: رفعٌ ينقطع في المنتصف يجب ألّا يترك
+  # ملفًّا نصفَ مكتملٍ يحمل الاسمَ النهائيّ ويُقدَّم للزوّار.
+  echo "▶ رفع $file …"
+  scp -P "$PORT" -o BatchMode=yes "$path" "$HOST:$DL/.$file.part"
+  "${SSH[@]}" "$HOST" "mv '$DL/.$file.part' '$DL/$file'"
+
+  size=$("${SSH[@]}" "$HOST" "stat -c%s '$DL/$file'")
+  sha=$("${SSH[@]}" "$HOST" "sha256sum '$DL/$file' | cut -d' ' -f1")
+  echo "   $size بايت · $sha"
+  ENTRIES+=("{\"id\":\"$id\",\"file\":\"$file\",\"size\":$size,\"sha256\":\"$sha\"}")
+done
+
+TODAY=$(date +%F)
+JOINED=$(IFS=,; echo "${ENTRIES[*]}")
+MANIFEST="{\"version\":\"$VERSION\",\"date\":\"$TODAY\",\"origin\":\"$ORIGIN\",\"base\":\"dl/\",\"notes_url\":\"https://github.com/sadlang/mihrab-ide/releases\",\"assets\":[$JOINED]}"
+
+echo "▶ كتابةُ المانيفست…"
+printf '%s' "$MANIFEST" | "${SSH[@]}" "$HOST" "cat > '$DL/.releases.json.new' && mv '$DL/.releases.json.new' '$DL/releases.json'"
+
+echo "✅ الإصدار $VERSION منشور: https://sad-lang.org/mihrab/download/"
+echo
+echo "   لتُثبِت الحالةَ في المستودع (كي تصدق المرآةُ وحالةُ انقطاع الشبكة):"
+echo "   انسخ المانيفست أعلاه إلى site/data/releases.json ثمّ ادفعه."

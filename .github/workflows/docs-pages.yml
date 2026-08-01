@@ -3,7 +3,13 @@
 # المولِّدُ لنا (site/build.py) لا Jekyll: دعمُ RTL في القوالب الجاهزة طبقةٌ مضافة
 # تغطّي التخطيطَ ولا تغطّي عزلَ bidi ولا اتّجاهَ الدرج ولا تخطيطَ الطباعة — وهي
 # بالضبط الحالاتُ التي بُني الموقعُ لأجلها.
-name: توثيق — بناء ونشر
+#
+# ⚠️ ما يُنشَر هنا **مرآة**. الأصلُ https://sad-lang.org/mihrab/ على خادمنا، وإليه
+# تشير هويّةُ المنتج و`rel=canonical` في كلّ صفحة. سببُ وجود المرآة أنّ الثنائيّات
+# تسكن الخادم (٣٠٠ ميغابايت للمثبِّت، وPages ليس مخزنَ ملفّات) بينما الصفحاتُ
+# رخيصة — فمن العبث حرمانُ الموقع من احتياطٍ مجّانيّ إن سقط الخادم. والمولِّدُ واحد،
+# فلا انجرافَ بين النسختين. النشرُ إلى الأصل: build/deploy_site.sh.
+name: الموقع — بناء ونشرُ المرآة
 
 on:
   push:
@@ -11,6 +17,7 @@ on:
     paths:
       - 'site/**'
       - 'tests/docs/**'
+      - 'product-overrides/product.json'
       - '.github/workflows/docs-pages.yml'
   workflow_dispatch:
   schedule:
@@ -39,8 +46,10 @@ jobs:
       - name: تحقّق البيانات الوصفيّة للترجمة
         run: python tests/docs/check_drift.py --offline
 
-      - name: بناء الموقع
-        run: python site/build.py
+      # الفحصُ البنيويّ يبني بنفسه ويحجب النشرَ عند أوّل عطب: زرُّ تنزيلٍ يقود إلى
+      # 404، أو مِرساةٌ يبحث عنها site.js ولا يجدها — كلاهما لا يظهر في المتصفّح.
+      - name: فحص بنية الموقع
+        run: python tests/docs/check_site.py
 
       - uses: actions/upload-pages-artifact@v3
         with:
