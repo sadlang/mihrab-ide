@@ -577,7 +577,6 @@
 .monaco-workbench[dir="rtl"] .pane-header > .title,
 .monaco-workbench[dir="rtl"] .pane-body .message-container > .message,
 .monaco-workbench[dir="rtl"] .monaco-count-badge,
-.monaco-workbench[dir="rtl"] .settings-editor .setting-item-category,
 .monaco-workbench[dir="rtl"] .settings-editor .setting-item-description,
 .monaco-workbench[dir="rtl"] .keybindings-editor .when-label,
 .monaco-workbench[dir="rtl"] .keybindings-editor .when-label *,
@@ -927,4 +926,26 @@
 	font-size: 0.58em;
 	line-height: 1.8;
 	color: var(--vscode-descriptionForeground);
+}
+
+/* ── 35. عناوين لوحة الإعدادات: عزلٌ لا plaintext ────────────────────────────
+   رقعةُ معجم العناوين تلفّ **كلَّ مقطعٍ** من التسمية والفئة بـFSI…PDI في النصّ نفسِه
+   (‏mihrabSettingsLexicon.ts) لأنّ النصَّ يبلغ `aria-label` حيث لا تصله قاعدةُ نمط.
+
+   وهذا يُبطِل `unicode-bidi: plaintext` على العنصر نفسِه، ولا يكمّله: القاعدة P2 في
+   ‏UAX #9 تبحث عن أوّل حرفٍ قويّ **متخطّيةً كلَّ ما بين مُفتتِح العزل وPDI المطابق**،
+   وقد صار محتوى العنصر كلُّه داخل عزل، فلا يبقى خارجَه حرفٌ قويٌّ ألبتّة فتُطبَّق P3
+   ويصير اتّجاهُ الفقرة LTR — حتّى للعربيّة الصرفة. أي أنّ `plaintext` بعد العزل
+   يقلب ترتيبَ المقاطع بدل أن يصونه. (كتبنا العكسَ أوّلًا، فصحّحته مراجعتان.)
+
+   فنُخرِج الصنفين من قاعدة plaintext (21) ونعطيهما `isolate`: العنصرُ يُعزَل عمّا
+   حوله، وترتيبُ فقرته يبقى RTL موروثًا، والاتّجاهُ **داخل** كلّ مقطعٍ يضبطه FSI من
+   محتواه. فالنقطتان اللتان يُلحِقهما المنبع بالفئة (`displayCategory + ': '`) تقعان
+   بين محايدين فتأخذان اتّجاهَ الفقرة — وهو المطلوب.
+
+   ‏**غيرُ مقيسٍ على عنصرٍ حيّ**: استنباطٌ من المواصفة لا قياسُ مواضعِ محارف. القياسُ
+   في tests/runtime/settings_labels.spec.mjs ويحتاج نسخةً مُطلَقةً واللوحةَ مفتوحة. ── */
+.monaco-workbench[dir="rtl"] .settings-editor .setting-item-category,
+.monaco-workbench[dir="rtl"] .settings-editor .setting-item-label {
+	unicode-bidi: isolate;
 }

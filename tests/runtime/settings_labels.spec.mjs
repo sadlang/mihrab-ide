@@ -64,6 +64,7 @@ if (!parsed.count) {
 }
 
 const AR = /[؀-ۿ]/;
+const ISO = /[⁦-⁩]/;
 const arabicRows = parsed.rows.filter(r => AR.test(r.lab));
 const arabicCats = parsed.rows.filter(r => AR.test(r.cat));
 
@@ -79,6 +80,43 @@ const mixed = parsed.rows.filter(r => AR.test(r.lab) && /[A-Za-z]{3,}/.test(r.la
 check(mixed.length === 0,
 	mixed.length ? `خلطٌ داخل المقطع: ${mixed.slice(0, 3).map(m => m.lab).join(' | ')}`
 		: 'لا خلطَ داخل المقطع الواحد');
+
+// عزلُ الاتّجاه وصل النصَّ المعروض. هذا **الفحصُ الوحيدُ الممكن** له: المحرفان بلا
+// عرضٍ ولا صورة، فلا لقطةُ شاشةٍ تُظهرهما ولا عينٌ تراهما — ولا يظهر أثرُهما إلّا في
+// ترتيبِ ما حولهما. وجودُهما في DOM يثبت أنّ المعالجةَ جرت على النصّ المعروض نفسِه.
+// **كلُّ** صفٍّ لا «صفٌّ ما»: `some` كان يمرّ خضراءَ ولو انحسر ٩٩٪ من الصفوف.
+const isoLab = parsed.rows.filter(r => ISO.test(r.lab)).length;
+const withCat = parsed.rows.filter(r => r.cat);
+const isoCat = withCat.filter(r => ISO.test(r.cat)).length;
+check(isoLab === parsed.rows.length, `عزلُ التسميات: ${isoLab}/${parsed.rows.length}`);
+check(isoCat === withCat.length, `عزلُ الفئات: ${isoCat}/${withCat.length}`);
+
+// ── القياسُ الذي يمسك العطبَ الحقيقيّ: موضعُ المحايد ──
+// العزلُ لا يُرى، وأثرُه كلُّه في **ترتيب ما حولَه**. وقد أوقعنا العزلُ نفسُه في انحسار:
+// جمعُه مع `unicode-bidi: plaintext` يُسقِط اتّجاهَ الفقرة إلى LTR (القاعدة P2 تتخطّى
+// ما بين FSI وPDI فلا يبقى حرفٌ قويٌّ خارجَ العزل). ولا يكشف ذلك إلّا قياسُ الإحداثيّات:
+// المنبعُ يُلحِق «: » بالفئة، ففي فقرةٍ RTL يجب أن تقع **يسارَ** نصّها.
+const geom = await ev(`(() => {
+	const el = [...document.querySelectorAll('.settings-editor .setting-item-category')]
+		.find(e => /[\\u0600-\\u06FF]/.test(e.textContent));
+	if (!el) { return null; }
+	const node = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+	if (!node || node.textContent.length < 3) { return null; }
+	const t = node.textContent;
+	const at = (a, b) => { const r = document.createRange(); r.setStart(node, a); r.setEnd(node, b); return r.getBoundingClientRect().left; };
+	const colon = t.lastIndexOf(':');
+	if (colon < 1) { return null; }
+	return JSON.stringify({ text: t, colonLeft: at(colon, colon + 1), headLeft: at(0, 1) });
+})()`);
+
+if (!geom) {
+	console.log('  ⚠️  لم نجد فئةً عربيّةً بنقطتين — لم يُقَس موضعُ المحايد.');
+	failed++;
+} else {
+	const g = JSON.parse(geom);
+	check(g.colonLeft < g.headLeft,
+		`النقطتان يسارَ نصّ الفئة (فقرة RTL): «${g.text.trim()}» ${g.colonLeft.toFixed(0)} < ${g.headLeft.toFixed(0)}`);
+}
 
 console.log('\n  عيّنة:');
 for (const r of parsed.rows.slice(0, 12)) {

@@ -1,0 +1,249 @@
+/* ════════════════════════════════════════════════════════════════════════
+   محراب — واجهةُ المنتج (الصفحةُ الأولى + التنزيل). تصميم: سالي.
+
+   يُحمَّل **بعد** `mihrab-docs.css` ويعتمد رموزَه (--gold ‏· --accent ‏· --s*).
+   وفُصل عنه عمدًا: التوثيقُ يُقرأ، والصفحةُ الأولى تُقنِع — ولكلٍّ إيقاعٌ بصريّ
+   مختلف. ودمجُهما يعني أنّ كلَّ تعديلٍ تسويقيّ يخاطر بتخطيط ٥٠٠ صفحةِ توثيق.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ════════ ترويسةُ المنتج ════════
+   الترويسةُ نفسُها في كلّ الصفحات، لكنّ روابطَها تظهر هنا: «نزِّل» فعلٌ لا وجهة،
+   ويجب أن يكون آخرَ ما تمرّ عليه العين قبل حافّة الشاشة اليسرى (نهايةُ المسح في RTL). */
+.site-header .site-links {
+	display: flex; gap: var(--s1); align-items: center;
+}
+.site-header .site-links a {
+	color: var(--text-dim); font-size: 15px; padding: 5px var(--s3);
+	border-radius: 6px; white-space: nowrap;
+}
+.site-header .site-links a:hover { color: var(--text); background: var(--surface); text-decoration: none; }
+.site-header .site-links a[aria-current="true"] { color: var(--gold); }
+.site-header .site-links a.cta {
+	color: var(--bg); background: var(--accent); font-weight: 600;
+	border: 1px solid var(--accent);
+}
+.site-header .site-links a.cta:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg); }
+
+/* ════════ الغلاف ════════ */
+.page { max-width: 1080px; margin: 0 auto; padding: 0 var(--s5) var(--s8); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   §الواجهة — القسمُ الأوّل
+   لا لقطةَ شاشةٍ فوق الطيّة ولا فيديو: الزائرُ جاء بسؤالٍ واحد («ما هذا وهل
+   أنزّله؟») ولقطةُ ٩٠٠px تدفع الجوابَ خارج الشاشة. الترتيب: الاسم ← الوعد ←
+   الزرّ. والبرهانُ (اللقطة) بعده مباشرةً لمن بقي.
+   ════════════════════════════════════════════════════════════════════════ */
+.hero { text-align: center; padding: var(--s8) 0 var(--s7); }
+.hero .mark-lg { width: 76px; height: 76px; color: var(--gold); margin-bottom: var(--s4); }
+.hero h1 {
+	font-size: 58px; line-height: 1.15; margin: 0 0 var(--s3);
+	color: var(--gold); letter-spacing: -.01em;
+}
+.hero .tagline { font-size: 24px; line-height: 1.5; color: var(--text); margin: 0 0 var(--s4); }
+.hero .lede {
+	font-size: 17px; line-height: 1.85; color: var(--text-dim);
+	max-width: 60ch; margin: 0 auto var(--s6);
+}
+
+/* ── الدعوة إلى الفعل ──
+   زرٌّ أوّليٌّ واحد. الثاني نصٌّ لا زرّ: زرّان متساويان بصريًّا = لا زرَّ أوّليّ. */
+.cta-row {
+	display: flex; flex-wrap: wrap; gap: var(--s4);
+	align-items: center; justify-content: center;
+}
+.btn {
+	display: inline-flex; align-items: center; gap: var(--s2);
+	font-family: var(--font-ar); font-size: 18px; font-weight: 600;
+	padding: 13px var(--s6); border-radius: 10px; cursor: pointer;
+	border: 1px solid transparent; text-decoration: none;
+	transition: background .15s, border-color .15s, transform .1s;
+}
+.btn:hover { text-decoration: none; }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--bg); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); font-size: 16px; padding: 12px var(--s5); }
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+.btn .sz { font-size: 13px; font-weight: 400; opacity: .75; }
+
+/* سطرُ ما تحت الزرّ: الإصدارُ والحجم. لا يظهر إلّا حين نعرفهما فعلًا. */
+.cta-meta { margin-top: var(--s3); font-size: 14px; color: var(--text-dim); }
+.cta-meta a { color: var(--text-dim); text-decoration: underline; text-underline-offset: 3px; }
+.cta-meta a:hover { color: var(--accent); }
+
+/* شريطُ الثقة: ثلاثُ دعاوى قصيرة، لا أيقونات — الأيقونةُ هنا زينةٌ تُبطئ القراءة. */
+.trust {
+	display: flex; flex-wrap: wrap; gap: var(--s2) var(--s5);
+	justify-content: center; margin-top: var(--s6);
+	font-size: 14px; color: var(--text-dim);
+}
+.trust span { display: inline-flex; align-items: center; gap: var(--s2); }
+.trust span::before { content: "✦"; color: var(--gold); font-size: 11px; }
+
+/* ════════ لقطةُ الشاشة / الرسمُ البديل ════════
+   إطارٌ واحدٌ عريض. حافّتُه العلويّة تحمل أزرارَ نافذةٍ **يسارًا** — النافذةُ عنصرُ
+   نظامِ تشغيل لا عنصرَ صفحة، فلا تنقلب مع اتّجاه النصّ. */
+.shot {
+	margin: var(--s8) auto 0; max-width: 980px;
+	border: 1px solid var(--border); border-radius: 12px;
+	background: var(--bg-alt); overflow: hidden;
+	box-shadow: 0 24px 60px rgba(0, 0, 0, .28);
+}
+.shot-bar {
+	display: flex; align-items: center; gap: 7px;
+	padding: 10px var(--s4); background: var(--surface);
+	border-bottom: 1px solid var(--border); direction: ltr;
+}
+.shot-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); flex: none; }
+.shot-bar .t {
+	flex: 1; text-align: center; font-size: 13px; color: var(--text-dim);
+	direction: rtl; font-style: normal;
+}
+.shot img, .shot svg.mock { display: block; width: 100%; height: auto; }
+.shot-note {
+	padding: var(--s2) var(--s4); font-size: 13px; color: var(--text-dim);
+	border-top: 1px solid var(--border); text-align: center;
+}
+
+/* ════════ الأقسام ════════ */
+.section { padding: var(--s8) 0 0; }
+.section > h2 {
+	font-size: 30px; margin: 0 0 var(--s2); color: var(--text);
+	text-align: center;
+}
+.section > .sub {
+	text-align: center; color: var(--text-dim); font-size: 16px;
+	max-width: 56ch; margin: 0 auto var(--s7);
+}
+
+/* المزايا: عمودان. ثلاثةٌ تُنتج بطاقةً يتيمةً في الصفّ الثاني حين تكون أربعًا. */
+.feature-grid {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+	gap: var(--s5);
+}
+.feature {
+	background: var(--bg-alt); border: 1px solid var(--border);
+	border-radius: 12px; padding: var(--s5) var(--s5) var(--s5);
+	border-inline-start: 3px solid var(--gold);
+}
+.feature h3 { margin: 0 0 var(--s2); font-size: 19px; color: var(--gold); }
+.feature p { margin: 0; font-size: 15.5px; line-height: 1.8; color: var(--text-dim); }
+
+/* الخطوات: أرقامٌ عربيّةٌ هنديّة (١٢٣) لا لاتينيّة — الصفحةُ كلُّها عربيّة. */
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s5); }
+.step { position: relative; padding-inline-start: 52px; }
+.step .n {
+	position: absolute; inset-inline-start: 0; top: -4px;
+	width: 38px; height: 38px; border-radius: 50%;
+	display: grid; place-items: center;
+	background: var(--surface); border: 1px solid var(--gold);
+	color: var(--gold); font-size: 18px; font-weight: 600;
+}
+.step h3 { margin: 0 0 var(--s1); font-size: 17px; }
+.step p { margin: 0; font-size: 15px; color: var(--text-dim); line-height: 1.75; }
+.step a { font-size: 14px; }
+
+/* ════════ الشريطُ الختاميّ ════════ */
+.closer {
+	margin-top: var(--s8); padding: var(--s7) var(--s5);
+	background: var(--bg-alt); border: 1px solid var(--border);
+	border-radius: 14px; text-align: center;
+}
+.closer h2 { margin: 0 0 var(--s2); font-size: 26px; color: var(--gold); }
+.closer p { color: var(--text-dim); margin: 0 0 var(--s5); }
+
+/* ════════════════════════════════════════════════════════════════════════
+   §التنزيل
+   ════════════════════════════════════════════════════════════════════════ */
+.dl-hero { text-align: center; padding: var(--s7) 0 var(--s6); }
+.dl-hero h1 { font-size: 40px; margin-bottom: var(--s2); }
+.dl-hero p { color: var(--text-dim); margin: 0; }
+
+/* البطاقةُ المخمَّنة: نظامُك أوّلًا. والتخمينُ يُعلَن ويُنقَض بزرّ — تخمينٌ صامتٌ
+   خاطئ يجعل المستخدم ينزّل ملفًّا لا يعمل ثمّ يلوم المنتج. */
+.dl-pick {
+	background: var(--bg-alt); border: 1px solid var(--accent);
+	border-radius: 14px; padding: var(--s6); text-align: center;
+	margin-bottom: var(--s6);
+}
+.dl-pick .guess { font-size: 14px; color: var(--text-dim); margin-bottom: var(--s4); }
+.dl-pick .guess b { color: var(--text); }
+
+/* الجدول: النوعُ والحجم والبصمة. البصمةُ في سطرٍ ثانٍ باهت — يحتاجها القليل
+   ولا يجوز أن تزاحم الحجمَ الذي يحتاجه الجميع. */
+.dl-table td.file b { display: block; font-size: 16px; }
+.dl-table td.file .kind { font-size: 13px; color: var(--text-dim); }
+.dl-table td.size { white-space: nowrap; color: var(--text-dim); font-size: 14px; }
+.dl-table td.get { text-align: end; white-space: nowrap; }
+.dl-table .sha {
+	font-size: 11.5px; color: var(--text-dim); direction: ltr;
+	unicode-bidi: isolate; word-break: break-all; display: inline-block;
+	max-width: 100%;
+}
+.dl-table tr.mine { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+
+.btn-sm {
+	display: inline-block; font-family: var(--font-ar); font-size: 14px; font-weight: 600;
+	padding: 6px var(--s4); border-radius: 7px;
+	background: var(--surface); color: var(--text);
+	border: 1px solid var(--border); text-decoration: none;
+}
+.btn-sm:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+
+/* حالةُ الفراغ — لا إصدارَ بعد. صريحةٌ لا صامتة: جدولٌ فارغٌ بلا تفسير يقرؤه
+   الزائر «الموقعُ معطوب»، والنصُّ يقرؤه «المشروعُ لم يُصدِر بعد» وهي الحقيقة. */
+.dl-empty {
+	border: 1px dashed var(--border); border-radius: 12px;
+	padding: var(--s7) var(--s5); text-align: center; background: var(--bg-alt);
+}
+.dl-empty b { display: block; font-size: 20px; color: var(--gold); margin-bottom: var(--s2); }
+.dl-empty p { color: var(--text-dim); max-width: 52ch; margin: 0 auto var(--s4); }
+
+.dl-verify { margin-top: var(--s7); }
+.dl-verify h2 { font-size: 22px; }
+
+/* ════════ التذييل ════════ */
+.site-footer {
+	border-top: 1px solid var(--border); margin-top: var(--s8);
+	padding: var(--s7) var(--s5) var(--s8);
+	background: var(--bg-alt); font-size: 14.5px;
+}
+.footer-in {
+	max-width: 1080px; margin: 0 auto;
+	display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: var(--s6);
+}
+.footer-in h4 { margin: 0 0 var(--s3); font-size: 12px; letter-spacing: .18em; color: var(--gold); font-weight: 600; }
+.footer-in ul { list-style: none; padding: 0; margin: 0; }
+.footer-in li { margin-bottom: var(--s2); }
+.footer-in a { color: var(--text-dim); }
+.footer-in a:hover { color: var(--accent); }
+.footer-brand .brand { font-size: 20px; margin-bottom: var(--s3); }
+.footer-brand p { color: var(--text-dim); font-size: 14px; line-height: 1.75; margin: 0; }
+.footer-legal {
+	max-width: 1080px; margin: var(--s7) auto 0; padding-top: var(--s4);
+	border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13px;
+}
+
+/* ════════ الجوال ════════ */
+@media (max-width: 900px) {
+	.hero { padding: var(--s7) 0 var(--s6); }
+	.hero h1 { font-size: 40px; }
+	.hero .tagline { font-size: 19px; }
+	.section > h2 { font-size: 24px; }
+	.btn { width: 100%; justify-content: center; }
+	.cta-row { flex-direction: column; }
+	.footer-in { grid-template-columns: 1fr 1fr; gap: var(--s5); }
+	.footer-brand { grid-column: 1 / -1; }
+	.page { padding: 0 var(--s4) var(--s7); }
+	/* الترويسة: «نزِّل» يبقى، والتوثيقُ يسقط إلى التذييل. زرُّ الفعل آخرُ ما يُضحّى به. */
+	.site-header .site-links a.docs-link { display: none; }
+}
+@media (max-width: 560px) {
+	.hero h1 { font-size: 34px; }
+	.dl-table td.get { display: block; text-align: start; padding-top: 0; }
+}
+
+/* ════════ الطباعة ════════ */
+@media print {
+	.site-header, .site-footer, .shot, .closer { display: none !important; }
+}

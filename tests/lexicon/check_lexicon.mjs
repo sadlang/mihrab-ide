@@ -111,7 +111,13 @@ try {
 	process.exit(1);
 }
 
-const { arabizeSettingText: A } = await import(pathToFileURL(built.js).href);
+const { arabizeSettingText: A, searchableSettingKey: K } =
+	await import(pathToFileURL(built.js).href);
+
+// المخرَجُ معزولُ الاتّجاه (‏FSI…PDI حول كلّ مقطع)، والمحرفان بلا عرضٍ ولا صورة.
+// فالأزواجُ الذهبيّة تُقارَن على الصورة المجرّدة، والعزلُ نفسُه يُختبَر على حدة أدناه —
+// لا نُدخِل المحرفين في كلّ زوجٍ يدويًّا كي لا يصير الاختبارُ نسخةً من التنفيذ.
+const bare = (s) => s.replace(/[⁦-⁩]/g, '');
 
 // ── الأزواج الذهبيّة ──
 let goldOk = 0;
@@ -124,7 +130,7 @@ for (const [input, expected] of GOLDEN) {
 		continue;
 	}
 	const want = expected === null ? input : expected;
-	if (got === want) {
+	if (bare(got) === want) {
 		goldOk++;
 	} else {
 		fail(`«${input}»\n       أُنتِج : ${got}\n       المتوقَّع: ${want}`);
@@ -178,7 +184,7 @@ const HEADS = [['Font Family', true], ['Suggestions', true], ['Editor', false], 
 const mismatches = [];
 for (const [adj, masc, fem] of ADJ_FORMS) {
 	for (const [head, isFem] of HEADS) {
-		const got = A(`${adj} ${head}`);
+		const got = bare(A(`${adj} ${head}`));
 		if (got === `${adj} ${head}`) { continue; }   // لم يُحَلّ — مقبول
 		const want = isFem ? fem : masc;
 		const wrong = isFem ? masc : fem;
@@ -191,6 +197,58 @@ if (mismatches.length) {
 	fail(`مطابقةُ الصفة مكسورة:\n       ${mismatches.join('\n       ')}`);
 } else {
 	console.log(`  ✅ مطابقةُ الصفة في التأنيث (${ADJ_FORMS.length}×${HEADS.length} تركيبًا)`);
+}
+
+// ── عزلُ الاتّجاه (‏FSI…PDI) ──
+// العنوانُ يُعرَض بجوار محايداتٍ (‏':'‏ بين الفئة وتسميتها، و'‏›‏' بين المقاطع) تأخذ
+// اتّجاهَ جارها الأقوى فتقفز إلى الطرف الخطأ. والعزلُ في النصّ لا في CSS لأنّ النصَّ
+// نفسَه يبلغ `aria-label` وتلميحاتِ التحويم حيث لا قاعدةَ تصله.
+{
+	const FSI = '⁨';
+	const PDI = '⁩';
+	const cases = ['Editor › Format On Save', 'Font Size', 'Vite', '$(bracket) [javascript]'];
+	const bad = [];
+	for (const c of cases) {
+		const segs = A(c).split(' › ');
+		for (const s of segs) {
+			if (!s.startsWith(FSI) || !s.endsWith(PDI)) { bad.push(`${c} ⇐ «${s}»`); }
+			// لا عزلَ متداخل: يعني أنّ نزعَ الوارد لم يعمل.
+			if (s.split(FSI).length !== 2) { bad.push(`${c}: عزلٌ متداخل`); }
+		}
+	}
+	// المقطعُ الإنجليزيّ الباقي يُعزَل أيضًا: هو نفسُه مصدرُ القفز.
+	if (bad.length) {
+		fail(`عزلُ الاتّجاه ناقص:\n       ${bad.join('\n       ')}`);
+	} else {
+		console.log(`  ✅ كلُّ مقطعٍ معزولٌ بـFSI…PDI (${cases.length} حالات)`);
+	}
+
+	// مدخلٌ معزولٌ ابتداءً: يقع فعلًا إن أُعيد تغذيةُ مخرَجٍ سابق (ذاكرةٌ مؤقّتة، أو
+	// استدعاءٌ ثانٍ من مسارٍ آخر). يجب أن يُعطي مخرَجَ النصّ المجرّد نفسَه بالضبط.
+	const fedBack = A(FSI + 'Editor' + PDI + ' › ' + FSI + 'Font Size' + PDI);
+	if (fedBack !== A('Editor › Font Size')) {
+		fail(`مدخلٌ معزولٌ ابتداءً أعطى مخرَجًا مختلفًا: ${fedBack}`);
+	} else {
+		console.log('  ✅ مدخلٌ معزولٌ ابتداءً ⇐ المخرَج نفسُه');
+	}
+
+	// الفئةُ الفارغة: `settingKeyToDisplayFormat('foo')` تعطي category = ''.
+	// لا يُلَفّ الفارغُ بعزل — محرفان بلا محتوًى بينهما عبثٌ يبلغ aria.
+	if (A('') !== '' || /[⁦-⁩]/.test(A(' '))) {
+		fail('الفارغُ لُفَّ بعزل');
+	} else {
+		console.log('  ✅ لا عزلَ حول نصٍّ فارغ');
+	}
+
+	// وأخطرُ ما في العزل أنّه **غيرُ مرئيّ**: لو تسرّب إلى الكلمات المفتاحيّة لسقطت
+	// مطابقةُ البحث حرفًا بحرفٍ بلا أثرٍ يدلّ على السبب.
+	const leaked = ['editor.formatOnSave', 'editor.fontSize', 'files.autoSave']
+		.filter(k => /[⁦-⁩]/.test(K(k)));
+	if (leaked.length) {
+		fail(`محارفُ العزل تسرّبت إلى مفاتيح البحث: ${leaked.join(' | ')}`);
+	} else {
+		console.log('  ✅ لا عزلَ في نصّ البحث (‏searchableSettingKey)');
+	}
 }
 
 // ── الأداء: تُستدعى لكلّ إعدادٍ معروض ──
