@@ -19,6 +19,15 @@ echo
 "$PY" "$HERE/bundle/check_injected.py" || rc=1
 echo
 
+# ── معجم عناوين الإعدادات: اختبارٌ سلوكيّ (يصرّف الوحدة ويستدعيها فعلًا) ──
+# لازمٌ لا مكرَّر: حارسُ L0 نصّيٌّ بحت، ونصٌّ سليمُ الشكل قد يُنتج عربيّةً مكسورة.
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/../.upstream/vscode/node_modules/typescript/lib/tsc.js" ]]; then
+  node "$HERE/lexicon/check_lexicon.mjs" || rc=1
+else
+  echo "⚠️ tsc المحلّيّ غير متوفّر — تخطّي الاختبار السلوكيّ للمعجم"
+fi
+echo
+
 # ── نِبراس: حارس تطابق عقد السلك (المصدر ⇄ المولَّد) ──
 NEBRAS="$HERE/../extensions/mihrab-nebras"
 "$PY" "$NEBRAS/contract/gen_contract.py" --check || rc=1

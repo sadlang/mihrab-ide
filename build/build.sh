@@ -256,6 +256,9 @@ fi
 # مجلّد إعدادات المشروع `.محراب` (بتوافقٍ خلفيّ مع `.vscode`). ينسخ معه وحدتَي TS
 # جديدتَين — فالرقعةُ تُضيف ملفّات لا تعدّل قائمًا وحسب.
 [[ -f "$ROOT/build/patch_config_folder.py" ]] && cp -f "$ROOT/build/patch_config_folder.py" "$UP/.mihrab-patch-config-folder.py"
+# تعريب عناوين لوحة الإعدادات (تُشتَقّ حسابيًّا فلا تصلها ترجمةُ NLS). ينسخ معه وحدةَ
+# TS واحدة عبر .mihrab-core أدناه.
+[[ -f "$ROOT/build/patch_settings_labels.py" ]] && cp -f "$ROOT/build/patch_settings_labels.py" "$UP/.mihrab-patch-settings-labels.py"
 [[ -d "$ROOT/patches/core" ]] && { rm -rf "$UP/.mihrab-core"; cp -rf "$ROOT/patches/core" "$UP/.mihrab-core"; }
 [[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
 # [AR-02] جهّز خطّ ص العربيّ المحزوم لوثيقة الـworkbench: patch_bundle يشتقّ منه base64 ويحقن

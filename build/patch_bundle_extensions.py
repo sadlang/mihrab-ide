@@ -151,6 +151,12 @@ INJECT = """
   # بُدّل الثابتُ وحده لقرأ محراب من مكانٍ وكتب في آخر — بلا خطأ ولا سجلّ.
   if [ -f ../.mihrab-patch-config-folder.py ]; then
     python ../.mihrab-patch-config-folder.py . || { echo "محراب: فشلت رُقعة مجلّد الإعدادات" >&2; exit 1; }
+  fi
+
+  # عناوين لوحة الإعدادات: تُشتَقّ حسابيًّا من اسم المفتاح وقت التشغيل، فلا مدخلَ لها
+  # في NLS ولا يمسّها خبزُ العربيّة. التعريبُ يُلحَق بمخرَج wordifyKey.
+  if [ -f ../.mihrab-patch-settings-labels.py ]; then
+    python ../.mihrab-patch-settings-labels.py . || { echo "محراب: فشلت رُقعة عناوين الإعدادات" >&2; exit 1; }
   fi"""
 
 

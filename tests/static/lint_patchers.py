@@ -1812,6 +1812,104 @@ def _nebras_ext():
         "extension.js لا يعيد تشغيل نِبراس عند تغيّر مجلّد العمل (onDidChangeWorkspaceFolders/restartIfWorkspaceChanged) — cwd بائت"
 
 
+@check("معجم عناوين الإعدادات: موصول، بلا مفاتيح مكرّرة، وبلا نصفِ ترجمة")
+def _settings_lexicon_sound():
+    """يحرس رقعةَ تعريب عناوين لوحة الإعدادات — وأخطرُ ما فيها يقع صامتًا.
+
+    **المفاتيح المكرّرة** هي العطبُ الأوّل: خريطتان تُبنيان من `Object.entries`، فمفتاحٌ
+    مكرّرٌ لا يُخطئ وقتَ التشغيل — الأخيرُ يفوز والأوّلُ يختفي. وقع هذا فعلًا (ثمانيةُ
+    مفاتيح) ولم يكشفه إلّا التصريفُ بـ‏`tsc` (‏TS1117). لكنّ التصريفَ يجري في بناءٍ
+    كاملٍ يستغرق عشراتِ الدقائق، فالحارسُ هنا يزيحه إلى ثانيةٍ واحدة.
+
+    **الوصل** هو العطبُ الثاني، وهو صامتٌ أيضًا: معجمٌ سليمٌ لا يُستدعى = واجهةٌ
+    إنجليزيّةٌ وكلُّ الفحوص خضراء.
+
+    **إملاء حرف الجرّ** ثالثًا: «بـالدفع» و«لـالمحرّر» خطأٌ صريحٌ يراه المستخدم في كلّ
+    بندٍ تولّده القاعدة، فنمنع كتابةَ التطويل قبل «ال» في القوالب.
+    """
+    import importlib.util
+    import re as _re
+
+    MARKED = "mihrab-settings-lexicon"
+    patcher = os.path.join(BUILD, "patch_settings_labels.py")
+    if not os.path.isfile(patcher):
+        return  # لا رقعة في هذا الفرع — تخطٍّ
+
+    lex_path = os.path.join(ROOT, "patches", "core", "mihrabSettingsLexicon.ts")
+    assert os.path.isfile(lex_path), (
+        "patches/core/mihrabSettingsLexicon.ts مفقود — الرقعة تستورده ولا تنسخه.")
+    lex = _read(lex_path)
+
+    # ── مفاتيح مكرّرة داخل كلّ خريطة على حدة ──
+    for map_name in ("PHRASES", "WORDS", "ADJECTIVES"):
+        i = lex.find(f"const {map_name} = new Map")
+        assert i >= 0, f"{map_name} غير معرَّفة في المعجم."
+        j = lex.find("}))", i)
+        assert j > i, f"لم أجد نهاية {map_name}."
+        keys = _re.findall(r"^\t'([^']+)':", lex[i:j], _re.M)
+        dupes = sorted({k for k in keys if keys.count(k) > 1})
+        assert not dupes, (
+            f"{map_name}: مفاتيح مكرّرة {dupes} — الأخير يفوز صامتًا وقتَ التشغيل "
+            f"(‏tsc يرفضها بـTS1117، لكنّ ذلك بعد بناءٍ كامل).")
+        assert keys, f"{map_name} فارغة."
+        # لا مفتاحَ بحروفٍ كبيرة: البحثُ يجري بـtoLowerCase فمفتاحٌ كبيرٌ ميّتٌ أبدًا.
+        upper = [k for k in keys if k != k.lower()]
+        assert not upper, (
+            f"{map_name}: مفاتيح بحروفٍ كبيرة {upper[:5]} — المطابقة تجري بعد "
+            f"toLowerCase فهي شيفرةٌ ميّتة.")
+
+    # ── القيم عربيّة فعلًا (قيمةٌ لاتينيّة = ترجمةٌ منسيّة تمرّ صامتة) ──
+    vals = _re.findall(r"^\t'[^']+': '([^']*)',", lex, _re.M)
+    assert vals, "لم أستخرج أيّ قيمة من المعجم — تغيّر شكلُ الملفّ؟"
+    non_ar = [v for v in vals if not _re.search(r"[؀-ۿ]", v)]
+    assert not non_ar, f"قيمٌ بلا حرفٍ عربيّ: {non_ar[:5]}"
+
+    # ── إملاء حرف الجرّ: لا تطويلَ قبل «ال» في أيّ قالب ──
+    # محصورٌ في كتلة القواعد وحدها: التوثيقُ أعلاه يقتبس الخطأَ ليشرحه، فبحثٌ في
+    # الملفّ كلّه كان سيصطاد شرحَ العطب بدل العطب.
+    _ri = lex.find("const RULES")
+    _rj = lex.find("\n];", _ri)
+    rules_block = lex[_ri:_rj] if _ri >= 0 else ""
+    assert rules_block, "لم أجد كتلة RULES في المعجم."
+    bad = _re.findall(r"[بل]ـال", rules_block)
+    assert not bad, (
+        "قالبٌ يكتب «بـال/لـال» — الصواب «بال» و«لل» عبر joinPreposition.")
+    assert "function joinPreposition" in lex, (
+        "joinPreposition مفقودة — قواعدُ Allow/For ستُنتج «بـالدفع».")
+
+    # ── الوصل: نسخٌ في build.sh، واستدعاءٌ في كتلة الحقن ──
+    build_sh = _read(os.path.join(BUILD, "build.sh"))
+    assert "patch_settings_labels.py" in build_sh, (
+        "build.sh لا ينسخ patch_settings_labels.py إلى شجرة المنبع.")
+    bundle = _read(os.path.join(BUILD, "patch_bundle_extensions.py"))
+    assert ".mihrab-patch-settings-labels.py ." in bundle, (
+        "كتلة الحقن لا **تستدعي** رقعة عناوين الإعدادات — نسخٌ بلا تشغيل: كلّ الفحوص "
+        "خضراء وعناوينُ الإعدادات تبقى إنجليزيّة.")
+
+    src = _read(patcher)
+    assert "arabizeSettingText" in src and "wordifyKey" in src, (
+        "المرقِّع لا يشير إلى wordifyKey/arabizeSettingText — انجرفت الرقعة عن هدفها.")
+
+    # ── المرساة موجودة في المنبع **فعلًا** ──
+    # الصيغةُ الأولى من هذا الفحص كانت تقرأ نصَّ المرقِّع وتزعم أنّها تفحص المنبع —
+    # فحصٌ يُطمئن ولا يكشف شيئًا (رصدته المراجعة الهندسيّة). هنا نقرأ ملفَّ المنبع
+    # نفسَه، فينكشف انجرافُ `wordifyKey` عند ترقية المنبع لا بعد ساعةِ بناءٍ ضائعة.
+    upstream = os.path.join(ROOT, ".upstream", "vscode", "src", "vs", "workbench",
+                            "contrib", "preferences", "common", "preferences.ts")
+    if os.path.isfile(upstream):
+        text = _read(upstream)
+        if MARKED not in text:
+            spec = importlib.util.spec_from_file_location("_mihrab_settings_labels", patcher)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            for _rel, _mark, edits in mod.FILES:
+                for old, _new, count in edits:
+                    found = text.count(old.replace("\n", "\r\n")) + text.count(old)
+                    assert found >= count, (
+                        f"مرساةٌ مفقودة من منبع preferences.ts (وُجدت {found}/{count}): "
+                        f"{old.splitlines()[0][:80]} — انجرف wordifyKey؟")
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
