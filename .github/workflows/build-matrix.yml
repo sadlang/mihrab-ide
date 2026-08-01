@@ -1,0 +1,172 @@
+# بناءُ محراب على المنصّات الثلاث — حارسٌ على كلّ دفعة.
+#
+# لماذا؟ كان البناءُ يجري على جهازٍ ويندوزيٍّ واحد، فكانت «محراب يعمل» تعني «يعمل
+# هنا». وكلُّ ويندوزيّةٍ تسرّبت إلى build.sh لم تُكتشَف لأنّ لا أحدَ شغّله على غيرها.
+# وهذا العملُ يجعل انكسارَ لينكس أو macOS **يوقف الدفعة** لا يُكتشَف عند أوّل مستخدم.
+#
+# ⚠️ ليس فحصًا رخيصًا: كلُّ منصّةٍ تبني VSCodium كاملًا (٤٠–٧٠ دقيقة). ولهذا:
+#   · REH وREH-web مُطفآن (`SHOULD_BUILD_REH=no`) — خادمٌ بعيد لا نشحنه بعد،
+#     وبناؤه يضيف ~١٢ دقيقة لكلّ منصّة بلا أن يحرس شيئًا نشحنه.
+#   · الفحصُ البنيويّ الرخيص (`quick`) يسبق المصفوفةَ ويوقفها: خطأٌ نحويٌّ في
+#     build.sh يجب ألّا يكلّف ساعتَي عدّاء.
+name: بناء — المنصّات الثلاث
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # يُستدعى من سير النشر قبل رفع الثنائيّات: لا نَشرَ بلا بناءٍ أخضر على الثلاث.
+  workflow_call:
+    outputs:
+      version:
+        description: إصدارُ محراب المبنيّ
+        value: ${{ jobs.build.outputs.version }}
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── البوّابة الرخيصة ──
+  quick:
+    name: فحصٌ نحويّ وبنيويّ
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      - name: صياغةُ سكربتات البناء
+        run: |
+          for f in build/build.sh build/prepare.sh build/deploy_site.sh build/publish_release.sh; do
+            bash -n "$f" && echo "✅ $f"
+          done
+
+      - name: صياغةُ المرقِّعات
+        run: python -m compileall -q build/ tests/ site/ && echo "✅ بايثون سليمة"
+
+      - name: بنيةُ الموقع
+        run: python tests/docs/check_site.py
+
+      # منصّةٌ خاطئةٌ في السطر الأوّل أرخصُ اكتشافًا من فشلٍ في الدقيقة الأربعين.
+      - name: كشفُ المنصّة في build.sh
+        run: |
+          out=$(bash build/build.sh --platform)
+          [[ "$out" == "linux/x64 out=VSCode-linux-x64" ]] \
+            || { echo "❌ كُشف على عدّاء لينكس: $out"; exit 1; }
+          echo "✅ $out"
+
+  build:
+    needs: quick
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+    strategy:
+      # fail-fast=false عمدًا: أوّلُ فشلٍ ليس كلَّ الفشل. حين ينكسر لينكس وmacOS
+      # معًا لسببين مختلفين، إلغاءُ الثاني يخفي نصفَ المشكلة إلى الدفعة التالية.
+      fail-fast: false
+      matrix:
+        include:
+          - { name: لينكس x64,      os: ubuntu-22.04,  asset: linux-x64-tar,   out: VSCode-linux-x64 }
+          - { name: macOS arm64,    os: macos-14,      asset: mac-arm64,       out: VSCode-darwin-arm64 }
+          - { name: ويندوز x64,     os: windows-2022,  asset: win-x64-zip,     out: VSCode-win32-x64 }
+
+    defaults:
+      run: { shell: bash }
+
+    env:
+      # ‏REH/REH-web: خادمٌ بعيد لا نشحنه — ~١٢ دقيقةً لكلّ منصّة بلا حراسة.
+      SHOULD_BUILD_REH: 'no'
+      SHOULD_BUILD_REH_WEB: 'no'
+      CI_BUILD: 'no'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      # عدّاءُ أوبنتو يبدأ بـ~٢١ غيغابايت حرّة، والبناءُ يحتاج أكثر. الحذفُ يحرّر ~٣٠.
+      - name: تحرير مساحة (لينكس)
+        if: runner.os == 'Linux'
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo apt-get clean
+          df -h / | tail -1
+
+      - name: اعتماديّات البناء (لينكس)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev fakeroot rpm
+
+      - name: بناءُ محراب
+        run: bash build/build.sh
+        env:
+          MIHRAB_JOBS: '4'
+
+      # ── تحقّقُ الهويّة على المخرَج ──
+      # build.sh يفحص product.json وnls؛ هنا نفحص ما يخصّ المنصّة: أنّ أيقونتها
+      # ليست أيقونةَ VSCodium. وهو الفحصُ الذي كان غيابُه سيشحن شعارَ مشروعٍ آخر.
+      - name: تحقّقُ هويّة المنصّة
+        run: |
+          OUT=".upstream/${{ matrix.out }}"
+          case "${{ runner.os }}" in
+            Linux)
+              test -f "$OUT/bin/mihrab" || { echo "❌ لا bin/mihrab"; exit 1; }
+              test -f "$OUT/resources/app/product.json" || { echo "❌ لا product.json"; exit 1; }
+              echo "✅ مشغِّلُ لينكس والهويّة موجودان" ;;
+            macOS)
+              APP=$(find "$OUT" -maxdepth 1 -name '*.app' -print -quit)
+              test -n "$APP" || { echo "❌ لا حزمة .app"; exit 1; }
+              test -f "$APP/Contents/Resources/code.icns" || echo "⚠️ لا code.icns في الحزمة"
+              echo "✅ حزمةُ macOS: $(basename "$APP")" ;;
+            Windows)
+              test -f "$OUT/Mihrab.exe" || { echo "❌ لا Mihrab.exe"; exit 1; }
+              echo "✅ Mihrab.exe موجود" ;;
+          esac
+
+      - name: بصمةُ الإصدار
+        id: stamp
+        run: |
+          OUT=".upstream/${{ matrix.out }}"
+          APP=$(find "$OUT" -name product.json -path '*resources/app*' -print -quit)
+          V=$(python -c "import json,sys;print(json.load(open(sys.argv[1],encoding='utf-8'))['version'])" "$APP")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "الإصدار: $V"
+
+      # ── التغليف ──
+      # أرشيفٌ واحدٌ لكلّ منصّة، اسمُه اسمُ الأصل في مانيفست الموقع — فرفعُه لاحقًا
+      # لا يحتاج ترجمةَ أسماء.
+      - name: تغليف
+        id: pack
+        run: |
+          OUT=".upstream/${{ matrix.out }}"
+          V="${{ steps.stamp.outputs.version }}"
+          NAME="Mihrab-$V-${{ matrix.asset }}"
+          mkdir -p dist
+          case "${{ runner.os }}" in
+            Windows) 7z a -tzip -mx=5 "dist/$NAME.zip" "./$OUT/*" >/dev/null ;;
+            macOS)   ( cd "$OUT" && zip -qry "../../dist/$NAME.zip" . ) ;;
+            Linux)   tar -C "$OUT" -czf "dist/$NAME.tar.gz" . ;;
+          esac
+          F=$(ls dist/ | head -1)
+          echo "file=$F" >> "$GITHUB_OUTPUT"
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mihrab-${{ matrix.asset }}
+          path: dist/*
+          retention-days: 14
+          compression-level: 0   # مضغوطٌ سلفًا؛ إعادةُ الضغط دقائقُ بلا مكسب

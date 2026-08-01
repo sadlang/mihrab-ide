@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# بناء محراب م0 — VSCodium نظيف من المنبع المثبَّت، قابل للتكرار (ويندوز/Git Bash).
+# بناء محراب م0 — VSCodium نظيف من المنبع المثبَّت، قابل للتكرار.
+# ويندوز (Git Bash) · لينكس · macOS.
 #
 # يجسّد «وصفة م0»: يجهّز سلسلة أدوات معزولة في build/.toolchain (مُتجاهَلة)، ويطبّق
 # خمسة إصلاحات بيئة لازمة لبناء VSCodium 1.121 على هذا الجهاز (راجع build/README.md
@@ -14,6 +15,60 @@ UP="$ROOT/.upstream"
 TC="$ROOT/build/.toolchain"
 mkdir -p "$TC"
 
+# ══════════════════════════════════════════════════════════════════════════
+#  (٠) المنصّة — يُشتَقّ كلُّ ما بعده منها
+#
+#  كان هذا السكربت ويندوزيًّا وحده، وكانت الويندوزيّةُ **مبثوثةً** فيه لا معلَنة:
+#  ‏.exe في أسماء الأدوات، وcygpath في التصدير، ومسارُ مخرَجٍ حرفيّ. فبناءُ لينكس
+#  لم يكن «غيرَ مدعوم» — كان يفشل متأخّرًا بعد أربعين دقيقة برسالةٍ عن ملفٍّ مفقود.
+#  التصريحُ هنا يجعل الفشلَ (إن وقع) في السطر الأوّل لا في الساعة الأولى.
+#
+#  الاصطلاحاتُ تطابق dev/build.sh في المنبع (OS_NAME · VSCODE_ARCH) كي لا يكون
+#  للمشروع تسميتان للشيء نفسه.
+# ══════════════════════════════════════════════════════════════════════════
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) OS_NAME="windows" ;;
+  Darwin)               OS_NAME="osx" ;;
+  Linux)                OS_NAME="linux" ;;
+  *) echo "❌ منصّةٌ غيرُ مدعومة: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  aarch64|arm64) VSCODE_ARCH="arm64" ;;
+  *)             VSCODE_ARCH="x64" ;;
+esac
+VSCODE_ARCH="${MIHRAB_ARCH:-$VSCODE_ARCH}"
+export OS_NAME VSCODE_ARCH
+
+IS_WIN=no; [[ "$OS_NAME" == "windows" ]] && IS_WIN=yes
+EXE_SUFFIX=""; [[ "$IS_WIN" == "yes" ]] && EXE_SUFFIX=".exe"
+
+# مجلّدُ المخرَج ومسارُ التطبيق داخله. الفرقُ الجوهريّ في macOS: المخرَجُ حزمة
+# ‏`.app` وليس شجرةً مسطّحة، فمسارُ `resources/app` يغوص في Contents.
+case "$OS_NAME" in
+  windows) OUT_NAME="VSCode-win32-$VSCODE_ARCH"
+           APP_REL="resources/app"
+           LAUNCH_REL="Mihrab.exe" ;;
+  linux)   OUT_NAME="VSCode-linux-$VSCODE_ARCH"
+           APP_REL="resources/app"
+           LAUNCH_REL="bin/mihrab" ;;
+  # macOS: اسمُ الحزمة يُشتَقّ من nameLong وهو **عربيّ** («محراب.app»)، فلا يُكتب
+  # حرفيًّا هنا — يُحلّ بالبحث بعد البناء. وكتابةُ «Mihrab.app» تجعل الفحصَ يفشل
+  # على بناءٍ سليم، وهو أسوأُ من ألّا يكون هناك فحص.
+  osx)     OUT_NAME="VSCode-darwin-$VSCODE_ARCH"
+           APP_REL=""            # يُحلّ بعد البناء
+           LAUNCH_REL="" ;;
+esac
+
+# تحويلُ مسارٍ إلى صيغة النظام لمستهلكٍ غير POSIX (node-gyp على ويندوز وحده).
+winpath() { if [[ "$IS_WIN" == "yes" ]]; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+
+# مَخرَجٌ للفحص: يطبع ما استنتجه ثمّ يخرج. سببُ وجوده أنّ CI يجب أن يتحقّق من
+# صحّة الكشف في ثوانٍ لا أن ينتظر أربعين دقيقةً ليكتشف أنّه بنى للمنصّة الخطأ.
+if [[ "${1:-}" == "--platform" ]]; then
+  echo "$OS_NAME/$VSCODE_ARCH out=$OUT_NAME"
+  exit 0
+fi
+
 # ── إصدارات سلسلة الأدوات (طابِق NODE_VERSION مع vscode/.nvmrc للمنبع المثبَّت) ──
 NODE_VERSION="${MIHRAB_NODE_VERSION:-22.22.1}"
 JQ_VERSION="1.7.1"
@@ -23,29 +78,51 @@ PYTHON_HINT="${MIHRAB_PYTHON:-}"   # مسار python3.12؛ يُكتشف تلقا
 log() { echo "▶ $*"; }
 
 # ── (أ) Node محمول مطابق لـ.nvmrc (Node النظام قد يكون أقدم من أن يشغّل ملفّات .ts) ──
-NODE_DIR="$TC/node-v${NODE_VERSION}-win-x64"
-if [[ ! -x "$NODE_DIR/node.exe" ]]; then
-  log "تنزيل Node ${NODE_VERSION} المحمول"
-  # -f يُفشِل عند 4xx/5xx؛ نُنزِّل لملفّ مؤقّت ثمّ نُعيد التسمية حتى لا يبقى zip ناقص
+# اسمُ التوزيعة وصيغةُ الأرشيف وموضعُ الثنائيّ داخله تختلف الثلاثةُ بين المنصّات،
+# ولا اشتقاقَ يجمعها — فتُذكَر صراحةً.
+case "$OS_NAME" in
+  windows) NODE_SLUG="node-v${NODE_VERSION}-win-x64";                NODE_PKG="zip";    NODE_BIN_SUB="" ;;
+  linux)   NODE_SLUG="node-v${NODE_VERSION}-linux-${VSCODE_ARCH}";   NODE_PKG="tar.xz"; NODE_BIN_SUB="/bin" ;;
+  osx)     NODE_SLUG="node-v${NODE_VERSION}-darwin-${VSCODE_ARCH}";  NODE_PKG="tar.gz"; NODE_BIN_SUB="/bin" ;;
+esac
+NODE_DIR="$TC/$NODE_SLUG"
+NODE_BIN="$NODE_DIR$NODE_BIN_SUB"
+
+if [[ ! -x "$NODE_BIN/node$EXE_SUFFIX" ]]; then
+  log "تنزيل Node ${NODE_VERSION} المحمول ($NODE_SLUG)"
+  # -f يُفشِل عند 4xx/5xx؛ نُنزِّل لملفّ مؤقّت ثمّ نُعيد التسمية حتى لا يبقى أرشيفٌ ناقص
   # يُربك إعادة التشغيل لو انقطع التنزيل في المنتصف.
-  curl -fsSL --retry 3 -o "$TC/node.zip.part" "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip"
-  mv -f "$TC/node.zip.part" "$TC/node.zip"
-  powershell -NoProfile -Command "Expand-Archive -Force -Path '$(cygpath -w "$TC/node.zip")' -DestinationPath '$(cygpath -w "$TC")'"
-  rm -f "$TC/node.zip"
-  # تحقّق أنّ الاستخراج أنتج node.exe فعلًا (Expand-Archive قد يفشل بصمت في powershell).
-  [[ -x "$NODE_DIR/node.exe" ]] || { echo "❌ فشل استخراج Node إلى $NODE_DIR" >&2; exit 1; }
+  curl -fsSL --retry 3 -o "$TC/node.$NODE_PKG.part" \
+       "https://nodejs.org/dist/v${NODE_VERSION}/${NODE_SLUG}.${NODE_PKG}"
+  mv -f "$TC/node.$NODE_PKG.part" "$TC/node.$NODE_PKG"
+  if [[ "$IS_WIN" == "yes" ]]; then
+    powershell -NoProfile -Command "Expand-Archive -Force -Path '$(cygpath -w "$TC/node.zip")' -DestinationPath '$(cygpath -w "$TC")'"
+  else
+    tar -C "$TC" -xf "$TC/node.$NODE_PKG"
+  fi
+  rm -f "$TC/node.$NODE_PKG"
+  # تحقّق أنّ الاستخراج أنتج ثنائيًّا فعلًا (Expand-Archive قد يفشل بصمت في powershell).
+  [[ -x "$NODE_BIN/node$EXE_SUFFIX" ]] || { echo "❌ فشل استخراج Node إلى $NODE_DIR" >&2; exit 1; }
 fi
-export PATH="$NODE_DIR:$TC:$PATH"
-log "Node=$(node -v) npm=$(npm -v)"
+export PATH="$NODE_BIN:$TC:$PATH"
+log "المنصّة=$OS_NAME/$VSCODE_ARCH · Node=$(node -v) npm=$(npm -v)"
 
 # ── (ب) jq (يحتاجه get_repo.sh/utils.sh في المنبع) ──
-if [[ ! -x "$TC/jq.exe" ]]; then
-  log "تنزيل jq ${JQ_VERSION}"
-  # نُنزِّل لملفّ مؤقّت ثمّ نُعيد التسمية: يمنع بقاء jq.exe ناقص (يجتاز فحص -x) عند انقطاع.
-  curl -fsSL --retry 3 -o "$TC/jq.exe.part" "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-windows-amd64.exe"
-  mv -f "$TC/jq.exe.part" "$TC/jq.exe"
-  # تحقّق أنّ الثنائيّ يعمل (تنزيل صفحة خطأ HTML بدل exe يجتاز فحص الوجود لكن لا يُنفَّذ).
-  "$TC/jq.exe" --version >/dev/null 2>&1 || { echo "❌ jq المُنزَّل لا يعمل — تحقّق من الرابط/الشبكة." >&2; rm -f "$TC/jq.exe"; exit 1; }
+case "$OS_NAME" in
+  windows) JQ_ASSET="jq-windows-amd64.exe" ;;
+  linux)   JQ_ASSET="jq-linux-$([[ "$VSCODE_ARCH" == "arm64" ]] && echo arm64 || echo amd64)" ;;
+  osx)     JQ_ASSET="jq-macos-$([[ "$VSCODE_ARCH" == "arm64" ]] && echo arm64 || echo amd64)" ;;
+esac
+JQ_BIN="$TC/jq$EXE_SUFFIX"
+if [[ ! -x "$JQ_BIN" ]]; then
+  log "تنزيل jq ${JQ_VERSION} ($JQ_ASSET)"
+  # نُنزِّل لملفّ مؤقّت ثمّ نُعيد التسمية: يمنع بقاء jq ناقص (يجتاز فحص -x) عند انقطاع.
+  curl -fsSL --retry 3 -o "$JQ_BIN.part" \
+       "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/${JQ_ASSET}"
+  chmod +x "$JQ_BIN.part"
+  mv -f "$JQ_BIN.part" "$JQ_BIN"
+  # تحقّق أنّ الثنائيّ يعمل (تنزيل صفحة خطأ HTML يجتاز فحص الوجود لكن لا يُنفَّذ).
+  "$JQ_BIN" --version >/dev/null 2>&1 || { echo "❌ jq المُنزَّل لا يعمل — تحقّق من الرابط/الشبكة." >&2; rm -f "$JQ_BIN"; exit 1; }
 fi
 
 # ── (ج) تحضير شجرة المنبع (استنساخ VSCodium المثبَّت + رُقَع محراب) ──
@@ -53,6 +130,16 @@ if [[ "${SKIP_SOURCE:-no}" != "yes" || ! -d "$UP/.git" ]]; then
   log "تحضير المنبع عبر prepare.sh"
   bash "$ROOT/build/prepare.sh"
 fi
+
+# ══════════════════════════════════════════════════════════════════════════
+#  (د)+(هـ)+(ز) إصلاحاتُ سلسلةِ أدوات ويندوز — **لا تُنفَّذ على غيرها**
+#
+#  الثلاثةُ تعالج أعطالَ MSVC وحدها: node-gyp لا يعرف VS 2026، ومكتباتُ Spectre
+#  غير مثبّتة، وvswhere يكتشف موضعَ VS. ولينكس وmacOS يبنيان بـclang/gcc من
+#  النظام، فتشغيلُها هناك ليس زائدًا فحسب — بل يُتلف node-gyp سليمًا ثمّ يفشل
+#  البناءُ بعده بسببٍ لا صلةَ له بالسبب المكتوب في الرسالة.
+# ══════════════════════════════════════════════════════════════════════════
+if [[ "$IS_WIN" == "yes" ]]; then
 
 # ── (د) استبدال node-gyp المدمج بـ13 (يدعم VS 2026). تجاوز npm_config_node_gyp
 #        وحده لا يكفي لأنّ وحدات تنادي node-gyp في سكربتها ⇒ نستبدل المدمج فعليًّا. ──
@@ -87,6 +174,8 @@ if ! grep -q 'spectre_mitigation = "false"' "$MSVS_PY"; then
   find "$BUNDLED_GYP" -name "msvs.cpython-*.pyc" -delete 2>/dev/null || true
 fi
 
+fi  # ── نهاية إصلاحات ويندوز (د)+(هـ) ──
+
 # ── (و) ترقيع رقصة .npmrc في prepare_vscode.sh (تتوقّف تحت set -e عند حالة متبقّية) ──
 PVS="$UP/prepare_vscode.sh"
 if [[ -f "$PVS" ]] && ! grep -q 'محراب م0: تسامح مع غياب .npmrc' "$PVS"; then
@@ -104,20 +193,26 @@ fi
 
 # ── (ز) بيئة البناء + كشف Visual Studio و Python تلقائيًّا ──
 VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
-if [[ -x "$VSWHERE" ]]; then
+if [[ "$IS_WIN" == "yes" && -x "$VSWHERE" ]]; then
   VS_PATH="$("$VSWHERE" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>/dev/null | tr -d '\r')"
   # فحص vscode للمترجم يقبل 2022/2019 ويكتفي بوجود المسار ⇒ نوجّهه إلى أحدث VS.
   # ملاحظة: نستعمل if لا «A && B» لأنّ الأخيرة تُفشِل السكربت تحت set -e عند فراغ المسار.
   if [[ -n "$VS_PATH" ]]; then export vs2022_install="$(cygpath -w "$VS_PATH")"; fi
 fi
-if [[ -z "$PYTHON_HINT" ]]; then
+if [[ -z "$PYTHON_HINT" && "$IS_WIN" == "yes" ]]; then
   PYTHON_HINT="$(py -3.12 -c 'import sys;print(sys.executable)' 2>/dev/null | tr -d '\r' || true)"
 fi
 # if لا «A && B»: غياب python يجب أن يَسقط للنظام لا أن يُوقف البناء تحت set -e.
 if [[ -n "$PYTHON_HINT" ]]; then export npm_config_python="$PYTHON_HINT"; fi
-export npm_config_node_gyp="$(cygpath -w "$BUNDLED_GYP/bin/node-gyp.js")"
-export npm_config_jobs=12
-export UV_THREADPOOL_SIZE=12
+# node-gyp المُستبدَل لا وجودَ له خارج ويندوز؛ npm يستعمل المدمج وهو الصواب هناك.
+if [[ "$IS_WIN" == "yes" ]]; then
+  export npm_config_node_gyp="$(winpath "$BUNDLED_GYP/bin/node-gyp.js")"
+fi
+# عددُ الأنوية لا ١٢ ثابتًا: عدّاءُ CI يملك ٢–٤، وطلبُ ١٢ وظيفة عليه يُثقل الذاكرة
+# فيُقتل البناءُ بـOOM في منتصفه — وهو فشلٌ يصعب ردُّه إلى سببه.
+JOBS="${MIHRAB_JOBS:-$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4; } )}"
+export npm_config_jobs="$JOBS"
+export UV_THREADPOOL_SIZE="$JOBS"
 export NODE_OPTIONS="--max-old-space-size=8192"
 export VSCODE_SKIP_NODE_VERSION_CHECK=yes
 log "vs2022_install=${vs2022_install:-<افتراضيّ>} · python=${npm_config_python:-<النظام>}"
@@ -170,14 +265,14 @@ shopt -u nullglob
 #         والامتداد يسقط إلى PATH ويعرض تلميح التثبيت — لا نُفشِل البناء كلّه لأجله.
 #         الهدف المستقبليّ (الخيار ٣، موثَّق في docs/toolchain-delivery.md): أمر «ثبّت أدوات ص»
 #         يُنزّل أحدث إصدار عند الطلب فوق هذا المدمج. (راجع resolveSadRun في extension.js.)
-SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run.exe}"
+SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run$EXE_SUFFIX}"
 # [SAD-02] مصدر أداة الفحص المدمجة (تشخيص عند الحفظ عبر sad-check --json). نفس اصطلاح sad-run.
-SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check.exe}"
+SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check$EXE_SUFFIX}"
 # [SAD-04] مصدر أداة البناء المدمجة (أمر «ابنِ» عبر sad-build). نفس اصطلاح sad-run/sad-check.
-SAD_BUILD_SRC="${MIHRAB_SAD_BUILD:-$ROOT/../sad-engines-dev/sad-build.exe}"
+SAD_BUILD_SRC="${MIHRAB_SAD_BUILD:-$ROOT/../sad-engines-dev/sad-build$EXE_SUFFIX}"
 # [SAD-01] مصدر خادم ص اللغويّ المدمج (LSP: تشخيص/إكمال/تحويم/تعريف). نفس اصطلاح الأدوات؛
 # يُحزَم في bin/ داخل نسخة sad-lang المُجهَّزة (لا mihrab-welcome — العميل يسكن في sad-lang).
-SAD_LSP_SRC="${MIHRAB_SAD_LSP:-$ROOT/../sad-engines-dev/sad-lsp.exe}"
+SAD_LSP_SRC="${MIHRAB_SAD_LSP:-$ROOT/../sad-engines-dev/sad-lsp$EXE_SUFFIX}"
 # [AR-02] مصدر خطّ ص العربيّ المحزوم (Kawkab Mono، OFL). يُستهلَك مرّتين: (١) media/ لوحة الترحيب
 # (AR-01 تُضمّنه data:URI)، (٢) @font-face وثيقة الـworkbench (تجهيز أدناه). MIHRAB_ARABIC_FONT أو الافتراضيّ.
 ARABIC_FONT_SRC="${MIHRAB_ARABIC_FONT:-$ROOT/patches/fonts/kawkab-mono.woff2}"
@@ -189,22 +284,22 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   mkdir -p "$WELCOME_BIN"
   # (أ) sad-run — «شغّل ملفّ ص» المدمج.
   if [[ -f "$SAD_RUN_SRC" ]]; then
-    cp -f "$SAD_RUN_SRC" "$WELCOME_BIN/sad-run.exe"
-    log "حُزِمت أداة ص المدمجة: sad-run.exe ($(du -h "$WELCOME_BIN/sad-run.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_RUN_SRC"
+    cp -f "$SAD_RUN_SRC" "$WELCOME_BIN/sad-run$EXE_SUFFIX"
+    log "حُزِمت أداة ص المدمجة: sad-run.exe ($(du -h "$WELCOME_BIN/sad-run$EXE_SUFFIX" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_RUN_SRC"
   else
     log "⚠️ لا sad-run.exe في $SAD_RUN_SRC — بناء بلا تشغيل مدمج (يسقط الامتداد إلى PATH). اضبط MIHRAB_SAD_RUN للحزم."
   fi
   # (ب) sad-check — جسر التشخيص عند الحفظ [SAD-02]. سقوط رشيق كذلك: غيابه ⇒ الجسر يسقط إلى PATH.
   if [[ -f "$SAD_CHECK_SRC" ]]; then
-    cp -f "$SAD_CHECK_SRC" "$WELCOME_BIN/sad-check.exe"
-    log "حُزِمت أداة الفحص المدمجة: sad-check.exe ($(du -h "$WELCOME_BIN/sad-check.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_CHECK_SRC"
+    cp -f "$SAD_CHECK_SRC" "$WELCOME_BIN/sad-check$EXE_SUFFIX"
+    log "حُزِمت أداة الفحص المدمجة: sad-check.exe ($(du -h "$WELCOME_BIN/sad-check$EXE_SUFFIX" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_CHECK_SRC"
   else
     log "⚠️ لا sad-check.exe في $SAD_CHECK_SRC — تشخيص الحفظ يسقط إلى PATH. اضبط MIHRAB_SAD_CHECK للحزم."
   fi
   # (ج) sad-build — أمر «ابنِ» [SAD-04]. سقوط رشيق كذلك: غيابه ⇒ أمر البناء يسقط إلى PATH.
   if [[ -f "$SAD_BUILD_SRC" ]]; then
-    cp -f "$SAD_BUILD_SRC" "$WELCOME_BIN/sad-build.exe"
-    log "حُزِمت أداة البناء المدمجة: sad-build.exe ($(du -h "$WELCOME_BIN/sad-build.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_BUILD_SRC"
+    cp -f "$SAD_BUILD_SRC" "$WELCOME_BIN/sad-build$EXE_SUFFIX"
+    log "حُزِمت أداة البناء المدمجة: sad-build.exe ($(du -h "$WELCOME_BIN/sad-build$EXE_SUFFIX" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_BUILD_SRC"
   else
     log "⚠️ لا sad-build.exe في $SAD_BUILD_SRC — أمر البناء يسقط إلى PATH. اضبط MIHRAB_SAD_BUILD للحزم."
   fi
@@ -230,8 +325,8 @@ if [[ -d "$STAGE_EXT/sad-lang" ]]; then
   rm -rf "$SADLANG_BIN"
   mkdir -p "$SADLANG_BIN"
   if [[ -f "$SAD_LSP_SRC" ]]; then
-    cp -f "$SAD_LSP_SRC" "$SADLANG_BIN/sad-lsp.exe"
-    log "حُزِم خادم ص اللغويّ المدمج: sad-lsp.exe ($(du -h "$SADLANG_BIN/sad-lsp.exe" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_LSP_SRC"
+    cp -f "$SAD_LSP_SRC" "$SADLANG_BIN/sad-lsp$EXE_SUFFIX"
+    log "حُزِم خادم ص اللغويّ المدمج: sad-lsp.exe ($(du -h "$SADLANG_BIN/sad-lsp$EXE_SUFFIX" 2>/dev/null | cut -f1 || echo '؟')) من $SAD_LSP_SRC"
   else
     log "⚠️ لا sad-lsp.exe في $SAD_LSP_SRC — الذكاء اللغويّ يسقط إلى PATH. اضبط MIHRAB_SAD_LSP للحزم."
   fi
@@ -273,6 +368,15 @@ rm -rf "$BRAND_STAGE"; mkdir -p "$BRAND_STAGE"
 [[ -f "$BRAND_SRC/mihrab.ico" ]] && cp -f "$BRAND_SRC/mihrab.ico" "$BRAND_STAGE/code.ico"
 [[ -f "$BRAND_SRC/mihrab_150x150.png" ]] && cp -f "$BRAND_SRC/mihrab_150x150.png" "$BRAND_STAGE/code_150x150.png"
 [[ -f "$BRAND_SRC/mihrab_70x70.png" ]] && cp -f "$BRAND_SRC/mihrab_70x70.png" "$BRAND_STAGE/code_70x70.png"
+# أيقونتا لينكس وmacOS. كانتا مفقودتين حين كان البناءُ ويندوزيًّا وحده، وغيابُهما
+# لا يُفشل بناءً — يشحن شعارَ VSCodium في شريط مهامّ لينكس وفي Dock. وهو من صنف
+# updateUrl الموروث: البناءُ ينجح والمستخدمُ يرى مشروعًا آخر.
+if [[ -f "$BRAND_SRC/mihrab-mark-color-256.png" ]]; then
+  cp -f "$BRAND_SRC/mihrab-mark-color-256.png" "$BRAND_STAGE/code.png"
+  python "$ROOT/build/gen_icns.py" "$BRAND_SRC/mihrab-mark-color-256.png" \
+         "$BRAND_STAGE/code.icns" >/dev/null \
+    || { echo "❌ فشل توليد code.icns" >&2; exit 1; }
+fi
 # شعار رأس التطبيق (code-icon.svg) + خلفية المحرّر الفارغ (letterpress-*.svg) — أصول SVG
 # تُحقَن فوق مصدر vscode في كتلة INJECT، فيظهر شعار القوس في شريط العنوان والخلفية أيضًا.
 [[ -f "$BRAND_SRC/mihrab-appicon.svg" ]] && cp -f "$BRAND_SRC/mihrab-appicon.svg" "$BRAND_STAGE/code-icon.svg"
@@ -308,7 +412,7 @@ fi
 
 # ── (ز-3) نظّف مجلّد المخرَج السابق مبكّرًا: لو كان مقفولًا (نسخة محراب قيد التشغيل)
 #         يفشل تنظيف gulp بـEBUSY بعد ~20 د. نُجهض الآن برسالة واضحة بدل إهدار الوقت. ──
-OUTDIR="$UP/VSCode-win32-x64"
+OUTDIR="$UP/$OUT_NAME"
 if [[ -d "$OUTDIR" ]]; then
   rm -rf "$OUTDIR" 2>/dev/null || true
   if [[ -d "$OUTDIR" ]]; then
@@ -330,7 +434,15 @@ bash dev/build.sh "${BUILD_ARGS[@]:-}"
 # ── (ط-0) خبز الواجهة العربيّة في nls.messages.json الافتراضيّ (مساهمة بناء — الطبقة 2) ──
 # خطوة بعد-بناء سريعة على الـartifacts (لا إعادة gulp). تجعل العربيّة الافتراضيّ الحرفيّ
 # للنواة ⇒ أوّل فتح عربيّ بلا إعادة تحميل ولا اعتماد على مسح حزمة لغة. idempotent.
-APP_DIR="$UP/VSCode-win32-x64/resources/app"
+# macOS: حلُّ حزمة `.app` الآن بعد أن صارت موجودة (اسمُها عربيٌّ مشتقٌّ من nameLong).
+if [[ "$OS_NAME" == "osx" ]]; then
+  MAC_APP="$(find "$OUTDIR" -maxdepth 1 -name '*.app' -print -quit)"
+  [[ -n "$MAC_APP" ]] || { echo "❌ لا حزمةَ .app في $OUTDIR" >&2; exit 1; }
+  APP_REL="$(basename "$MAC_APP")/Contents/Resources/app"
+  LAUNCH_REL="$(basename "$MAC_APP")/Contents/Info.plist"
+  log "حزمةُ macOS: $(basename "$MAC_APP")"
+fi
+APP_DIR="$OUTDIR/$APP_REL"
 
 # ── (ط-0ز) إعادةُ فرض هويّة محراب على product.json **المشحون** ──
 # ⚠️ قِيست: خطوةُ (ز-2) تدمج تجاوزاتنا فوق `$UP/product.json`، لكنّ prepare_vscode.sh
@@ -373,12 +485,38 @@ else
   log "تخطّي الخبز: لا nls.messages.json في $APP_DIR (بناء غير مكتمل؟)"
 fi
 
-# ── (ط) تحقّق المخرَج (اسم الـexe = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
-EXE="$UP/VSCode-win32-x64/Mihrab.exe"
-if [[ -f "$EXE" ]]; then
-  echo "✅ البناء نجح: $EXE"
-  "$UP/VSCode-win32-x64/bin/mihrab.cmd" --version 2>/dev/null | head -3 || true
-else
-  echo "❌ لم يُنتَج Mihrab.exe — راجع السجلّ أعلاه." >&2
+# ── (ط) تحقّق المخرَج (اسم المشغِّل = nameShort = Mihrab؛ CLI = applicationName = mihrab) ──
+LAUNCHER="$OUTDIR/$LAUNCH_REL"
+if [[ ! -f "$LAUNCHER" ]]; then
+  echo "❌ لم يُنتَج مشغِّلُ محراب ($LAUNCH_REL) في $OUTDIR — راجع السجلّ أعلاه." >&2
   exit 1
+fi
+echo "✅ البناء نجح: $LAUNCHER"
+
+# ── (ي) تحقّقٌ بعد البناء: أنّ ما بُني **محرابٌ** لا VSCodium بأيقونةٍ أخرى ──
+# البناءُ الناجح ليس دليلَ صحّة: الهويّةُ قد تنجو في `$UP/product.json` وتسقط في
+# المشحون (وقد سقطت فعلًا — انظر ط-0ز)، والتعريبُ قد يُخبَز في ملفٍّ لا يُقرأ.
+# فحصٌ رخيصٌ على المخرَج هنا يمسك ذلك قبل أن يصل إلى مستخدم.
+if [[ -f "$APP_DIR/product.json" ]]; then
+  _nameLong="$("$JQ_BIN" -r '.nameLong // ""' "$APP_DIR/product.json")"
+  _locale="$("$JQ_BIN" -r '.defaultLocale // ""' "$APP_DIR/product.json")"
+  _update="$("$JQ_BIN" -r '.updateUrl // "null"' "$APP_DIR/product.json")"
+  [[ "$_nameLong" == "محراب" ]] || { echo "❌ هويّةٌ مفقودة في المشحون: nameLong=$_nameLong" >&2; exit 1; }
+  [[ "$_locale"  == "ar"     ]] || { echo "❌ اللغةُ الافتراضيّة ليست العربيّة: $_locale" >&2; exit 1; }
+  # المُحدِّثُ معطَّلٌ عمدًا: تركُه مورَّثًا يستبدل محرابًا بـVSCodium صامتًا (عطبٌ أُبلغ عنه).
+  [[ "$_update"  == "null"   ]] || { echo "❌ updateUrl غيرُ معطَّل — سيستبدل محرابًا بالمنبع: $_update" >&2; exit 1; }
+  log "الهويّةُ في المشحون: nameLong=محراب · locale=ar · updateUrl=معطَّل"
+fi
+if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
+  # بايتا 0xD8/0xD9 بادئتا العربيّة في UTF-8. لا `grep -P` ولا محرفٌ عربيٌّ حرفيّ:
+  # الأوّلُ غائبٌ عن grep في macOS، والثاني رهنُ محارف السكربت ولغةِ البيئة معًا.
+  LC_ALL=C grep -q $'\xd8\|\xd9' "$APP_DIR/out/nls.messages.json" \
+    || { echo "❌ nls.messages.json بلا عربيّة — الخبزُ لم يصل إلى المخرَج." >&2; exit 1; }
+  log "التعريبُ مخبوزٌ في nls.messages.json"
+fi
+
+# ‏--version لا يعمل بلا شاشة على لينكس (Electron يحتاج X/Wayland)، ولا يُشغَّل من
+# داخل حزمة .app بهذه الصورة على macOS. فيُترك لويندوز، والتحقّقُ أعلاه يغني عنه.
+if [[ "$IS_WIN" == "yes" ]]; then
+  "$OUTDIR/bin/mihrab.cmd" --version 2>/dev/null | head -3 || true
 fi

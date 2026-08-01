@@ -52,6 +52,17 @@ INJECT = """
     cp -f ../.mihrab-branding/code_150x150.png resources/win32/code_150x150.png
     cp -f ../.mihrab-branding/code_70x70.png resources/win32/code_70x70.png
     echo "محراب: طُبِّقت أيقونة التطبيق وبلاطات ويندوز"
+    # أيقونتا لينكس وmacOS. **سقوط رشيق لا قاتل** (بخلاف أصول ويندوز أعلاه): تُولَّدان
+    # في build.sh من mihrab-mark-color-256.png، وشجرةُ منبعٍ قديمة قد تسبق وجودهما.
+    # وقاطعُ الغيابِ الحقيقيّ فحصُ ما بعد البناء لا هنا.
+    if [ -f ../.mihrab-branding/code.png ]; then
+      cp -f ../.mihrab-branding/code.png resources/linux/code.png
+      echo "محراب: طُبِّقت أيقونة لينكس"
+    fi
+    if [ -f ../.mihrab-branding/code.icns ]; then
+      cp -f ../.mihrab-branding/code.icns resources/darwin/code.icns
+      echo "محراب: طُبِّقت أيقونة macOS"
+    fi
     # شعار رأس التطبيق: .window-appicon في titlebarpart.css يشير إلى media/code-icon.svg.
     cp -f ../.mihrab-branding/code-icon.svg src/vs/workbench/browser/media/code-icon.svg
     # خلفية المحرّر الفارغ: .letterpress في editorgroupview.css يشير إلى letterpress-{dark,light,hcDark,hcLight}.svg.
