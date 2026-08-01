@@ -31,6 +31,8 @@ def all_target_files():
             files.update(M.editor_target_files(BUILD))
         else:
             files.update(targets)
+    # ملفّاتُ مرجعٍ لا ترقيع: تشتقّ منها فحوصٌ توقّعاتِها، فبلا نسخةٍ مُلتزَمةٍ تُعطَّل في CI.
+    files.update(getattr(M, "REFERENCE_FILES", []))
     return sorted(files)
 
 

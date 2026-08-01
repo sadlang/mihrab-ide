@@ -18,7 +18,28 @@
       "editor.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
       "terminal.integrated.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
       "[sad]": {
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.unicodeHighlight.allowedCharacters": {
+          "۔": true,
+          "؍": true,
+          "٫": true,
+          "٠": true,
+          "۰": true,
+          "٭": true,
+          "١": true,
+          "۱": true,
+          "ا": true,
+          "٥": true,
+          "۵": true,
+          "ه": true,
+          "ھ": true,
+          "ہ": true,
+          "ە": true,
+          "٧": true,
+          "۷": true,
+          "﴾": true,
+          "﴿": true
+        }
       }
     }
   },
