@@ -18,7 +18,11 @@
 #      الزائرَ في منتصف النقل أمام صفحةٍ بأصولٍ ناقصة.
 set -euo pipefail
 
-HOST="${MIHRAB_SITE_HOST:-PUBLISH_HOST}"
+# ⚠️ لا قيمةَ افتراضيّة للمضيف: المستودعُ عامّ، واسمُ مستخدمٍ ومنفذٌ غيرُ قياسيٍّ
+# مكتوبان في الشيفرة استطلاعٌ مجّانيٌّ لمن يقرأ. ليسا سرًّا، لكنّ نشرَهما لا يفيد
+# أحدًا إلّا من يبحث عن بابٍ يطرقه. الناشرُ يعرف مضيفَه فليمرّره:
+#   MIHRAB_SITE_HOST=user@host bash build/deploy_site.sh
+HOST="${MIHRAB_SITE_HOST:?عيّن MIHRAB_SITE_HOST (مثال: user@host)}"
 PORT="${MIHRAB_SITE_PORT:-22}"
 ROOT="${MIHRAB_SITE_ROOT:-/opt/sad-website}"
 SUB="${MIHRAB_SITE_SUBDIR:-mihrab}"

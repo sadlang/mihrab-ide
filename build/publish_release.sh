@@ -14,7 +14,8 @@
 # `dl/releases.json` ذرّيًّا. الصفحةُ تلتقط الجديدَ في أوّل تحميلٍ بلا إعادةِ بناء.
 set -euo pipefail
 
-HOST="${MIHRAB_SITE_HOST:-PUBLISH_HOST}"
+# ⚠️ لا مضيفَ افتراضيًّا في مستودعٍ عامّ — انظر التعليل في deploy_site.sh.
+HOST="${MIHRAB_SITE_HOST:?عيّن MIHRAB_SITE_HOST (مثال: user@host)}"
 PORT="${MIHRAB_SITE_PORT:-22}"
 DL="${MIHRAB_SITE_ROOT:-/opt/sad-website}/${MIHRAB_SITE_SUBDIR:-mihrab}/dl"
 ORIGIN="${MIHRAB_SITE_ORIGIN:-https://sad-lang.org/mihrab/}"
