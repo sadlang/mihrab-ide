@@ -74,7 +74,7 @@ def _pristine_source(relpath):
 
 def _targets_for(name, mode):
     if mode == "root":
-        return M.editor_target_files(BUILD)
+        return M.root_target_files(BUILD, name)
     for pname, _m, targets in M.PATCHERS:
         if pname == name:
             return targets

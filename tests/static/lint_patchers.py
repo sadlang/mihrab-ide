@@ -345,6 +345,37 @@ def _docs_urls_resolve_to_pages():
             f"{k} يشير إلى /{rest}/ ولا ملفَّ site/content/{rest}.md — رابطٌ ميّت في القائمة.")
 
 
+@check("مجلّد الإعدادات: الرقعة موصولة فعلًا (نسخٌ + استدعاء + وحدتا TS)")
+def _config_folder_patch_wired():
+    """
+    ثغرةٌ صامتة بامتياز: الرقعةُ نفسُها قد تكون سليمةً تمامًا — تجتاز L1 بستّةَ عشرَ
+    ملفًّا وidempotent — ثمّ **لا تعمل أبدًا** لأنّ سطرَ استدعائها ناقصٌ من كتلة الحقن.
+    حينئذٍ يبقى كلُّ شيءٍ أخضر ويظلّ البناءُ المشحون على `.vscode`، ولا شيءَ يشتكي.
+
+    وشرطٌ ثانٍ: وحدتا TS الجديدتان تُنسَخان إلى شجرة المنبع. لو غابتا لفشل البناءُ
+    بصوتٍ عالٍ (استيرادٌ لملفٍّ غير موجود) — وهذا مقبول؛ لكنّ الفحصَ هنا أرخصُ من
+    اكتشافه بعد أربعين دقيقةَ بناء.
+    """
+    patcher = os.path.join(BUILD, "patch_config_folder.py")
+    if not os.path.isfile(patcher):
+        return  # لا رقعة في هذا الفرع — تخطٍّ
+    core = os.path.join(ROOT, "patches", "core")
+    for name in ("mihrabConfigFolder.ts", "mihrabConfigFolderResolve.ts"):
+        assert os.path.isfile(os.path.join(core, name)), (
+            f"patches/core/{name} مفقود — الرقعة تستورده ولا تنسخه.")
+
+    build_sh = _read(os.path.join(BUILD, "build.sh"))
+    assert "patch_config_folder.py" in build_sh, (
+        "build.sh لا ينسخ patch_config_folder.py إلى شجرة المنبع.")
+    assert "$ROOT/patches/core" in build_sh, (
+        "build.sh لا ينسخ patches/core (وحدتا TS) — استيرادٌ لملفٍّ غير موجود.")
+
+    bundle = _read(os.path.join(BUILD, "patch_bundle_extensions.py"))
+    assert ".mihrab-patch-config-folder.py ." in bundle, (
+        "كتلة الحقن لا **تستدعي** رقعة مجلّد الإعدادات — نسخٌ بلا تشغيل: كلّ الفحوص "
+        "خضراء والبناء المشحون يبقى على .vscode.")
+
+
 @check("موقع التوثيق: مصطلحاتُ الترجمة من المسرد (لا انفصال عن الواجهة)")
 def _docs_glossary_respected():
     """

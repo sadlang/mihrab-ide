@@ -37,7 +37,18 @@ PATCHERS = [
      ["src/vs/workbench/electron-browser/desktop.contribution.ts"]),
     # جذر: يشتقّ ملفّاته الثمانية من FILES (تُستخرَج ديناميكيًّا في L1).
     ("patch_editor_rtl.py", "root", None),
+    # جذر: مجلّد إعدادات المشروع `.محراب` بتوافقٍ خلفيّ. ستّةَ عشرَ ملفًّا لأنّ المنبع
+    # يكتب '.vscode' حرفيًّا خارج ثابته — تبديلُ الثابت وحده يجعل المحرّر يقرأ من
+    # مكانٍ ويكتب في آخر بلا خطأٍ ولا سجلّ. يُضيف كذلك وحدتَي TS من patches/core/.
+    ("patch_config_folder.py", "root", None),
 ]
+
+# رُقَع «الجذر» تشتقّ ملفّاتها من قائمة FILES داخلها. لا تُسرَد هنا يدويًّا: نسخةٌ
+# يدويّة تتباعد عن الحقيقة صامتةً، فيمرّ فحصُ المراسي على ملفٍّ لم يعد مقصودًا.
+ROOT_PATCHER_FILES_ATTR = {
+    "patch_editor_rtl.py": "FILES",
+    "patch_config_folder.py": "FILES",
+}
 
 # مرقِّعات بناء لا تُطبَّق على مصدر vscode مباشرةً (تُستثنى من فحص المراسي L1، لكنّها
 # تخضع لفحص الصياغة في L0):
@@ -84,16 +95,23 @@ BRANDING_SESSIONS_ASSETS = [
 ]
 
 
-def editor_target_files(build_dir):
-    """يستورد patch_editor_rtl.FILES ويعيد قائمة الملفّات النسبيّة التي يمسّها.
+def root_target_files(build_dir, patcher):
+    """يستورد مرقِّعَ جذرٍ ويعيد قائمة الملفّات النسبيّة التي يمسّها (من FILES).
 
     build_dir: مسار مجلّد build/ (حيث المرقِّع). يعيد قائمة relpaths (بأسلوب src/vs/...).
     """
     import importlib.util
     import os
 
-    path = os.path.join(build_dir, "patch_editor_rtl.py")
-    spec = importlib.util.spec_from_file_location("_mihrab_patch_editor", path)
+    attr = ROOT_PATCHER_FILES_ATTR.get(patcher, "FILES")
+    path = os.path.join(build_dir, patcher)
+    spec = importlib.util.spec_from_file_location(
+        "_mihrab_" + patcher.replace(".", "_"), path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return [relpath for (relpath, _mark, _edits) in mod.FILES]
+    return [relpath for (relpath, _mark, _edits) in getattr(mod, attr)]
+
+
+def editor_target_files(build_dir):
+    """توافقٌ خلفيّ: نداءٌ باسم المحرّر تحديدًا."""
+    return root_target_files(build_dir, "patch_editor_rtl.py")

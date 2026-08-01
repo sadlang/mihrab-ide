@@ -144,6 +144,13 @@ INJECT = """
   # فلا تبلغه configurationDefaults من إضافة — قِسناه).
   if [ -f ../.mihrab-patch-dialog-style.py ]; then
     python ../.mihrab-patch-dialog-style.py src/vs/workbench/electron-browser/desktop.contribution.ts || { echo "محراب: فشلت رُقعة نمط الحوار" >&2; exit 1; }
+  fi
+
+  # مجلّد إعدادات المشروع: `.محراب` يُكتَب، و`.mihrab` و`.vscode` يُقرآن ويُدمجان تحته.
+  # الرقعةُ تشمل ستّةَ عشرَ ملفًّا لأنّ المنبع يكتب '.vscode' حرفيًّا خارج ثابته: لو
+  # بُدّل الثابتُ وحده لقرأ محراب من مكانٍ وكتب في آخر — بلا خطأ ولا سجلّ.
+  if [ -f ../.mihrab-patch-config-folder.py ]; then
+    python ../.mihrab-patch-config-folder.py . || { echo "محراب: فشلت رُقعة مجلّد الإعدادات" >&2; exit 1; }
   fi"""
 
 
