@@ -194,6 +194,15 @@ if [[ -f "$BCL" ]] && grep -qE '^mkdir openssl$' "$BCL"; then
   sed 's/^mkdir openssl$/mkdir -p openssl/' "$BCL" > "$BCL.tmp" && mv -f "$BCL.tmp" "$BCL"
 fi
 
+# ── (و-3) اسمُ حزمة macOS: المنبع يشتقّه من nameShort، ومغلِّفُ vscode من nameLong ──
+# متطابقان في VSCodium («VSCodium») فلا يظهر الفرق. وعندنا nameShort لاتينيّ
+# (Mihrab — منه اسمُ التنفيذيّ) وnameLong عربيّ (محراب)، فيُبنى «محراب.app»
+# ويُبحَث عن «Mihrab.app». يفشل بعد ست عشرة دقيقة، في آخر خطوة، على macOS وحدها.
+if [[ -f "$UP/build_cli.sh" ]]; then
+  python "$ROOT/build/patch_cli_macapp.py" "$UP/build_cli.sh" "$UP/prepare_assets.sh" \
+    || { echo "❌ فشل ترقيع مسار حزمة macOS." >&2; exit 1; }
+fi
+
 # ── (ز) بيئة البناء + كشف Visual Studio و Python تلقائيًّا ──
 VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
 if [[ "$IS_WIN" == "yes" && -x "$VSWHERE" ]]; then

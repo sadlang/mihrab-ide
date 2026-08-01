@@ -26,7 +26,11 @@ on:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  # ⚠️ لا إلغاءَ على main. جرّبتُ الإلغاءَ فألغى دفعُ لقطةِ شاشةٍ بناءً على المنصّات
+  # الثلاث كان قد بلغ منتصفَه — ولا شيءَ في اللقطة يمسّ البناء. ودفعتان متقاربتان
+  # على main أمرٌ عاديّ، فيصير الحارسُ الذي لا يُكمِل حارسًا لا يحرس.
+  # وعلى فروع المراجعة الإلغاءُ صواب: آخرُ دفعةٍ وحدها هي المعنيّة.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
