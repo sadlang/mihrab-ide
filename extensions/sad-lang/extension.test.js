@@ -327,3 +327,91 @@ test("serverLegendMatches: مطابقة الترتيب ⇒ true، اختلاف �
   assert.equal(ext.serverLegendMatches(null), false);
   assert.equal(ext.serverLegendMatches({ semanticTokensProvider: {} }), false);
 });
+
+
+// ── حارسُ اتّساق مديات الرموز الدلاليّة [SAD-07] ──
+// الأرقامُ أدناه **مقيسةٌ من خادمٍ حقيقيّ** لا مؤلَّفة: خادم ص المثبَّت (‏sad-lsp.exe
+// بتاريخ ١٢ آذار ٢٠٢٦، أقدمُ من إصلاح UTF-16 في مصدر اللغة) ردّ على السطر
+// «متغير نصاب_الفضة = ٥٩٥» بأطوالٍ ١٠ و١٩ — أي بالبايتات (‏«متغير» ٥ محارف = ١٠
+// بايتات، و«نصاب_الفضة» ١٠ محارف = ١٩ بايتًا). ونسخةُ dev المبنيّة ردّت ٥ و١٠.
+// والأثرُ ليس تلوينًا خاطئًا فحسب بل **كسرُ وصل الحروف العربيّة**: حدُّ الرمز يصير
+// حدَّ عنصرٍ في DOM، والتشكيلُ لا يعبره.
+
+/** طولُ سطرٍ من مصفوفة سطور (توقيع الحارس: دالّةٌ لا نسخةُ نصّ). */
+const lens = (lines) => (n) => (n >= 0 && n < lines.length ? lines[n].length : undefined);
+
+test("semanticRangesAreSane: أطوالٌ بوحدات UTF-16 (نسخة dev المقيسة) ⇒ تُقبل", () => {
+  const lines = ["متغير نصاب_الفضة = ٥٩٥"];
+  //            Δسطر Δعمود طول نوع معدّلات
+  const data = [0, 0, 5, 15, 0, 0, 6, 10, 8, 0, 0, 11, 1, 21, 0];
+  assert.equal(ext.semanticRangesAreSane(data, lens(lines)), true);
+});
+
+test("semanticRangesAreSane: أطوالٌ بالبايتات (العطب المقيس) ⇒ تُرفض", () => {
+  const lines = ["متغير نصاب_الفضة = ٥٩٥"];
+  assert.equal(ext.semanticRangesAreSane([0, 0, 10, 15, 0, 0, 6, 19, 8, 0], lens(lines)), false);
+});
+
+test("semanticRangesAreSane: تداخلٌ مع الرمز السابق ⇒ يُرفض", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, 4, 8, 0, 0, 2, 2, 8, 0], lens(["ابجد هوز"])), false);
+});
+
+test("semanticRangesAreSane: سطرٌ خارج المستند ⇒ يُرفض", () => {
+  assert.equal(ext.semanticRangesAreSane([5, 0, 1, 8, 0], lens(["سطر"])), false);
+});
+
+test("semanticRangesAreSane: سطرٌ جديد يُصفّر عدّاد التداخل", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, 4, 8, 0, 1, 0, 3, 8, 0], lens(["ابجد", "هوز"])), true);
+});
+
+test("semanticRangesAreSane: بلا رموز ⇒ مقبول (لا شيء يُشوَّه)", () => {
+  assert.equal(ext.semanticRangesAreSane([], lens(["ابجد"])), true);
+});
+
+test("semanticRangesAreSane: خماسيّةٌ ناقصة ⇒ تُرفض (‏Uint32Array مشوَّه)", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, 4, 8], lens(["ابجد"])), false);
+});
+
+test("semanticRangesAreSane: طولٌ سالب ⇒ يُرفض (كان يمرّ ويُبطل كشف التداخل)", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, -4, 8, 0], lens(["ابجد"])), false);
+});
+
+test("semanticRangesAreSane: عددٌ كسريّ أو Δسطر سالب ⇒ يُرفض", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, 1.5, 8, 0], lens(["ابجد"])), false);
+  assert.equal(ext.semanticRangesAreSane([-1, 0, 1, 8, 0], lens(["ابجد"])), false);
+});
+
+test("semanticRangesAreSane: رمزٌ بطول صفرٍ مقبول (لا يشوّه شيئًا)", () => {
+  assert.equal(ext.semanticRangesAreSane([0, 0, 0, 8, 0], lens(["ابجد"])), true);
+});
+
+test("semanticRangesAreSane: أزواجٌ بديلة — الطول بوحدات UTF-16 كما يوجب البروتوكول", () => {
+  // «😀س» = ٣ وحدات UTF-16. رمزٌ يغطّيها كلَّها مقبول، وواحدٌ يتجاوزها مرفوض.
+  assert.equal(ext.semanticRangesAreSane([0, 0, 3, 8, 0], lens(["😀س"])), true);
+  assert.equal(ext.semanticRangesAreSane([0, 0, 4, 8, 0], lens(["😀س"])), false);
+});
+
+test("createSemanticGuard: مزلاجُ جلسة — يُبلّغ مرّةً ويُطفئ حتّى إعادة التشغيل", () => {
+  const logs = [];
+  const warns = [];
+  const g = ext.createSemanticGuard((m) => logs.push(m), (m) => warns.push(m));
+  // البيانات المقيسة نفسُها: «متغير»=١٠ و«نصاب_الفضة»=١٩ بالبايتات ⇒ ٦+١٩ يتجاوز ٢٢.
+  // ‏(ولاحِظ: رمزٌ واحدٌ بطول ١٠ على سطرٍ طولُه ١٠ **يمرّ** — الكشفُ عَرَضيٌّ بطبعه،
+  // وهو سببُ المزلاج: قرارٌ واحدٌ للجلسة بدل قرارٍ يومض مع كلّ سطر.)
+  const bad = [0, 0, 10, 15, 0, 0, 6, 19, 8, 0];
+  const good = [0, 0, 5, 15, 0, 0, 6, 10, 8, 0];
+  const L = lens(["متغير نصاب_الفضة = ٥٩٥"]);
+
+  assert.equal(g.accept(good, L), true, "السليم يُقبل قبل الرفض");
+  assert.equal(g.disabled, false);
+  assert.equal(g.accept(bad, L), false, "المعطوب يُرفض");
+  assert.equal(g.disabled, true, "المزلاج أُغلِق");
+  // لا وميض: بعد الإغلاق يُرفض حتّى السليم — الوميضُ أسوأ من فقدٍ ثابتٍ معلَن.
+  assert.equal(g.accept(good, L), false, "لا عودةَ للتلوين في الجلسة نفسها");
+  assert.equal(logs.length, 1, "سطرُ قناةٍ واحدٌ لا سطرٌ لكلّ ضغطة مفتاح");
+  assert.equal(warns.length, 1, "إشعارٌ واحدٌ لكلّ جلسة");
+
+  g.reset();
+  assert.equal(g.disabled, false, "إعادةُ تشغيل الخادم تفتح الباب (قد تكون النسخة تغيّرت)");
+  assert.equal(g.accept(good, L), true);
+});

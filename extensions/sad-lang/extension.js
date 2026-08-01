@@ -46,6 +46,14 @@ const REQUEST_TIMEOUT_MS = 5000;
 /** نصوص واجهة (عربيّة-أوّلًا = بيانات واجهة، استثناء مقبول لقاعدة السلاسل الحرفيّة). */
 const COPY = {
   restarted: "أُعيد تشغيل خادم ص اللغويّ.",
+  // تقول ما يراه المستخدم وما يفعله، لا مصطلحَ البروتوكول: «مديات غير متّسقة» لا تعني
+  // له شيئًا، و«يكسر شكل الكلمات العربيّة» هو ما رآه على الشاشة فعلًا.
+  semanticGuardWarn:
+    "خادمُ ص لديك قديم: يرسل أطوالًا خاطئةً تكسر شكلَ الكلمات العربيّة وتلوينَها. " +
+    "أوقفتُ التلوين الدلاليّ حمايةً للنصّ (الإبراز الساكن يعمل). حدِّث خادم ص.",
+  semanticGuardLog:
+    "[تلوين دلاليّ] مديات الرموز غير متّسقة مع النصّ (الأرجح: أطوالٌ بالبايتات بدل " +
+    "وحدات UTF-16 — نسخةُ خادمٍ قديمة). أُوقف التلوين الدلاليّ لهذه الجلسة.",
 };
 
 /** محدِّد مستندات ص (للمزوّدات ومزامنة المستند). */
@@ -176,6 +184,88 @@ function toSemanticTokens(result) {
 }
 
 /**
+ * هل مديات الرموز الدلاليّة **متّسقة** مع نصّ المستند؟ [SAD-07، حارس مقيس]
+ *
+ * البروتوكول يوجب أن يكون `length` بوحدات UTF-16 (تفاوضنا عليه صراحةً). وخادمٌ يرسله
+ * **بالبايتات** يضاعف طولَ كلّ رمزٍ عربيّ تقريبًا (حرفٌ عربيٌّ = بايتان) — وقِسنا هذا
+ * على خادمٍ حقيقيّ: «متغير» خمسةُ محارف ورد طولُها ١٠، و«نصاب_الفضة» عشرةٌ ورد ١٩.
+ *
+ * والعطبُ الناتج **مضاعَف**، وهو سببُ وجود هذا الحارس:
+ *   ‏(١) تلوينٌ خاطئ: المدى يبتلع ما بعده فيُلوَّن نصفُ الكلمة بلونٍ ونصفُها بآخر.
+ *   ‏(٢) **كسرُ الوصل العربيّ**: المحرّر يرسم كلَّ رمزٍ في عنصرٍ مستقلّ، والتشكيلُ لا
+ *       يعبر حدَّ العنصر. فحدٌّ يقع داخلَ كلمةٍ يُظهر ةً منفصلةً وصادًا وعينًا معزولتين.
+ *       أي أنّ خطأً حسابيًّا في الخادم يُخرج **نصًّا عربيًّا مكسورَ الشكل**.
+ *
+ * فنمتنع عن التلوين الدلاليّ كلَّه ونترك TextMate — على نهج `serverLegendMatches`
+ * نفسِه: الامتناعُ أصدقُ من تلوينٍ مضلِّل. ولا نحاول التصحيح تخمينًا (بايتات أم محارف؟)
+ * لأنّ التخمين يُنتج حدودًا أخرى خاطئة بصمت.
+ *
+ * @param {number[]} data خماسيّات LSP النسبيّة [Δسطر، Δعمود، طول، نوع، معدّلات]
+ * @param {string[]} lines أسطر المستند
+ * @returns {boolean} true إن كان كلُّ رمزٍ داخلَ سطره ولا يتداخل مع تاليه
+ */
+function semanticRangesAreSane(data, lineLength) {
+  if (data.length % 5 !== 0) return false;   // خماسيّةٌ ناقصة = بياناتٌ مخالفةٌ للبروتوكول
+  let line = 0;
+  let char = 0;
+  let prevEnd = -1;
+  for (let i = 0; i < data.length; i += 5) {
+    const deltaLine = data[i];
+    const deltaChar = data[i + 1];
+    const length = data[i + 2];
+    // أعدادٌ صحيحةٌ غير سالبة: الترميز النسبيّ لا معنى فيه لسالبٍ ولا لكسر، وطولٌ سالب
+    // كان يمرّ الفحصَين أدناه صامتًا ويُقهقر `prevEnd` فيُبطِل كشفَ التداخل.
+    if (!Number.isInteger(deltaLine) || deltaLine < 0) return false;
+    if (!Number.isInteger(deltaChar) || deltaChar < 0) return false;
+    if (!Number.isInteger(length) || length < 0) return false;
+    if (deltaLine > 0) { prevEnd = -1; }
+    line += deltaLine;
+    char = deltaLine === 0 ? char + deltaChar : deltaChar;
+    const len = lineLength(line);
+    if (len === undefined) return false;      // سطرٌ خارج المستند
+    if (char + length > len) return false;    // مدًى يتجاوز طول السطر
+    if (char < prevEnd) return false;         // تداخلٌ مع الرمز السابق
+    prevEnd = char + length;
+  }
+  return true;
+}
+
+/**
+ * حارسُ جلسةٍ للتلوين الدلاليّ: **قرارٌ واحدٌ لكلّ جلسةِ خادم** لا قرارٌ لكلّ استجابة.
+ *
+ * لماذا مزلاجٌ لا فحصٌ متكرّر — رصدته المراجعتان معًا:
+ *   ‏(١) الكشفُ عَرَضيّ بطبعه: الأطوالُ الخاطئة لا تُكشَف إلّا حين تتجاوز طولَ السطر أو
+ *       تتداخل. فسطرٌ فيه فراغٌ كافٍ («متغير س = ١») يمرّ سليمًا وسطرٌ آخرُ يُرفَض ⇒ لو
+ *       قرّرنا لكلّ استجابةٍ **لومض** الملفّ بين ملوَّنٍ وغيرِ ملوَّنٍ مع كلّ ضغطة مفتاح.
+ *       والوميضُ أسوأ على العين من فقدٍ ثابتٍ معلَن.
+ *   ‏(٢) الخادمُ لا يتغيّر أثناء الجلسة: العطبُ خاصّيّةُ نسخته لا خاصّيّةُ السطر.
+ *
+ * ويُبلَّغ المستخدم **مرّةً واحدة**: العلّةُ خارج قدرته على التخمين، والدواءُ محدّد.
+ *
+ * @param {(msg: string) => void} log كتابةٌ في قناة الإخراج
+ * @param {(msg: string) => void} warn إشعارٌ مرئيّ (مرّةً واحدةً لكلّ جلسة)
+ */
+function createSemanticGuard(log, warn) {
+  let disabled = false;
+  return {
+    get disabled() { return disabled; },
+    /** يُصفَّر عند إعادة تشغيل الخادم: النسخة قد تكون تغيّرت. */
+    reset() { disabled = false; },
+    /**
+     * @returns {boolean} هل نثق بهذه الاستجابة؟
+     */
+    accept(data, lineLength) {
+      if (disabled) return false;
+      if (semanticRangesAreSane(data, lineLength)) return true;
+      disabled = true;
+      log(COPY.semanticGuardLog);
+      warn(COPY.semanticGuardWarn);
+      return false;
+    },
+  };
+}
+
+/**
  * هل يطابق مفتاح الرموز الدلاليّة (legend) الذي يعلنه الخادم مفتاحَنا الثابت **ترتيبًا**؟ فهارس
  * البيانات تشير إلى المفتاح، فأيّ تباعد ترتيب ⇒ تلوين خاطئ. عند عدم التطابق نمتنع عن التلوين
  * الدلاليّ (نتركه لإبراز TextMate) بدل تلوين مضلِّل. [SAD-07، خطر مراجعة]
@@ -262,6 +352,13 @@ function activate(context) {
 
   // هل تشخيصات LSP الحيّة مفعَّلة؟ (الافتراضيّ نعم). عند الإطفاء يتنحّى الخادم عن التشخيص فيعود
   // جسر فحص-الحفظ (SAD-02) مالكًا — فلا ازدواج ولا فراغ.
+  // حارسُ التلوين الدلاليّ: مزلاجٌ لجلسة الخادم (انظر createSemanticGuard). الإشعارُ
+  // مرّةً واحدة، والسطرُ في القناة دائمًا لا خلفَ راية تتبُّعٍ لا يفعّلها أحدٌ قبل العطب.
+  const semanticGuard = createSemanticGuard(
+    (msg) => output.appendLine(msg),
+    (msg) => vscode.window.showWarningMessage(msg),
+  );
+
   const diagnosticsEnabled = () =>
     vscode.workspace.getConfiguration(CFG_SECTION).get(DIAGNOSTICS_KEY) !== false;
 
@@ -396,15 +493,29 @@ function activate(context) {
         // يُخبِر VS Code أنّ التلوين قد تغيّر (عند جاهزيّة الخادم) فتُعيد طلبه. [SAD-07، S1]
         onDidChangeSemanticTokens: semanticTokensChanged.event,
         async provideDocumentSemanticTokens(doc, token) {
-          if (!hasCap("semanticTokensProvider") || !serverLegendMatches(proc.serverCapabilities)) {
+          if (!hasCap("semanticTokensProvider") || !serverLegendMatches(proc.serverCapabilities)
+            || semanticGuard.disabled) {
             return undefined;
           }
+          // نسخةُ المستند قبل الطلب: الرموزُ تُحسَب على النصّ وقتَ الطلب، فإن حُرِّر
+          // المستند قبل وصول الردّ صارت المقارنةُ بلا معنًى — وقد تُخرِج «تجاوزَ طول
+          // سطر» لمستندٍ سليمٍ تمامًا. لا نحكم عندئذٍ ولا نُغلِق المزلاج.
+          const version = doc.version;
           try {
             const result = await proc.requestWithTimeout(
               M_SEMANTIC_TOKENS_FULL, { textDocument: { uri: doc.uri.toString() } },
               REQUEST_TIMEOUT_MS,
             );
             if (token.isCancellationRequested) return undefined;
+            if (doc.version !== version) return undefined;
+            // حارسُ الاتّساق: خادمٌ يرسل الأطوالَ بالبايتات يكسر التلوين **ووصلَ الحروف
+            // العربيّة** معًا (انظر createSemanticGuard). الامتناعُ أصدقُ من التشويه.
+            // طولُ السطر عبر lineAt لا بنسخِ المستند كلِّه: يُنادى مع كلّ تحرير.
+            const lineLength = (n) =>
+              (n >= 0 && n < doc.lineCount) ? doc.lineAt(n).text.length : undefined;
+            if (Array.isArray(result?.data) && !semanticGuard.accept(result.data, lineLength)) {
+              return undefined;
+            }
             return toSemanticTokens(result);
           } catch {
             return undefined;
@@ -418,6 +529,8 @@ function activate(context) {
   // أمر إعادة تشغيل الخادم.
   context.subscriptions.push(
     vscode.commands.registerCommand(RESTART_COMMAND, async () => {
+      // نسخةُ الخادم قد تكون تغيّرت ⇒ يُعاد فتحُ باب التلوين الدلاليّ.
+      semanticGuard.reset();
       await proc.restart();
       vscode.window.showInformationMessage(COPY.restarted);
     }),
@@ -451,6 +564,8 @@ module.exports = {
   toCompletionItems,
   toSemanticTokens,
   serverLegendMatches,
+  semanticRangesAreSane,
+  createSemanticGuard,
   DocumentSync,
   SAD_LANGUAGE_ID,
   RESTART_COMMAND,
