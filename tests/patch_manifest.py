@@ -26,6 +26,9 @@ PATCHERS = [
      ["src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts"]),
     ("patch_welcome_rtl.py", "file",
      ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts"]),
+    # إسقاط جولات المنبع التعريفيّة كي تتصدّر جولة محراب صفحةَ الترحيب.
+    ("patch_walkthroughs_drop.py", "file",
+     ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts"]),
     # تصريح <html lang> من product.defaultLocale (يُفعّل :lang(ar) ويُصلح نطق قارئات الشاشة).
     ("patch_html_lang.py", "file",
      ["src/vs/code/electron-browser/workbench/workbench.ts"]),

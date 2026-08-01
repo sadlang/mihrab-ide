@@ -1,0 +1,372 @@
+/* ════════════════════════════════════════════════════════════════════════
+   محراب — توثيق عربيّ. تصميم: سالي (تجربة المستخدم).
+   اللوحةُ مشتقّة من سِمتَي المحرّر — الموقعُ امتدادُ المحرّر لا كيانٌ منفصل.
+
+   ⚠️ الترتيبُ مقصود: قواعدُ العزل (§bidi) تسبق كلَّ شيء لأنّ كلَّ شيءٍ يعتمد عليها.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── الخطّ ──
+   الاختيار: IBM Plex Sans Arabic (رخصة SIL OFL). سببٌ واحد يرجّحه: هو الخطُّ العربيّ
+   الحرُّ الوحيد الذي له شقيقٌ لاتينيٌّ أحاديُّ العرض من العائلة نفسها (IBM Plex Mono)،
+   فتتجانس كتلُ الكود مع النثر بدل أن تبدوَ لصيقةً غريبة.
+   ورُفض Cairo (ارتفاعٌ سينيٌّ مرتفع يُتعب في النصوص الطويلة) وAmiri (لا يُقرأ على
+   الشاشة عند ١٦px).
+
+   ⚠️ ‏@font-face **ليس هنا** عمدًا: يُولَّد في `fonts.css` وحده حين تكون ملفّاتُ
+   ‏woff2 موجودةً فعلًا في `assets/fonts/` (انظر build.py). ‏@font-face يشير إلى ملفٍّ
+   غائب لا يفشل بصوت — بل يُطلق طلبَ 404 في كلّ فتحةِ صفحة ثمّ يسقط صامتًا إلى خطٍّ
+   آخر، فيبدو الموقعُ سليمًا وهو يعرض خطًّا لم نصمّم عليه. فالسقوطُ إلى Noto Sans
+   Arabic يبقى صريحًا في السلسلة أدناه إلى أن تُورَّد الخطوط. ── */
+
+/* ════════ الرموز ════════ */
+:root {
+	--font-ar: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", system-ui, sans-serif;
+	--font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+
+	/* الداكن هو الافتراضيّ: القارئ آتٍ من محرّرٍ داكن، ووميضُ شاشةٍ بيضاء
+	   عند فتح التوثيق خيانةٌ للسياق. */
+	--bg: #0F1C24;
+	--bg-alt: #12212B;
+	--surface: #182A34;
+	--border: #263A42;
+	--text: #D4DEDF;
+	--text-dim: #8CA0A6;
+	--gold: #E3BE68;
+	--accent: #31A796;
+	--accent-hover: #4CC4B2;
+	--warn: #C0563B;
+
+	--s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+	--s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+	--nav-w: 250px;
+	--toc-w: 210px;
+	color-scheme: dark;
+}
+
+/* الوضع الفاتح. الذهبُ يُخفَّض إلى #C79A3E — ‏#E3BE68 يسقط تحت 3:1 على خلفيّةٍ فاتحة. */
+@media (prefers-color-scheme: light) {
+	:root {
+		--bg: #F5F0E4; --bg-alt: #EFE8D8; --surface: #EAE3D1; --border: #DAD0BC;
+		--text: #2C3B40; --text-dim: #6E6553; --gold: #C79A3E;
+		--accent: #0F7C6E; --accent-hover: #0B6055; --warn: #BB552B;
+		color-scheme: light;
+	}
+}
+:root[data-theme="light"] {
+	--bg: #F5F0E4; --bg-alt: #EFE8D8; --surface: #EAE3D1; --border: #DAD0BC;
+	--text: #2C3B40; --text-dim: #6E6553; --gold: #C79A3E;
+	--accent: #0F7C6E; --accent-hover: #0B6055; --warn: #BB552B;
+	color-scheme: light;
+}
+:root[data-theme="dark"] {
+	--bg: #0F1C24; --bg-alt: #12212B; --surface: #182A34; --border: #263A42;
+	--text: #D4DEDF; --text-dim: #8CA0A6; --gold: #E3BE68;
+	--accent: #31A796; --accent-hover: #4CC4B2; --warn: #C0563B;
+	color-scheme: dark;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   §bidi — القاعدة الحاسمة
+   كلُّ كتلةِ كودٍ جزيرةُ LTR مغلقة. الاتّجاهُ يُقلَب على الحاوية، لا يُورَث.
+
+   ‏isolate لا bidi-override: الأخيرُ يقلب تعليقًا عربيًّا داخل الكود حرفًا حرفًا.
+   والأوّلُ يعزل الكتلة ويترك كلَّ نصٍّ داخلها يتصرّف بطبيعته.
+   ════════════════════════════════════════════════════════════════════════ */
+pre, code, kbd, samp, .path, .cmd, .cmd-id {
+	direction: ltr;
+	unicode-bidi: isolate;
+	text-align: left;
+	font-family: var(--font-mono);
+}
+pre { overflow-x: auto; white-space: pre; }  /* لا التفاف: يكسر معنى المسافات البادئة */
+
+/* ════════ الأساس ════════ */
+* { box-sizing: border-box; }
+html { direction: rtl; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ar);
+	font-size: 17px;      /* لا 16: المحارف العربيّة أدقّ تفصيلًا عند الحجم نفسه */
+	line-height: 1.85;    /* لا 1.6: التشكيلُ والنقاطُ تحت السطر تحتاج فسحةً رأسيّة */
+	font-weight: 400;     /* لا 300 أبدًا في العربيّة — الرفيعُ يختفي على شاشةٍ غير شبكيّة */
+	-webkit-text-size-adjust: 100%;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 3px; }
+
+h1, h2, h3 { font-weight: 600; text-wrap: balance; }
+h1 { font-size: 35px; line-height: 1.3; color: var(--gold); margin: 0 0 var(--s4); }
+h2 { font-size: 25px; line-height: 1.35; margin: var(--s7) 0 var(--s4); }
+h3 { font-size: 20px; line-height: 1.4; margin: var(--s6) 0 var(--s3); }
+p { margin: 0 0 var(--s5); }
+ul, ol { padding-inline-start: 1.5em; margin: 0 0 var(--s5); }
+li { margin-bottom: var(--s2); }
+small, .dim { font-size: 14px; line-height: 1.6; color: var(--text-dim); }
+
+code {
+	font-size: 0.92em;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	padding: 1px 5px;
+	font-feature-settings: "liga" 0;
+}
+pre {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: var(--s4);
+	margin: 0 0 var(--s5);
+	font-size: 14px;
+	line-height: 1.7;
+	position: relative;
+}
+pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+/* زرُّ النسخ في الزاوية العلويّة **اليُسرى**: تابعٌ لاتّجاه الكتلة (LTR) لا اتّجاه
+   الصفحة — الزرُّ ينتمي للمحتوى. */
+.copy-btn {
+	position: absolute; top: var(--s2); left: var(--s2);
+	background: var(--bg-alt); color: var(--text-dim);
+	border: 1px solid var(--border); border-radius: 5px;
+	font-family: var(--font-ar); font-size: 12px;
+	padding: 3px 9px; cursor: pointer; opacity: 0; transition: opacity .15s;
+}
+pre:hover .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ════════ الترويسة ════════ */
+.site-header {
+	position: sticky; top: 0; z-index: 40;
+	display: flex; align-items: center; gap: var(--s4);
+	padding: var(--s3) var(--s5);
+	background: var(--bg-alt);
+	border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: var(--s2); font-weight: 600; color: var(--gold); }
+.brand:hover { text-decoration: none; }
+.brand .mark { width: 22px; height: 22px; flex: none; }
+.header-search { flex: 1; max-width: 420px; }
+.header-spacer { flex: 1; }
+
+.icon-btn {
+	background: none; border: 1px solid var(--border); border-radius: 6px;
+	color: var(--text-dim); cursor: pointer; padding: 5px 10px;
+	font-family: var(--font-ar); font-size: 14px; line-height: 1.4;
+}
+.icon-btn:hover { color: var(--gold); border-color: var(--gold); }
+#nav-toggle { display: none; }
+
+input[type="search"], input[type="text"] {
+	width: 100%; font-family: var(--font-ar); font-size: 15px;
+	background: var(--bg); color: var(--text);
+	border: 1px solid var(--border); border-radius: 8px;
+	padding: 8px var(--s3);
+}
+input[type="search"]::placeholder { color: var(--text-dim); }
+input[type="search"]:focus { border-color: var(--accent); outline: none; }
+
+/* ════════ التخطيط ════════
+   التنقّلُ يمينًا: نقطةُ دخول العين في RTL أعلى اليمين، والتنقّلُ الأولويّةُ الأولى —
+   ويطابق موضعَ شريط النشاط في محراب نفسه.
+   الفهرسُ يسارًا: مرجعٌ ثانويٌّ يُستشار لا يُقرأ، فالجانبُ البعيد يمنعه من منافسة التنقّل. */
+.layout {
+	display: grid;
+	grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--toc-w);
+	gap: var(--s7);
+	max-width: 1440px;
+	margin: 0 auto;
+	padding: var(--s6) var(--s5) var(--s8);
+	align-items: start;
+}
+
+.site-nav { position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow-y: auto; }
+.site-nav h2 {
+	font-size: 12px; letter-spacing: .18em; color: var(--gold);
+	margin: var(--s5) 0 var(--s2); font-weight: 600;
+}
+.site-nav h2:first-child { margin-top: 0; }
+.site-nav ul { list-style: none; padding: 0; margin: 0 0 var(--s4); }
+.site-nav li { margin: 0; }
+.site-nav a {
+	display: block; padding: 5px var(--s3); border-radius: 6px;
+	color: var(--text-dim); font-size: 15px; line-height: 1.6;
+	border-inline-start: 2px solid transparent;
+}
+.site-nav a:hover { color: var(--text); background: var(--bg-alt); text-decoration: none; }
+.site-nav a[aria-current="page"] {
+	color: var(--gold); background: var(--bg-alt); border-inline-start-color: var(--gold);
+}
+
+/* عرضُ المتن ٦٨ محرفًا: النصُّ العربيّ بلا حروفٍ كبيرة، فسطرُه الطويل يفقد نقاطَ
+   الارتساء البصريّ أسرعَ من اللاتينيّ. */
+.content { max-width: 68ch; min-width: 0; }
+
+.site-toc { position: sticky; top: 76px; font-size: 14px; }
+.site-toc .toc-title {
+	font-size: 12px; letter-spacing: .18em; color: var(--text-dim);
+	margin-bottom: var(--s2);
+}
+.site-toc ul { list-style: none; padding: 0; margin: 0; }
+.site-toc a { display: block; padding: 3px 0; color: var(--text-dim); line-height: 1.5; }
+.site-toc a:hover { color: var(--accent); text-decoration: none; }
+.site-toc .lvl-3 { padding-inline-start: var(--s3); }
+
+/* ════════ إشارة الترجمة ════════
+   في التذييل لا الترويسة: لافتةٌ فوق العنوان تعترض القارئ بمعلومةٍ لا يحتاجها ليقرأ.
+   الاستثناءُ الوحيد: الانجرافُ الكبير — وهو شريطٌ أعلى المقال. */
+.src-note {
+	margin-top: var(--s8); padding-top: var(--s4);
+	border-top: 1px solid var(--border);
+	font-size: 14px; line-height: 1.7; color: var(--text-dim);
+}
+.src-note .dot { color: var(--gold); }
+.drift-banner {
+	display: flex; gap: var(--s3); align-items: baseline;
+	border-inline-start: 3px solid var(--warn);
+	background: var(--bg-alt);
+	padding: var(--s3) var(--s4);
+	margin: 0 0 var(--s5);
+	border-radius: 0 6px 6px 0;
+	font-size: 15px;
+}
+.drift-banner b { color: var(--warn); }
+
+/* ════════ الصفحة الأولى ════════ */
+.home { max-width: 900px; margin: 0 auto; padding: var(--s8) var(--s5); text-align: center; }
+.home .mark-lg { width: 84px; height: 84px; margin-bottom: var(--s5); }
+.home h1 { font-size: 40px; margin-bottom: var(--s2); }
+.home .tagline { font-size: 20px; color: var(--gold); opacity: .85; margin-bottom: var(--s1); }
+.home .tagline-sub { font-size: 15px; color: var(--text-dim); margin-bottom: var(--s7); }
+.home .home-search { max-width: 520px; margin: 0 auto var(--s7); }
+.home-search input { font-size: 17px; padding: var(--s3) var(--s4); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--s4); text-align: start; }
+.card {
+	display: block; padding: var(--s4) var(--s5);
+	background: var(--bg-alt); border: 1px solid var(--border); border-radius: 10px;
+	color: var(--text);
+}
+.card:hover { border-color: var(--gold); text-decoration: none; }
+.card b { display: block; color: var(--gold); font-size: 18px; margin-bottom: var(--s1); }
+.card span { font-size: 15px; color: var(--text-dim); line-height: 1.6; }
+
+/* ════════ الجداول ════════ */
+.table-wrap { overflow-x: auto; margin: 0 0 var(--s5); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: right; padding: 9px var(--s3); border-bottom: 1px solid var(--border); }
+th { color: var(--text-dim); font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   صفحة الاختصارات — أهمُّ صفحةٍ عندنا: بديلُ المنبع لها PDF إنجليزيٌّ وLTR معًا.
+   ════════════════════════════════════════════════════════════════════════ */
+.kbd-toolbar {
+	position: sticky; top: 62px; z-index: 20;
+	display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center;
+	background: var(--bg); padding: var(--s3) 0;
+	border-bottom: 1px solid var(--border); margin-bottom: var(--s5);
+}
+.kbd-toolbar .grow { flex: 1; min-width: 200px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button {
+	background: none; border: 0; color: var(--text-dim); cursor: pointer;
+	font-family: var(--font-ar); font-size: 14px; padding: 6px var(--s3);
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--gold); }
+
+/* الاختصار: حاويةٌ LTR معزولة. بدونها تنقل خوارزميّةُ bidi علامةَ + أو تعيد ترتيب
+   الرموز المجاورة، فيعرض الموقعُ Ctrl+Shift+P خطأً — وهي بالضبط الصفحة التي
+   بُني الموقعُ لأجلها. */
+.keys {
+	unicode-bidi: isolate; direction: ltr;
+	display: inline-flex; gap: var(--s1); align-items: center; vertical-align: middle;
+}
+kbd.chord {
+	font-family: var(--font-mono); font-size: 13px; line-height: 1;
+	padding: 4px 7px; border-radius: 5px;
+	background: var(--surface); color: var(--text);
+	border: 1px solid var(--border); border-bottom-width: 2px;
+	white-space: nowrap;
+}
+.keys .plus { color: var(--text-dim); font-size: 12px; }
+
+.kbd-table td.k { text-align: center; white-space: nowrap; }
+.kbd-table td.id { color: var(--text-dim); font-size: 14px; }
+.kbd-table tr[hidden] { display: none; }
+.kbd-section h2 { margin-top: var(--s6); }
+.capture-box {
+	background: var(--surface); border: 1px dashed var(--border); border-radius: 8px;
+	padding: var(--s4); margin-bottom: var(--s5); text-align: center;
+}
+.capture-box[hidden] { display: none; }
+.capture-box .result { margin-top: var(--s3); font-size: 16px; }
+.no-results { color: var(--text-dim); padding: var(--s5) 0; }
+.no-results[hidden] { display: none; }
+
+/* ════════ البحث ════════ */
+.search-results {
+	position: absolute; z-index: 60; margin-top: var(--s1);
+	background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px;
+	max-height: 60vh; overflow-y: auto; width: 100%; padding: var(--s2);
+	box-shadow: 0 8px 28px rgba(0, 0, 0, .35);
+}
+.search-results[hidden] { display: none; }
+.search-results a { display: block; padding: 7px var(--s3); border-radius: 6px; color: var(--text); }
+.search-results a:hover, .search-results a.sel { background: var(--surface); text-decoration: none; }
+.search-results a small { display: block; color: var(--text-dim); }
+.search-box { position: relative; }
+
+/* ════════ الجوال ════════ */
+@media (max-width: 1200px) {
+	/* التنقّلُ يعيش، الفهرسُ يموت أوّلًا. */
+	.layout { grid-template-columns: var(--nav-w) minmax(0, 1fr); }
+	.site-toc { display: none; }
+}
+@media (max-width: 900px) {
+	.layout { display: block; padding: var(--s5) var(--s4) var(--s8); }
+	#nav-toggle { display: inline-block; }
+	.header-search { max-width: none; }
+
+	/* الدرجُ ينزلق **من اليمين**: اتّجاهُ الانزلاق يجب أن يطابق ضفّةَ المصدر
+	   وإلّا انكسر النموذجُ الذهنيّ. */
+	.site-nav {
+		position: fixed; inset: 0 0 0 auto; width: min(300px, 84vw);
+		background: var(--bg-alt); border-inline-start: 1px solid var(--border);
+		padding: var(--s5); z-index: 50; max-height: none; overflow-y: auto;
+		transform: translateX(100%); transition: transform .22s ease;
+	}
+	.site-nav.open { transform: translateX(0); }
+	.nav-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 45; }
+	.nav-scrim[hidden] { display: none; }
+	.content { max-width: none; }
+	body { font-size: 16px; }
+	h1 { font-size: 28px; }
+	h2 { font-size: 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .site-nav { transition: none; } }
+
+/* ════════════════════════════════════════════════════════════════════════
+   الطباعة — هذه الصفحة تُطبَع: بديلُ مايكروسوفت PDF، وهذا مبرّرُ وجودنا.
+   بطاقةٌ مرجعيّة تُلصَق على الحائط، لا مستند.
+   ════════════════════════════════════════════════════════════════════════ */
+@media print {
+	.site-header, .site-nav, .site-toc, .kbd-toolbar, .nav-scrim,
+	.copy-btn, .capture-box, .src-note { display: none !important; }
+	body { background: #fff; color: #000; font-size: 10pt; line-height: 1.6; }
+	.layout { display: block; padding: 0; max-width: none; }
+	.content { max-width: none; }
+	h1 { color: #000; font-size: 18pt; }
+	h2 { break-after: avoid; font-size: 13pt; }
+	.kbd-table { column-count: 2; column-gap: 12mm; }
+	table, tr { break-inside: avoid; }
+	kbd.chord { border: 1px solid #666; background: #fff; color: #000; }
+	a { color: #000; text-decoration: none; }
+	@page { size: A4 portrait; margin: 12mm; }
+}

@@ -1,0 +1,73 @@
+# نشرُ موقع توثيق محراب العربيّ على GitHub Pages.
+#
+# المولِّدُ لنا (site/build.py) لا Jekyll: دعمُ RTL في القوالب الجاهزة طبقةٌ مضافة
+# تغطّي التخطيطَ ولا تغطّي عزلَ bidi ولا اتّجاهَ الدرج ولا تخطيطَ الطباعة — وهي
+# بالضبط الحالاتُ التي بُني الموقعُ لأجلها.
+name: توثيق — بناء ونشر
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'tests/docs/**'
+      - '.github/workflows/docs-pages.yml'
+  workflow_dispatch:
+  schedule:
+    # فحصُ الانجراف اليوميّ: بلا أتمتةٍ تصير إشارةُ «مترجَم عن…» كذبًا خلال شهرين.
+    - cron: '17 4 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # اكتمالُ البيانات الوصفيّة يُفحَص بلا شبكة — يحجب البناءَ فورًا.
+      - name: تحقّق البيانات الوصفيّة للترجمة
+        run: python tests/docs/check_drift.py --offline
+
+      - name: بناء الموقع
+        run: python site/build.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/public
+
+  deploy:
+    needs: build
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  drift:
+    # انجرافُ المنبع لا يمنع النشر — يُبلِّغ. الصفحةُ المترجَمة تبقى نافعةً وإن تحرّك
+    # أصلُها؛ الخطرُ أن يمرّ التحرّكُ **صامتًا**، وهذا ما يمنعه هذا العمل.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: فحص انجراف الترجمة عن المنبع
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tests/docs/check_drift.py

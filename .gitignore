@@ -40,3 +40,6 @@ Thumbs.db
 # Python bytecode (سكربتات الترقيع)
 __pycache__/
 *.pyc
+
+# مخرَج مولّد موقع التوثيق — يُبنى في CI عند كلّ نشر، فلا يُلتزَم
+site/public/

@@ -45,13 +45,20 @@ ANCHOR = (
 # الجملة الافتتاحيّة الاستعاريّة (IP هويّة محراب — استثناء مقبول لقاعدة منع السلاسل الحرفيّة).
 # ثابت مسمّى كي يُحرَّر النصّ من موضع واحد لا من داخل قالب الرقعة.
 # ⚠️ اقتران: مِجَسّ L3 في tests/runtime/rtl.spec.mjs (WELCOME_TAGLINE_MARKER = "تكتب فيه") يطابق
-# جزءًا من هذه الجملة؛ أيّ إعادة صياغة تُسقِط ذلك الجزء يجب أن تُحدِّث المِجَسّ أيضًا.
-WELCOME_TAGLINE = "للمِحرابِ اتّجاه، ولكودِك وِجهة. مكانٌ صافٍ تكتب فيه بالعربيّة كما تُفكّر بها."
+# جزءًا من الجملة — وهو اليوم في WELCOME_LEDE أدناه لا في الشطر الأوّل؛ أيّ إعادة صياغة تُسقِط
+# ذلك الجزء من **مجموع** الشطرين يجب أن تُحدِّث المِجَسّ أيضًا.
+WELCOME_TAGLINE = "للمِحرابِ اتّجاه، ولكودِك وِجهة."
+# الشطر الثاني: صوتٌ ثانٍ لا نِدّ. يُصيَّر **ابنًا داخل** نفس `p.subtitle` لا شقيقًا له —
+# قرارٌ مقصود لسببين: (أ) يبقى `textContent` للعنوان الفرعيّ حاويًا الجملتين فلا ينكسر مِجَسّ
+# L3 (الذي يقرأ `.subtitle` وحده)، (ب) هما جملةٌ واحدة دلاليًّا فيحسن أن تكونا فقرةً واحدة
+# لقارئ الشاشة بدل فقرتين منفصلتين. التمييز البصريّ (حجم/لون/سطر مستقلّ) من CSS قاعدة 27.
+WELCOME_LEDE = "مكانٌ صافٍ تكتب فيه بالعربيّة كما تُفكّر بها."
 
 # حرفيّة JS مهرَّبة بأمان (json.dumps ⇒ اقتباس مزدوج مقبول في TS، ويهرّب أيّ ' أو \\ مستقبليّ
 # في إعادة صياغة الجملة). تعليق allow-any-unicode-next-line = إعفاء لينتر VSCode المعياريّ
 # لسلسلة غير-ASCII حرفيّة في workbench/contrib (يمنع إخفاق no-unexternalized/unicode لو مُشِّط اللينتر).
 _TAGLINE_JS = json.dumps(WELCOME_TAGLINE, ensure_ascii=False)
+_LEDE_JS = json.dumps(WELCOME_LEDE, ensure_ascii=False)
 
 REPLACEMENT = (
     "\t\t// mihrab-welcome: زخرفة نجميّة محيطيّة + شعار القوس + العنوان (nameLong=محراب) + الجملة الاستعاريّة بدل «Editing evolved».\n"
@@ -60,7 +67,9 @@ REPLACEMENT = (
     "\t\t\t$('.mihrab-welcome-mark', { 'aria-hidden': 'true' }),\n"
     "\t\t\t$('h1.product-name.caption', {}, this.productService.nameLong),\n"
     "\t\t\t/* allow-any-unicode-next-line */\n"
-    "\t\t\t$('p.subtitle.description', {}, " + _TAGLINE_JS + ")\n"
+    "\t\t\t$('p.subtitle.description', {}, " + _TAGLINE_JS + ",\n"
+    "\t\t\t\t/* allow-any-unicode-next-line */\n"
+    "\t\t\t\t$('span.mihrab-welcome-lede', {}, " + _LEDE_JS + "))\n"
     "\t\t);"
 )
 

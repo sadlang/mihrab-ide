@@ -250,6 +250,7 @@ fi
 [[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
 [[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
+[[ -f "$ROOT/build/patch_walkthroughs_drop.py" ]] && cp -f "$ROOT/build/patch_walkthroughs_drop.py" "$UP/.mihrab-patch-walkthroughs-drop.py"
 [[ -f "$ROOT/build/patch_html_lang.py" ]] && cp -f "$ROOT/build/patch_html_lang.py" "$UP/.mihrab-patch-html-lang.py"
 [[ -f "$ROOT/build/patch_dialog_style.py" ]] && cp -f "$ROOT/build/patch_dialog_style.py" "$UP/.mihrab-patch-dialog-style.py"
 [[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
@@ -323,6 +324,23 @@ bash dev/build.sh "${BUILD_ARGS[@]:-}"
 # خطوة بعد-بناء سريعة على الـartifacts (لا إعادة gulp). تجعل العربيّة الافتراضيّ الحرفيّ
 # للنواة ⇒ أوّل فتح عربيّ بلا إعادة تحميل ولا اعتماد على مسح حزمة لغة. idempotent.
 APP_DIR="$UP/VSCode-win32-x64/resources/app"
+
+# ── (ط-0ز) إعادةُ فرض هويّة محراب على product.json **المشحون** ──
+# ⚠️ قِيست: خطوةُ (ز-2) تدمج تجاوزاتنا فوق `$UP/product.json`، لكنّ prepare_vscode.sh
+# الخاصّ بـVSCodium يكتب بعضَ المفاتيح **بعد** ذلك الدمج، فيعود بعضُها إلى قيمة المنبع
+# في المنتج النهائيّ. أُمسك حيًّا: `updateUrl` نجا `null`، بينما عاد
+# `serverDownloadUrlTemplate` يشير إلى تغذية إصدارات VSCodium في الحزمة المشحونة —
+# دمجٌ واحدٌ مبكّر لا يكفي، فآخرُ من يكتب هو من يفوز.
+# فالحلُّ أن نُعيد الفرض على الملفّ الذي يُشحَن فعلًا (وهو ما تقيسه طبقةُ L2).
+if [[ -f "$APP_DIR/product.json" && -f "$OVERRIDES" ]]; then
+  log "إعادة فرض هوية محراب على product.json المشحون"
+  if ! jq -s '.[0] * .[1] | with_entries(select(.key | startswith("_comment") | not))' \
+      "$APP_DIR/product.json" "$OVERRIDES" > "$APP_DIR/product.json.tmp"; then
+    rm -f "$APP_DIR/product.json.tmp"
+    echo "❌ فشل إعادة فرض هوية محراب على المخرَج." >&2; exit 1
+  fi
+  mv -f "$APP_DIR/product.json.tmp" "$APP_DIR/product.json"
+fi
 
 # ── (ط-0أ) حقن ترجمة بيانات الامتدادات إلى العربيّة — مساهمة بناء (الطبقة 2) ──
 # يعيد بناء contents.package في ملفّ i18n لحزمة اللغة لكلّ امتداد مدمج (عناوين أوامر/أوصاف

@@ -27,7 +27,7 @@ BUILD = os.path.join(ROOT, "build")
 
 # أصناف هويّة محراب المحقونة (عناصر نملكها) — تُعفى قواعدها من قصر [dir=rtl] لأنّها غير
 # اتّجاهيّة وتستهدف عناصرنا لا عناصر VSCode العامّة. أضِف هنا كلّ صنف هويّة جديد.
-IDENTITY_CLASSES = ("mihrab-welcome-mark", "mihrab-welcome-pattern")
+IDENTITY_CLASSES = ("mihrab-welcome-mark", "mihrab-welcome-pattern", "mihrab-welcome-lede")
 sys.path.insert(0, os.path.dirname(HERE))  # tests/
 import patch_manifest as M  # noqa: E402
 
@@ -182,6 +182,50 @@ def _editor_files_shape():
     assert len(marks) == len(set(marks)), f"وسوم مكرّرة في FILES: {marks}"
 
 
+# ───────── L0-2أ: وسم إصدار الرُقَع مضمَّن في كتلة الحقن ─────────
+@check("إصدار رُقَع النواة: VERSION_MARK حاضر في INJECT (لا حقنٌ بائت)")
+def _core_patch_version_embedded():
+    """رفعُ CORE_PATCH_VERSION دون تحديث التعليق داخل INJECT خطأٌ **حدث فعلًا**.
+
+    ‏patch_bundle_extensions يتحقّق منه وقت التشغيل ويُجهض — لكنّ ذلك يقع داخل `build.sh`
+    بعد دقائق من التجهيز. هنا يصير الفشلُ ثانيتين. (ولو غاب الحارسان معًا لبقي البناءُ
+    يستعمل حقنًا بائتًا بلا الرُقَع الجديدة — نجاحٌ كاذب، أسوأ من إخفاق.)
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_pbe", os.path.join(BUILD, "patch_bundle_extensions.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.VERSION_MARK in mod.INJECT, (
+        f"«{mod.VERSION_MARK}» غير موجود في INJECT — حدّث التعليق داخل الكتلة مع رفع الإصدار.")
+
+
+# ───────── L0-2ب: قائمة الجولات المُسقَطة (لا تبتلع محتوى الوصول) ─────────
+@check("إسقاط جولات المنبع: القائمة مقصورة على التعريفيّة ولا تمسّ SetupAccessibility")
+def _walkthroughs_drop_scope():
+    """الخطر الحقيقيّ هنا ليس فشلَ المرساة (يمسكه L1) بل **توسُّع القائمة**.
+
+    `SetupAccessibility` هي الجولة الوحيدة التي تشرح أدوات الوصول، ومحراب لا يوفّر بديلًا
+    عنها؛ إسقاطها يحذف محتوًى لا يُعوَّض. و`notebooks` وظيفيّة لا تعريفيّة ومحكومة بسياق.
+    فنُثبّت القائمة على الثلاثة التعريفيّة بالضبط، ونمنع انجرافها بصمت.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_wd", os.path.join(BUILD, "patch_walkthroughs_drop.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    dropped = set(mod.DROPPED_IDS)
+    assert dropped == {"Setup", "SetupWeb", "Beginner"}, (
+        f"قائمة الجولات المُسقَطة انجرفت: {sorted(dropped)} — "
+        "التوسيع قرارٌ يحتاج تبريرًا (خاصّةً SetupAccessibility: محتوى وصول بلا بديل).")
+    # الاستبدال يجب ألّا يُبقي مرجعًا للمصفوفة الأصليّة في حساب الترتيب (وإلّا انزاح الترتيب).
+    assert "order: mihrabWalkthroughs.length - index" in mod.REPLACEMENT, (
+        "حساب الترتيب لا يستعمل المصفوفة المُرشَّحة — سينزاح ترتيب الجولات الباقية.")
+    assert "order: walkthroughs.length" not in mod.REPLACEMENT, (
+        "بقي مرجعٌ للمصفوفة غير المُرشَّحة في حساب الترتيب.")
+    assert mod.MARK in mod.REPLACEMENT, "الوسم غائب عن الاستبدال — يسقط idempotency."
+
+
 # ───────────────────── L0-3: اتّساق مانيفست الرُقَع ─────────────────────
 @check("مانيفست الرُقَع متّسق (كلّ مرقِّع موجود على القرص)")
 def _manifest_consistency():
@@ -241,7 +285,90 @@ def _product_identity_not_upstream():
             assert not any(u in low for u in upstream), f"{k} يشير إلى المنبع: {v}"
 
 
+# مفاتيحُ توثيقٍ **يجب** أن تكون مُصرَّحةً في التجاوزات — لا يكفي أن تكون سليمةً إن وُجدت.
+# القيمةُ: None ⇒ يجب تصفيرُها، "url" ⇒ يجب أن تكون سلسلةً غيرَ فارغة.
+MUST_DECLARE_URLS = {
+    "documentationUrl": "url",
+    "keyboardShortcutsUrlWin": "url",
+    "keyboardShortcutsUrlLinux": "url",
+    "keyboardShortcutsUrlMac": "url",
+    "tipsAndTricksUrl": None,
+    "introductoryVideosUrl": None,
+}
+
+
+@check("هويّة المنتج: مفاتيح التوثيق مُصرَّحة (لا وراثةَ صامتة من المنبع)")
+def _product_docs_urls_declared():
+    """
+    الفحصُ السابق يمنع أن **يشير** مفتاحٌ *موجود* إلى المنبع — لكنّه أعمى عن المفاتيح
+    **الموروثة**: مفتاحٌ لا نُصرّح به أصلًا لا يمرّ على الحلقة، فيبقى على قيمة المنبع
+    ويقود المستخدمَ إلى code.visualstudio.com. وهذا بالضبط موضعُ العطب الذي أُبلغ عنه:
+    «مرجع اختصارات لوحة المفاتيح» كان يفتح ملفَّ PDF إنجليزيًّا وLTR معًا.
+
+    فالحارسُ هنا معكوسُ ذاك: يُلزم **الحضور** لا يفحص القيمة وحدها. وما يُصفَّر يُصفَّر
+    عمدًا: `helpActions.ts` يشتقّ `AVAILABLE = !!product.X`، فالتصفيرُ يحذف بندَ القائمة
+    كلَّه — أشرفُ من وعدٍ بالعربيّة يُسلَّم إنجليزيّة.
+    """
+    prod = json.load(open(os.path.join(ROOT, "product-overrides", "product.json"), encoding="utf-8"))
+    for key, want in MUST_DECLARE_URLS.items():
+        assert key in prod, (
+            f"{key} غير مُصرَّح في product-overrides — سيُورَث من المنبع ويقود إلى مايكروسوفت.")
+        if want is None:
+            assert prod[key] is None, (
+                f"{key} يجب أن يكون null حتّى يوجد بديلٌ عربيّ (التصفير يحذف بندَ القائمة).")
+        else:
+            assert isinstance(prod[key], str) and prod[key].strip(), f"{key} ليس عنوانًا صالحًا."
+
+
 # ───────────── L0-5: مانيفست حزمة اللغة ↔ الملفّات (فحص Amelia مؤتمَتًا) ─────────────
+@check("موقع التوثيق: كلّ رابطٍ في product.json يقابل صفحةً مولَّدة (لا 404)")
+def _docs_urls_resolve_to_pages():
+    """
+    وعدُنا في خطّة التعريب: «كلُّ صفحةٍ تُفتَح من داخل محرابٍ تصل إلى صفحةٍ عربيّة،
+    لا إلى 404 ولا إلى إنجليزيّة». والوعدُ بلا حارسٍ ينكسر عند أوّل إعادة تسمية:
+    نعيد تسميةَ ملفٍّ في `site/content` فيصير بندُ «مرجع الاختصارات» في القائمة
+    رابطًا ميّتًا — ولا شيءَ يصرخ حتّى يشتكي مستخدم.
+    """
+    prod = json.load(open(os.path.join(ROOT, "product-overrides", "product.json"), encoding="utf-8"))
+    site_root = "https://sadlang.github.io/mihrab-ide/"
+    content = os.path.join(ROOT, "site", "content")
+    if not os.path.isdir(content):
+        return  # لا موقع في هذا الفرع — تخطٍّ
+    slugs = {fn[:-3] for fn in os.listdir(content) if fn.endswith(".md")}
+    for k, v in prod.items():
+        if not isinstance(v, str) or not v.startswith(site_root):
+            continue
+        rest = v[len(site_root):].strip("/")
+        if not rest:
+            continue  # الجذر: الصفحة الأولى، تُولَّد دائمًا
+        assert rest in slugs, (
+            f"{k} يشير إلى /{rest}/ ولا ملفَّ site/content/{rest}.md — رابطٌ ميّت في القائمة.")
+
+
+@check("موقع التوثيق: مصطلحاتُ الترجمة من المسرد (لا انفصال عن الواجهة)")
+def _docs_glossary_respected():
+    """
+    الشرطُ الذي يُفشِل مشروعَ التعريب إن أُغفِل: توثيقٌ يقول «لوحة الأوامر» وواجهةٌ
+    تقول «لوحة الأوامر السريعة» **أسوأُ من توثيقٍ إنجليزيّ** — لأنّه يُشكِّك المستخدمَ
+    في فهمه هو. فالمسردُ مصدرُ حقيقةٍ واحد، وهذا الفحصُ يمسك البدائلَ الممنوعة.
+    """
+    gpath = os.path.join(ROOT, "site", "data", "glossary.json")
+    content = os.path.join(ROOT, "site", "content")
+    if not (os.path.isfile(gpath) and os.path.isdir(content)):
+        return
+    terms = json.load(open(gpath, encoding="utf-8"))["terms"]
+    bad = []
+    for fn in sorted(os.listdir(content)):
+        if not fn.endswith(".md"):
+            continue
+        text = open(os.path.join(content, fn), encoding="utf-8").read()
+        for t in terms:
+            for wrong in t.get("forbidden", []):
+                if wrong in text:
+                    bad.append(f"{fn}: «{wrong}» ⇐ المعتمد «{t['ar']}»")
+    assert not bad, "مصطلحاتٌ خارج المسرد:\n    " + "\n    ".join(bad)
+
+
 @check("حزمة اللغة: كلّ ترجمة معلَنة موجودة، ولا ملفّ غير معلَن")
 def _langpack_manifest_matches_files():
     pkg_dir = os.path.join(ROOT, "extensions", "language-pack-ar")
