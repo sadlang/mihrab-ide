@@ -14,6 +14,7 @@ import html
 import json
 import os
 import re
+import struct
 import sys
 
 for _s in (sys.stdout, sys.stderr):
@@ -424,9 +425,13 @@ def hero_visual():
     """
     shot = os.path.join(ASSETS, "shots", "editor.png")
     if os.path.isfile(shot):
-        inner = ('<img src="../assets/shots/editor.png" width="1600" height="1000" '
-                 'alt="محراب مفتوحٌ على ملفّ لغة ص: شريطُ النشاط يمينًا، '
-                 'والمستكشفُ يمينَه، والطرفيّةُ أسفل." loading="lazy">')
+        # الأبعادُ تُقرأ من ترويسة PNG لا تُكتب يدويًّا: قيمةٌ خاطئة تُنتج قفزةَ
+        # تخطيط (CLS) عند تحميل الصورة — وهي أوّلُ ما يراه الزائر.
+        with open(shot, "rb") as f:
+            w, h = struct.unpack(">II", f.read(24)[16:24])
+        inner = ('<img src="../assets/shots/editor.png" width="%d" height="%d" '
+                 'alt="محراب مفتوحٌ على ملفّ لغة ص: شريطُ النشاط والمستكشف يمينًا، '
+                 'والكودُ العربيّ في المحرّر." fetchpriority="high">' % (w, h))
         note = ""
     else:
         inner = _mock_svg()
@@ -752,6 +757,20 @@ def main():
         if os.path.isfile(src):
             with open(src, "rb") as f_in, open(os.path.join(dst_assets, fn), "wb") as f_out:
                 f_out.write(f_in.read())
+    # ‏`shots/` مجلّد، والحلقةُ أعلاه تتخطّى المجلّدات — فكانت الصفحةُ الأولى تُشير
+    # إلى لقطةٍ لا تُنسَخ: مستطيلٌ مكسورٌ فوق الطيّة، بلا خطأٍ في البناء.
+    # ‏`fonts/` مستثنًى: `write_fonts_css` ينسخ الموجودَ منه وحده (انظر تعليلَه).
+    for sub in ("shots",):
+        s_dir = os.path.join(ASSETS, sub)
+        if not os.path.isdir(s_dir):
+            continue
+        d_dir = os.path.join(dst_assets, sub)
+        os.makedirs(d_dir, exist_ok=True)
+        for fn in os.listdir(s_dir):
+            src = os.path.join(s_dir, fn)
+            if os.path.isfile(src):
+                with open(src, "rb") as f_in, open(os.path.join(d_dir, fn), "wb") as f_out:
+                    f_out.write(f_in.read())
     write_fonts_css(dst_assets)
 
     for slug, meta, body_html, headings in pages:

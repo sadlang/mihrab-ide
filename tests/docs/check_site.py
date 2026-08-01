@@ -113,6 +113,21 @@ def main():
                 if host in url:
                     bad("رابطٌ مطلقٌ إلى مضيفٍ بعينه في %s: %s" % (rel, url))
 
+    # ── ٤ب) كلُّ أصلٍ محلّيٍّ مُشار إليه موجودٌ في المخرَج ──
+    # ‏`shots/` مجلّد، وناسخُ الأصول كان يتخطّى المجلّدات — فأشارت الصفحةُ الأولى إلى
+    # لقطةٍ لا تُنسَخ: مستطيلٌ مكسورٌ فوق الطيّة والبناءُ أخضر.
+    REF = re.compile(r'(?:href|src)="((?!https?:|//|#|mailto:)[^"]+)"')
+    for rel in ("index.html", "download/index.html", "docs/index.html",
+                "keyboard/index.html"):
+        page_dir = os.path.dirname(os.path.join(OUT, rel))
+        for m in REF.finditer(read(rel)):
+            url = m.group(1).split("#")[0].split("?")[0]
+            if not url or url.endswith("/"):
+                continue          # صفحةٌ لا أصل — تُغطّى بفحص الصفحات أعلاه
+            target = os.path.normpath(os.path.join(page_dir, url))
+            if not os.path.exists(target):
+                bad("أصلٌ مُشارٌ إليه ولا وجودَ له في المخرَج (%s): %s" % (rel, url))
+
     # ── ٥) كلُّ منصّةٍ في المانيفست معروفةٌ في site.json ──
     ids = {p["id"] for p in data["platforms"]}
     with open(os.path.join(SITE, "data", "releases.json"), encoding="utf-8") as f:
