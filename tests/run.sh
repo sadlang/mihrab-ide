@@ -53,6 +53,8 @@ echo "        (تشغيلتان لا واحدة: صفحة الترحيب وال�
 echo "         تبويبات واحدة، ومحراب لا يفتح الترحيب أصلًا حين يُمرَّر ملفّ.)"
 echo "        (‏--folder لازم لمِجَسّات القاعدة 22: مثلّث الشجرة وأدلّتها وأسهم اللوحات)"
 echo "      node tests/runtime/launch.mjs --shot welcome --keep   # لقطة وأبقِ النسخة مفتوحة"
+echo "      node tests/runtime/unicode_guard.live.mjs             # [AR-04] على الحزمة المشحونة"
+echo "        (يُطلق بملفّ تعريفٍ معزول — إعداداتُك لا تُمسّ. أمسك نجاحًا كاذبًا لم تره الوحدة.)"
 echo "  (ب) نسخة مُطلَقة يدويًّا (كما كان):"
 echo "      Mihrab.exe --remote-debugging-port=9222 --remote-allow-origins=* \\"
 echo "        tests/runtime/fixtures/rtl_fixture.ص"

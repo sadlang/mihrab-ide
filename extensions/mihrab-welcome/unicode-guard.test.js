@@ -34,11 +34,22 @@ function fakeVscode(values, opts = {}) {
             }
             return opts.noInspect ? undefined : (any ? out : {});
           },
+          // ‏**البديلُ يُنمذِج النطاق** لأنّ المنبعَ كذلك: `overrideInLanguage` يعمل على
+          // `overrideIdentifier` المحمول في نطاق كائن الإعداد. الصيغةُ الأولى من هذا
+          // البديل تجاهلت ذلك، فمرّ نجاحٌ كاذبٌ حتّى أمسكه تشغيلٌ حيّ.
           update: async (key, value, target, inLang) => {
             if (opts.failAfter !== undefined && updates.length >= opts.failAfter) {
               throw new Error("مقفول");
             }
-            updates.push([key, value, target, inLang]);
+            if (inLang && !lang) throw new Error("طلبُ overrideInLanguage من كائنٍ بلا لغة");
+            const short = key.replace("editor.unicodeHighlight.", "");
+            if (opts.keepValues) { updates.push([key, value, target, inLang, lang || null]); return; }
+            for (const prop of ["globalValue", "workspaceValue", "workspaceFolderValue",
+                                "globalLanguageValue", "workspaceLanguageValue",
+                                "workspaceFolderLanguageValue"]) {
+              delete values[`${lang}|${short}|${prop}`];
+            }
+            updates.push([key, value, target, inLang, lang || null]);
           },
         };
       },
@@ -129,10 +140,21 @@ test("المسحُ يبلغ كلَّ نطاقٍ بهدفه، وبـoverrideInLan
     "sad|nonBasicASCII|workspaceLanguageValue": true,
   });
   assert.strictEqual(await G.resetCommand(f.vscode, fakeMemento()), 2);
+  // العمودُ الأخير هو **لغةُ كائن الإعداد الذي كُتب منه**: الكتابةُ بنطاقِ لغةٍ من كائنٍ
+  // بلا لغةٍ تمرّ بلا أثر (نجاحٌ كاذبٌ أمسكه تشغيلٌ حيّ).
   assert.deepStrictEqual(f.updates, [
-    ["editor.unicodeHighlight.allowedCharacters", undefined, T.Global, false],
-    ["editor.unicodeHighlight.nonBasicASCII", undefined, T.Workspace, true],
+    ["editor.unicodeHighlight.allowedCharacters", undefined, T.Global, false, null],
+    ["editor.unicodeHighlight.nonBasicASCII", undefined, T.Workspace, true, "sad"],
   ]);
+});
+
+test("نجاحٌ بلا أثرٍ يُقال فشلًا — إقرارٌ بإعادة القراءة لا بعدم الرمي", async () => {
+  const f = fakeVscode({ "sad|nonBasicASCII|globalLanguageValue": true },
+                       { keepValues: true });
+  await G.resetCommand(f.vscode, fakeMemento());
+  assert.deepStrictEqual(f.shown.info, []);
+  assert.strictEqual(f.shown.error.length, 1);
+  assert.ok(f.shown.error[0].startsWith("لم تُزَل"));
 });
 
 test("رسالةُ النجاح تسمّي ما أُزيل — لا «تمّ» صامتة", async () => {

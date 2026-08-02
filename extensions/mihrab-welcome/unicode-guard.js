@@ -51,6 +51,8 @@ const COPY = {
   openSettings: "افتح الإعدادات",
   failed: (e) =>
     `تعذّرت إزالةُ الإعداد: ${e} — افتح ملفّ الإعدادات واحذف السطورَ التي تبدأ بـ editor.unicodeHighlight.`,
+  stubborn: (names) =>
+    `لم تُزَل هذه الإعدادات رغم المحاولة: ${names}. افتح ملفّ الإعدادات واحذفها يدويًّا.`,
 };
 
 /** وصفٌ مقروءٌ لموضع القيمة، يُذكر للمستخدم كي يتعلّم لا كي يُسحَر. */
@@ -103,7 +105,6 @@ function shadowing(overrides) {
 
 /** أمرُ «أزِل الإطارات الصفراء». يعيد عددَ ما أُزيل. */
 async function resetCommand(vscode, memento) {
-  const config = vscode.workspace.getConfiguration();
   const found = findOverrides(vscode);
   // تنفيذُ الأمر يدويًّا إلغاءٌ ضمنيٌّ لأيّ «اتركها» سابقة.
   if (memento) await memento.update(STATE_KEY, undefined);
@@ -118,7 +119,14 @@ async function resetCommand(vscode, memento) {
   let cleared = 0;
   for (const o of found) {
     try {
-      await config.update(`${SECTION}.${o.key}`, undefined, o.target,
+      // ‏**الضبطُ يُكتب من نفس الكائن الذي قُرئ منه.** `overrideInLanguage` يعمل على
+      // `overrideIdentifier` المحمولِ في نطاق كائن الإعداد؛ فكائنٌ أُخذ بلا `languageId`
+      // لا يعرف أيَّ كتلةٍ يمسّ، فتمرّ الكتابةُ **بلا خطأٍ وبلا أثر**. أمسكه تشغيلٌ حيّ:
+      // الرسالةُ تقول «تمّ… أُزيل» و`settings.json` كما هو. مثالُ نجاحٍ كاذبٍ لا يراه
+      // اختبارُ وحدةٍ ببديلٍ لا يُنمذِج النطاق.
+      const scoped = vscode.workspace.getConfiguration(
+        undefined, o.langId ? { languageId: o.langId } : undefined);
+      await scoped.update(`${SECTION}.${o.key}`, undefined, o.target,
                           o.overrideInLanguage);
       cleared++;
     } catch (e) {
@@ -128,6 +136,13 @@ async function resetCommand(vscode, memento) {
         cleared ? COPY.partial(cleared, found.length, msg) : COPY.failed(msg));
       return cleared;
     }
+  }
+  // **إقرارٌ بالأثر لا بعدم الرمي.** الكتابةُ قد تُقبَل ولا تُغيّر شيئًا (أعلاه)، فنُعيد
+  // القراءةَ ونقول ما بقي. رسالةُ نجاحٍ بلا أثرٍ أسوأُ من رسالة فشل: تُنهي بحثَ المستخدم.
+  const left = findOverrides(vscode);
+  if (left.length) {
+    vscode.window.showErrorMessage(COPY.stubborn(left.map(describe).join("، ")));
+    return cleared;
   }
   vscode.window.showInformationMessage(COPY.done(found.map(describe).join("، ")));
   return cleared;
