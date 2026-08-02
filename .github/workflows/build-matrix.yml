@@ -130,6 +130,26 @@ jobs:
           sudo swapon /swapfile
           free -h
 
+      # ── أدواتُ لغة ص من الإصدار الرسميّ المنشور ──
+      # بلا هذه الخطوة كان `build.sh` يسقط سقوطًا رشيقًا فتُنشَر حزمةٌ **بلا لغة**:
+      # تعمل على جهاز المطوّر (حيث `../sad-engines-dev/`) وتفشل عند كلّ من ينزّلها،
+      # والموقعُ يَعِد بأنّها «جاهزةٌ في الصندوق». الخروجُ 3 = لا أصلَ لهذه المنصّة في
+      # الإصدار الرسميّ (ليس فشلَ بناء) — ويُسجَّل صراحةً بدل أن يمرّ صامتًا.
+      - name: جلبُ أدوات ص (الإصدار الرسميّ)
+        id: sad_tools
+        continue-on-error: true
+        run: bash build/fetch_sad_tools.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: تصديرُ مسارات أدوات ص
+        if: steps.sad_tools.outcome == 'success'
+        run: |
+          while IFS= read -r line; do
+            echo "${line#export }" | tr -d "'" >> "$GITHUB_ENV"
+          done < .upstream/.sad-tools/env.sh
+          cat .upstream/.sad-tools/manifest.json
+
       - name: بناءُ محراب
         run: bash build/build.sh
         env:
@@ -140,6 +160,16 @@ jobs:
           # بـ403 بعد ١٠ محاولات، بينما نجح لينكس في نفس اللحظة: عطبٌ يبدو
           # «خاصًّا بالمنصّة» وليس منها في شيء. والرمزُ يرفع الحدَّ إلى ١٠٠٠.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── بوّابةُ أدوات ص ──
+      # ما جُلب من الإصدار الرسميّ يجب أن يصل الحزمةَ **ببصمته**. اسمٌ مطابقٌ من مصدرٍ
+      # آخر لا يكفي: كان يمرّ ثنائيُّ جهاز المطوّر بينما المنشورُ ليس الإصدارَ الموعود.
+      - name: بوّابةُ أدوات ص
+        run: python tests/bundle/check_sad_tools.py ".upstream/${{ matrix.out }}"
+        env:
+          # في النشر لا تُقبَل أدواتٌ من خارج الإصدار الرسميّ: خلطُ مصادرَ صامتٌ يُنتج
+          # حزمةً نصفُها موعودٌ ونصفُها ثنائيٌّ لا يعرفه أحد. (على جهاز المطوّر يُنبَّه فقط.)
+          MIHRAB_REQUIRE_OFFICIAL_TOOLS: 'yes'
 
       # ── تحقّقُ الهويّة على المخرَج ──
       # build.sh يفحص product.json وnls؛ هنا نفحص ما يخصّ المنصّة: أنّ أيقونتها

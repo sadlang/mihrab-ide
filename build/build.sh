@@ -315,6 +315,17 @@ if [[ -d "$STAGE_EXT/mihrab-welcome" ]]; then
   else
     log "⚠️ لا sad-build.exe في $SAD_BUILD_SRC — أمر البناء يسقط إلى PATH. اضبط MIHRAB_SAD_BUILD للحزم."
   fi
+  # (ج-2) حمولةٌ مجاورةٌ للأدوات (`MIHRAB_SAD_PAYLOAD`): المكتبةُ القياسيّة ومكتباتُ
+  #        التشغيل التي تأتي في الإصدار الرسميّ. برنامجٌ نصّيٌّ يعمل بلا هذه (قِسناه)،
+  #        لكنّ استيرادَ المكتبة القياسيّة يحتاجها — فشحنُ الثنائيّ وحدَه يُنتج «يعمل
+  #        في مثال الترحيب ويسقط في أوّل استيراد»، وهو أسوأُ من غيابٍ صريح.
+  if [[ -n "${MIHRAB_SAD_PAYLOAD:-}" && -d "$MIHRAB_SAD_PAYLOAD" && -d "$WELCOME_BIN" ]]; then
+    for item in "$MIHRAB_SAD_PAYLOAD"/*; do
+      base="$(basename "$item")"
+      case "$base" in sad-run*|sad-build*|sad-check*|sad-lsp*) continue ;; esac
+      cp -rf "$item" "$WELCOME_BIN/" && log "حمولةُ ص المجاورة: $base"
+    done
+  fi
   # لا تشحن دليلًا فارغًا إن غابت كلّ الأدوات (يُبقي السلوك كما لو لم يُنشأ bin/).
   rmdir "$WELCOME_BIN" 2>/dev/null || true
   # (د) [AR-02] الخطّ العربيّ المحزوم في media/ لوحة الترحيب: تُضمّنه لوحة المخرجات (AR-01) كـdata:URI

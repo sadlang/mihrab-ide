@@ -311,6 +311,16 @@ def _icons_shipped():
     assert default in ids, "سمة الأيقونات الافتراضيّة لا تطابق أيّ id في حزمة المخرَج"
 
 
+@check("أدواتُ ص: ما جُلب من الإصدار الرسميّ وصل الحزمةَ ببصمته")
+def _sad_tools_shipped():
+    """البوّابةُ نفسُها التي يشغّلها CI، كي لا يكون النشرُ أوّلَ من يكتشف. تنفيذُها
+    مشتركٌ في `check_sad_tools.py` — نسخةٌ ثانيةٌ من المنطق تتباعد صامتةً."""
+    sys.path.insert(0, HERE)
+    from check_sad_tools import verify  # noqa: E402
+    code, lines = verify(DIST)
+    assert code == 0, "\n       " + "\n       ".join(lines)
+
+
 @check("قشرة محراب [AR-04]: افتراضاتُ الإعداد في الحزمة = المصدر (إعفاءُ يونيكود وصل فعلًا)")
 def _shell_defaults_shipped():
     """‏L0 يحرس المصدر، وهذا يحرس **ما وصل**. الفرقُ ليس نظريًّا: العطبُ الذي أبلغه
