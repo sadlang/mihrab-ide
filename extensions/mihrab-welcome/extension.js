@@ -11,6 +11,7 @@ const path = require("path");
 const { SadDiagnostics } = require("./diagnostics.js");
 const { SadOutputPanel, ACTION_RUN, ACTION_BUILD } = require("./output-panel.js");
 const { resolveBundledTool, probeTool } = require("./tool-resolve.js");
+const unicodeGuard = require("./unicode-guard.js");
 
 // اسم أداتَي تشغيل/بناء ص (مصدر حقيقة واحد داخل هذا الامتداد). sad-run يفسّر ويشغّل مباشرةً؛
 // sad-build يترجم إلى تنفيذيّ فقط (لا يشغّل) — «ابنِ» [SAD-04].
@@ -48,6 +49,8 @@ const RUN_FILE_CMD = "mihrab.runSadFile";
 const CHECK_FILE_CMD = "mihrab.checkSadFile";
 // أمر بناء (ترجمة) ملفّ ص الحاليّ عبر sad-build. [SAD-04]
 const BUILD_FILE_CMD = "mihrab.buildSadFile";
+// مخرجُ التعافي من إعدادٍ عامٍّ يُبطِل افتراضاتِ إبراز يونيكود. [AR-04]
+const RESET_UNICODE_CMD = "mihrab.resetUnicodeHighlight";
 // أوامر النواة المدمجة المُستدعاة (لا سلاسل حرفيّة موضعيّة — أسوة بـOPEN_WALKTHROUGH_CMD).
 const OPEN_FOLDER_CMD = "vscode.openFolder";
 const OPEN_CMD = "vscode.open";
@@ -502,6 +505,10 @@ function activate(context) {
       const ed = vscode.window.activeTextEditor;
       return sadDiag.checkNow(ed && ed.document);
     }),
+    // [AR-04] مخرجُ تعافٍ: قيمةٌ بنطاقِ لغةٍ في إعدادات المستخدم/المشروع تُظلِّل افتراضَنا،
+    // ولا شيءَ في الواجهة يقول للمستخدم لماذا عادت الإطارات. الأمرُ يمسحها بنطاقها.
+    vscode.commands.registerCommand(RESET_UNICODE_CMD,
+      () => unicodeGuard.resetCommand(vscode, context.globalState)),
     // عدسات كود «شغّل/ابنِ» فوق دالّة رئيسية في ملفّات ص [SAD-04].
     vscode.languages.registerCodeLensProvider(
       { language: SAD_LANG_ID, scheme: "file" },
@@ -516,6 +523,10 @@ function activate(context) {
 
   // عند اكتمال الإقلاع (onStartupFinished) اعرض الجولة أوّل مرّة فقط (رفض الوعد مُبتلَع). [L5]
   void maybeShowWelcome(context).catch(() => {});
+
+  // [AR-04] إنذارٌ عن إعدادٍ يُظلِّل افتراضَنا **بنطاق لغة** (الحالةُ الوحيدة التي تُنتِج
+  // الإطارات)، مرّةً لكلّ حالةٍ لا في كلّ إقلاع.
+  void unicodeGuard.maybeWarn(vscode, context.globalState).catch(() => {});
 }
 
 function deactivate() {}

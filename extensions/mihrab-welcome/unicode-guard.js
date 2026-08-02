@@ -1,0 +1,152 @@
+"use strict";
+/**
+ * حارسُ إبراز يونيكود [AR-04]: مخرجُ تعافٍ من إعدادٍ يُظلِّل افتراضاتِ محراب.
+ *
+ * **أيُّ إعدادٍ يغلب افتراضَنا فعلًا — مُثبَتٌ بقراءة المنبع لا بالحدس.** افتراضاتُنا
+ * تُسهَم عبر `configurationDefaults` بنطاقٍ لغويّ (`"[sad]": {...}`). و
+ * `getConsolidatedConfigurationModel` (‏configurationModels.ts:990) يدمج المصادرَ كلَّها
+ * أوّلًا ثمّ يستدعي `.override(id)` — فمحتوى النطاق اللغويّ يُطبَّق **فوق** المتن أيًّا كان
+ * مصدرُه. والنتيجة:
+ *   • قيمةُ مستخدمٍ **عامّة** (`nonBasicASCII: true` بلا نطاق) ⇒ **لا تغلبنا**. افتراضُنا
+ *     اللغويُّ يبقى ساريًا في ص وأخواتها. فالإنذارُ عليها إنذارٌ كاذب.
+ *   • قيمةٌ **بنطاقٍ لغويّ** (`"[sad]": {"editor.unicodeHighlight.nonBasicASCII": true}`)
+ *     في إعدادات المستخدم أو مساحة العمل أو المجلّد ⇒ **تغلبنا**، وهي الحالةُ الوحيدة.
+ *
+ * وهذه القيمُ اللغويّةُ **لا تظهر** في `inspect().globalValue`: لا يملأ المنبعُ
+ * `globalLanguageValue` إلّا حين يُطلَب الإعدادُ بنطاقِ لغة. فقراءةٌ بلا `languageId`
+ * تعمى عن الحالة الوحيدة التي تُنتِج العَرَض — وهذا ما كانت عليه الصيغةُ الأولى:
+ * تُنذر على ما لا يضرّ، وتصمت عمّا يضرّ، وتقول للمستخدم «لا إعداد» والإطاراتُ أمامه.
+ */
+
+const SECTION = "editor.unicodeHighlight";
+// المفاتيحُ التي تطالها نقرةٌ واحدةٌ من قائمة الاستبعاد أو شريطِ مساحة العمل المقيَّدة.
+// ‏`allowedLocales` منها: `excludeLocaleFromBeingHighlighted` يكتبها بنقرة.
+const KEYS = [
+  "allowedCharacters",
+  "allowedLocales",
+  "nonBasicASCII",
+  "ambiguousCharacters",
+  "invisibleCharacters",
+  "includeComments",
+  "includeStrings",
+];
+// النطاقاتُ التي يضبطها محرابٌ في mihrab-shell/package.json. فحصُ L0 يوجب تطابقَ
+// القائمتين: نطاقٌ يُضاف هناك ولا يُضاف هنا يبقى بلا تشخيصٍ ولا إصلاح.
+const LANGS = ["sad", "markdown", "plaintext", "git-commit", "git-rebase"];
+
+const STATE_KEY = "mihrab.unicodeHighlight.dismissed";
+const OPEN_SETTINGS_CMD = "workbench.action.openSettings";
+
+// النصوصُ من عَرَضِ المستخدم لا من مصطلح المنبع: من يراها لا يعرف «إبراز يونيكود» ولا
+// «إعدادًا عامًّا» — يعرف إطارًا أصفرَ حول حروفه. (صياغةُ مراجعةِ تجربة المستخدم.)
+const COPY = {
+  warn: "يوجد إعدادٌ يرسم إطارًا أصفرَ حول الحروف العربيّة في محراب. أتريد إزالته؟",
+  reset: "أزِل الإطارات",
+  dismiss: "اتركها",
+  done: (names) => `تمّ — لن تُحاط الحروفُ العربيّة بإطارٍ أصفرَ بعد الآن. أُزيل: ${names}.`,
+  partial: (n, total, e) =>
+    `أُزيل ${n} من ${total} إعدادًا ثمّ تعذّر الباقي: ${e}. أعِد المحاولة أو احذف يدويًّا ما يبدأ بـ editor.unicodeHighlight.`,
+  clean:
+    "لم أجد إعدادًا يسبّب الإطاراتِ الصفراء. إن كنتَ ما زلتَ ترى مربّعاتٍ فقد تكون فراغاتِ خطٍّ لا يعرض العربيّة، لا إعدادًا.",
+  openSettings: "افتح الإعدادات",
+  failed: (e) =>
+    `تعذّرت إزالةُ الإعداد: ${e} — افتح ملفّ الإعدادات واحذف السطورَ التي تبدأ بـ editor.unicodeHighlight.`,
+};
+
+/** وصفٌ مقروءٌ لموضع القيمة، يُذكر للمستخدم كي يتعلّم لا كي يُسحَر. */
+function describe(entry) {
+  const where = { global: "إعداداتك", workspace: "إعدادات المشروع",
+                  folder: "إعدادات المجلّد" }[entry.scope];
+  return entry.langId ? `${entry.key} في ${where} للغة ${entry.langId}`
+                      : `${entry.key} في ${where}`;
+}
+
+/**
+ * يمسح كلَّ موضعٍ فيه قيمة. يعيد `{key, langId, scope, target, overrideInLanguage}`.
+ * يقرأ بنطاقِ اللغة **وبلا نطاق**: الأوّلُ ضروريٌّ لكشف ما يغلبنا، والثاني ليمسحه الأمرُ
+ * أيضًا حين يطلب المستخدمُ العودةَ إلى حالٍ نظيفة.
+ */
+function findOverrides(vscode) {
+  const found = [];
+  const targets = vscode.ConfigurationTarget;
+  const scopes = [
+    ["global", "globalValue", "globalLanguageValue", targets.Global],
+    ["workspace", "workspaceValue", "workspaceLanguageValue", targets.Workspace],
+    ["folder", "workspaceFolderValue", "workspaceFolderLanguageValue",
+     targets.WorkspaceFolder],
+  ];
+  for (const langId of [null, ...LANGS]) {
+    const config = vscode.workspace.getConfiguration(
+      undefined, langId ? { languageId: langId } : undefined);
+    for (const key of KEYS) {
+      const info = config.inspect(`${SECTION}.${key}`);
+      if (!info) continue;
+      for (const [scope, plainProp, langProp, target] of scopes) {
+        const value = info[langId ? langProp : plainProp];
+        if (value === undefined) continue;
+        found.push({ key, langId, scope, target, value,
+                     overrideInLanguage: Boolean(langId) });
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * ما يغلب افتراضَنا فعلًا: قيمةٌ بنطاقِ لغةٍ من لغاتنا تُعيد الإبراز. القيمةُ ثلاثيّة
+ * (`true|false|"inUntrustedWorkspace"`)، فالشرطُ «ليست false» لا «تساوي true».
+ */
+function shadowing(overrides) {
+  return overrides.filter(
+    (o) => o.langId && o.key === "nonBasicASCII" && o.value !== false);
+}
+
+/** أمرُ «أزِل الإطارات الصفراء». يعيد عددَ ما أُزيل. */
+async function resetCommand(vscode, memento) {
+  const config = vscode.workspace.getConfiguration();
+  const found = findOverrides(vscode);
+  // تنفيذُ الأمر يدويًّا إلغاءٌ ضمنيٌّ لأيّ «اتركها» سابقة.
+  if (memento) await memento.update(STATE_KEY, undefined);
+  if (!found.length) {
+    const choice = await vscode.window.showInformationMessage(
+      COPY.clean, COPY.openSettings);
+    if (choice === COPY.openSettings) {
+      await vscode.commands.executeCommand(OPEN_SETTINGS_CMD, SECTION);
+    }
+    return 0;
+  }
+  let cleared = 0;
+  for (const o of found) {
+    try {
+      await config.update(`${SECTION}.${o.key}`, undefined, o.target,
+                          o.overrideInLanguage);
+      cleared++;
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      // فشلٌ جزئيٌّ يُقال كما هو: ادّعاءُ النجاح يترك المستخدمَ يظنّ حالَه سليمةً وهي نصفُ ممسوحة.
+      vscode.window.showErrorMessage(
+        cleared ? COPY.partial(cleared, found.length, msg) : COPY.failed(msg));
+      return cleared;
+    }
+  }
+  vscode.window.showInformationMessage(COPY.done(found.map(describe).join("، ")));
+  return cleared;
+}
+
+/** إنذارٌ عند الإقلاع، مرّةً لكلّ حالةٍ جديدة. يعيد true إن أُزيلت الإطاراتُ فعلًا. */
+async function maybeWarn(vscode, memento) {
+  const hits = shadowing(findOverrides(vscode));
+  if (!hits.length) return false;
+  const signature = hits.map((o) => `${o.scope}:${o.langId}:${o.key}`).sort().join(",");
+  if (memento.get(STATE_KEY) === signature) return false;
+  const choice = await vscode.window.showWarningMessage(
+    COPY.warn, COPY.reset, COPY.dismiss);
+  if (choice === COPY.reset) return (await resetCommand(vscode, memento)) > 0;
+  if (choice === COPY.dismiss) await memento.update(STATE_KEY, signature);
+  return false;
+}
+
+module.exports = {
+  SECTION, KEYS, LANGS, STATE_KEY, OPEN_SETTINGS_CMD, COPY,
+  describe, findOverrides, shadowing, resetCommand, maybeWarn,
+};

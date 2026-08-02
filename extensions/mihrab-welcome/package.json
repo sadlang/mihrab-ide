@@ -37,6 +37,11 @@
         "command": "mihrab.checkSadFile",
         "title": "محراب: افحص ملفّ ص الحاليّ",
         "shortTitle": "افحص"
+      },
+      {
+        "command": "mihrab.resetUnicodeHighlight",
+        "title": "محراب: أزِل الإطارات الصفراء حول الحروف العربيّة",
+        "shortTitle": "أزِل الإطارات الصفراء"
       }
     ],
     "walkthroughs": [

@@ -42,7 +42,9 @@
         }
       },
       "[markdown]": { "editor.unicodeHighlight.nonBasicASCII": false },
-      "[plaintext]": { "editor.unicodeHighlight.nonBasicASCII": false }
+      "[plaintext]": { "editor.unicodeHighlight.nonBasicASCII": false },
+      "[git-commit]": { "editor.unicodeHighlight.nonBasicASCII": false },
+      "[git-rebase]": { "editor.unicodeHighlight.nonBasicASCII": false }
     }
   },
   "repository": {

@@ -334,6 +334,57 @@ def _upstream_report_rows_have_sections():
         + " · ".join(thin))
 
 
+@check("تقريرُ المنبع: مراسي الفهرس تحلّ إلى عناوينَ موجودة")
+def _upstream_report_anchors_resolve():
+    """رابطٌ ميّتٌ في فهرسٍ من ٥٠٠ سطرٍ لا يُكتشَف بالقراءة. المرساةُ تُشتقّ من العنوان
+    بقاعدة GitHub: خفضُ الحالة، حذفُ الترقيم، والمسافةُ شَرطة."""
+    text = _read(UPSTREAM_REPORT)
+    # كلُّ مستويات العناوين لا `## ` وحدَها: أوّلُ عنوانٍ فرعيٍّ برابطٍ **صحيح** كان
+    # يُسقِط الفحصَ أحمرَ كاذبًا. ولاحقةُ التكرار (`-1`) كما تفعل GitHub.
+    heads, seen = set(), {}
+    for ln in text.splitlines():
+        m = re.match(r"(#{2,6})\s+(.*)", ln)
+        if not m:
+            continue
+        slug = re.sub(r"[^\w؀-ۿ\s-]", "", m.group(2).strip().lower(), flags=re.UNICODE)
+        slug = re.sub(r"\s+", "-", slug.strip())
+        n = seen.get(slug, 0)
+        seen[slug] = n + 1
+        heads.add(slug if n == 0 else f"{slug}-{n}")
+    dead = sorted({a for a in re.findall(r"\]\(#([^)]+)\)", text) if a not in heads})
+    assert not dead, "مراسٍ في الفهرس لا عنوانَ لها: " + " · ".join(dead)
+
+
+@check("تقريرُ المنبع: أعدادُ الملفّات في الجدول = ما يمسّه المرقِّع فعلًا")
+def _upstream_report_counts_match():
+    """‏«٩ ملفّات» و«١٦ ملفًّا» أرقامٌ منسوخةٌ يدويًّا تتقادم بصمتٍ عند تغيّر `FILES` —
+    فيُرفَع إلى المنبع مقترحٌ يَعِد بإسقاط تسعةٍ وهي أحدَ عشر. (رصدَته مراجعةٌ هندسيّة.)
+    """
+    ARABIC_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+    table = _report_drop_column()
+    # أرقامٌ عربيّةٌ **ولاتينيّة**: حصرُها في `[٠-٩]` كان يُمرِّر «(11 ملفًّا)» أخضرَ.
+    # و«ملف» بلا شدّةٍ ولا تنوين ليطابق «ملفّات» و«ملفًّا» معًا.
+    pairs = [(s, n) for cell in table.splitlines()
+             for s, n in re.findall(r"`([a-z_]+)`\s*\(([٠-٩\d]+)\s*ملف", cell)]
+    assert pairs, "لا عددَ ملفّاتٍ في عمود الرُقَع — تغيّرت صياغةُ الجدول فعمِيَ الفحص."
+    unchecked = []
+    for stem, num in pairs:
+        patcher = f"patch_{stem}.py"
+        # لا تخطٍّ صامت: رقمٌ لمرقِّعٍ لا نعرف كيف نتحقّق منه يُعلَن، لا يُبتلَع — وهو
+        # عينُ «التخطّي الصامت» الذي أُزيل من L2. (رصدَته مراجعةٌ هندسيّة.)
+        if patcher not in M.ROOT_PATCHER_FILES_ATTR:
+            unchecked.append(f"{stem} ({num})")
+            continue
+        actual = len(M.root_target_files(BUILD, patcher))
+        claimed = int(num.translate(ARABIC_DIGITS))
+        assert claimed == actual, (
+            f"التقرير يقول إنّ `{stem}` يمسّ {claimed} ملفًّا، و`FILES` تقول {actual} "
+            "— رقمٌ متقادمٌ في مقترحٍ يُرفَع إلى المنبع")
+    assert not unchecked, (
+        "أعدادُ ملفّاتٍ في الجدول لا مصدرَ يتحقّق منها (المرقِّعُ ليس مرقِّعَ جذرٍ ذا `FILES`) "
+        "— اذكرها بلا رقمٍ أو اجعلها مشتقّة: " + " · ".join(unchecked))
+
+
 # ───────────────────── L0-4: صحّة JSON ─────────────────────
 @check("product.json و package.json صالحة JSON")
 def _json_valid():
@@ -639,12 +690,29 @@ def _unicode_highlight():
         ولا مسارَ في الواجهة يكتب `nonBasicASCII: true` (أوامرُ التعطيل تكتب `false` فقط).
         فلا فخَّ هنا. (رصدَته مراجعةٌ هندسيّة، وتحقّقناه بقراءة الملفّ لا بالثقة.)
 
-        **ما بقي من التوسيع، بحيثيّةٍ أخرى:** `[markdown]` و`[plaintext]` تأخذان
-        `nonBasicASCII: false` **وحدَه** — لا إعفاءً بالاسم. السببُ ليس الفخّ بل أنّ
-        المفتاح افتراضُه `inUntrustedWorkspace`، وأيُّ مشروعٍ مُنزَّلٍ غيرُ موثوقٍ ابتداءً،
-        فيغرق README عربيٌّ كلُّه بالمستطيلات. والنثرُ لا يُنفَّذ. أمّا `[json]`/`[jsonc]`
-        فتُركتا عمدًا: `tasks.json` و`devcontainer.json` هما ما يقرؤه المراجعُ **قبل** منحِ
-        الثقة، وإسكاتُهما يُسقِط الإشارةَ في موضع القرار.
+        **وأسبقيّةُ النطاق اللغويّ أقوى ممّا ظنَنّا مرّتين:** `getConsolidatedConfigurationModel`
+        (‏:990) يدمج المصادرَ كلَّها **ثمّ** يستدعي `.override(id)`، فمحتوى النطاق اللغويّ
+        يُطبَّق فوق المتن أيًّا كان مصدرُه. أي أنّ افتراضَنا `[sad]` يغلب **قيمةَ المستخدم
+        العامّة** لا العكس. والحالةُ الوحيدةُ التي تغلبنا: قيمةٌ بنطاقِ لغةٍ في إعدادات
+        المستخدم/المشروع — وعليها وحدَها يُنذر حارسُ `unicode-guard.js`.
+
+        **ما بقي من التوسيع، بحيثيّةٍ أخرى:** `[markdown]` و`[plaintext]` و`[git-commit]`
+        و`[git-rebase]` تأخذ `nonBasicASCII: false` **وحدَه** — لا إعفاءً بالاسم. السببُ
+        ليس الفخّ بل أنّ المفتاح افتراضُه `inUntrustedWorkspace`، وأيُّ مشروعٍ مُنزَّلٍ غيرُ
+        موثوقٍ ابتداءً، فيغرق README عربيٌّ كلُّه بالمستطيلات. والنثرُ لا يُنفَّذ. ورسالةُ
+        الالتزام تُحرَّر داخل المحرّر وتخلط عربيًّا بلاتينيٍّ ملتصق — وهو النمطُ الذي
+        يتجاوز إعفاءَ سياق الكلمة. أمّا `[json]`/`[jsonc]` فتُركتا عمدًا: `tasks.json`
+        و`devcontainer.json` هما ما يقرؤه المراجعُ **قبل** منحِ الثقة، وإسكاتُهما يُسقِط
+        الإشارةَ في موضع القرار.
+
+        **والضجيجُ خارجَ هذه النطاقات مقيسٌ لا مُقدَّر:** ‏md ‏0.05% · ts ‏0.25% ·
+        json ‏0.07% من الكلمات — النثرُ العربيُّ بلا snake_case، ونمطُ «الـHTML» وحده
+        يُبطِل إعفاءَ سياق الكلمة بحرفٍ لاتينيٍّ ملتصق.
+
+        **وإبقاءُ `invisibleCharacters` مفعَّلةً مقيسٌ أيضًا** (كان ادّعاءً يُكرَّر): في
+        ‏174 ملفّ ص من نواة نهلة (‏4.88 مليون محرف) وُجدت ‏312 علامةً خفيّةً فقط —
+        ‏192 LRM و120 RLM، أي ‏0.006% من المحارف ونحوُ علامتين في الملفّ. فالكلفةُ على
+        المستخدم لا تُذكَر، والفائدةُ حقيقيّة: هذه العلاماتُ تقلب ترتيبَ السطر بصريًّا.
       • ‏`allowedLocales: {ar: true}` **عديم الأثر** لا حلّ: بيانات المحليّات في
         `strings.ts` لا تحوي `ar` أصلًا (‏cs/de/es/fr/it/ja/ko/pl/pt-BR/ru/tr/zh…)،
         والمُرشِّح `Object.hasOwn(data, l)` يُسقِط أيّ محليّة غير موجودة. أثبتناه بالقراءة.
@@ -668,7 +736,11 @@ def _unicode_highlight():
     #     بالملتبِس أصلًا (قاعدةُ سياق الكلمة تُعفيه)، لكنّ `nonBasicASCII` يُبرِز كلَّ
     #     غير-ASCII في مساحةِ عملٍ **غير موثوقة** — وهي حالُ أيّ مشروعٍ مُنزَّل — فيغرق
     #     ملفُّ README عربيٌّ كلُّه. والإعفاءُ بالاسم هناك ممنوع، انظر أدناه.
-    PROSE_SCOPES = ("markdown", "plaintext")
+    # ‏`git-commit`/`git-rebase`: رسالةُ الالتزام تُحرَّر **داخل** المحرّر، ورسائلُ هذا
+    # المشروع نفسِه عربيّةٌ مخلوطةٌ بلاتينيّ ملتصق (`macOS`، أسماءُ ملفّات) — وهو النمطُ
+    # الذي يتجاوز إعفاءَ سياق الكلمة. واللغتان مشحونتان في `git-base`. (اقتراحُ مراجعةِ
+    # تجربةِ المستخدم، وهو الوحيدُ من قائمتها الذي رجّحته بالاحتمال لا بالإمكان.)
+    PROSE_SCOPES = ("markdown", "plaintext", "git-commit", "git-rebase")
     SCOPES = (lang_id,) + PROSE_SCOPES
     scoped_all = {sc: defaults.get(f"[{sc}]", {}) for sc in SCOPES}
     scoped = scoped_all[lang_id]
@@ -689,6 +761,18 @@ def _unicode_highlight():
     assert not stray, (
         "نطاقاتٌ لغويّةٌ تضبط إبرازَ يونيكود خارج المجموعة المقرَّرة — كلُّ نطاقٍ إسقاطُ "
         "حمايةٍ يحتاج حيثيّة: " + " ".join(stray) + " [AR-04]")
+    # حارسُ التعافي (`unicode-guard.js`) يفحص النطاقاتِ بالاسم كي يكشف ما يُظلِّلها. نطاقٌ
+    # يُضاف هنا ولا يُضاف هناك يبقى بلا تشخيصٍ ولا إصلاح: يرى المستخدمُ الإطاراتِ ويقول له
+    # الأمرُ «لم أجد شيئًا». فالقائمتان مصدرٌ واحدٌ يُفحَص تطابقُه.
+    guard_js = os.path.join(ROOT, "extensions", "mihrab-welcome", "unicode-guard.js")
+    if os.path.isfile(guard_js):
+        m = re.search(r"const LANGS = \[([^\]]*)\]", _read(guard_js))
+        assert m, "لا `LANGS` في unicode-guard.js — انجرف شكلُها فعمِيَ فحصُ التطابق [AR-04]"
+        guard_langs = set(re.findall(r'"([^"]+)"', m.group(1)))
+        assert guard_langs == set(SCOPES), (
+            "نطاقاتُ القشرة ≠ نطاقاتُ حارس التعافي — نطاقٌ بلا تشخيص: "
+            f"{sorted(set(SCOPES) ^ guard_langs)} [AR-04]")
+
     # الحماية التي نُبقيها عمدًا: لا نُطفئ الملتبِس ولا الخفيّ، لا عالميًّا ولا في نطاق.
     for keep in ("editor.unicodeHighlight.ambiguousCharacters",
                  "editor.unicodeHighlight.invisibleCharacters"):
@@ -1606,6 +1690,25 @@ def _welcome_ext():
     #      وإلّا ينكسر ربط الثنائيّ المدمج ولا يعمل التشغيل دون تثبيت على PATH.
     #      (أنماط متسامحة مع المسافات كي لا تنكسر بإعادة تنسيق. [N1])
     import re as _re
+    # (١ب٢) كلّ أمرٍ معلَنٍ مُسجَّل — كان هذا الحارسُ لنِبراس وحدَه، فأمرٌ يُعلَن في مانيفست
+    #       الترحيب بلا `registerCommand` كان يمرّ أخضرَ ويظهر في لوحة الأوامر ثمّ يرمي
+    #       «command not found» عند النقر. التسجيلُ قد يمرّ بثابتٍ مسمّى فنحلّه.
+    _wcmds = {c.get("command") for c in (pkg.get("contributes", {}).get("commands") or [])}
+    assert _wcmds, "لا أوامر معلَنة في امتداد الترحيب"
+    # التسجيلُ قد يُنقَل إلى وحدةٍ مستقلّة (نمطُ نِبراس «التسجيل الموزّع»)، فنمسح كلَّ ملفّات
+    # JS لا نقطةَ الدخول وحدَها — وإلّا يُسقِط أوّلُ نقلٍ الفحصَ أحمرَ كاذبًا.
+    _wreg = set()
+    for _jf in sorted(f for f in os.listdir(ext) if f.endswith(".js")):
+        _js = _read(os.path.join(ext, _jf))
+        _wconst = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', _js))
+        for _arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", _js):
+            _arg = _arg.strip()
+            _lit = _re.fullmatch(r"""["']([^"']+)["']""", _arg)
+            _wreg.add(_lit.group(1) if _lit else _wconst.get(_arg, _arg))
+    assert not (_wcmds - _wreg), (
+        f"أوامرُ معلَنةٌ في مانيفست الترحيب بلا registerCommand: {sorted(_wcmds - _wreg)}")
+    for _c in pkg.get("contributes", {}).get("commands", []):
+        assert _c.get("title"), f"أمرُ ترحيبٍ بلا عنوان: {_c.get('command')}"
     assert "resolveSadRun" in js, "لا دالّة resolveSadRun (حلّ الثنائيّ المدمج) في نقطة الدخول"
     # [AR-01] التشغيل يُوجَّه إلى لوحة المخرجات العربيّة (bidi صحيح) بدل مهمّة طرفيّة تشوّه العربيّة،
     #         ويجب أن يمرّر المسار المحلول sadRunCmd — وإلّا يتجاهل الثنائيّ المدمج. حارس ضدّ انحدار.
