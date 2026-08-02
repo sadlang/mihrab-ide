@@ -311,6 +311,46 @@ def _icons_shipped():
     assert default in ids, "سمة الأيقونات الافتراضيّة لا تطابق أيّ id في حزمة المخرَج"
 
 
+@check("قشرة محراب [AR-04]: افتراضاتُ الإعداد في الحزمة = المصدر (إعفاءُ يونيكود وصل فعلًا)")
+def _shell_defaults_shipped():
+    """‏L0 يحرس المصدر، وهذا يحرس **ما وصل**. الفرقُ ليس نظريًّا: العطبُ الذي أبلغه
+    المستخدم (مستطيلٌ أصفر حول كلّ ألف) كان إعفاءً صحيحًا في المصدر لم يبلغ الحزمة.
+    وفحصُ وجودِ المجلّد وحده لا يمسك ذلك — فنقارن الافتراضات كائنًا بكائن.
+    """
+    src = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    # لا تخطٍّ عند الغياب: القشرةُ ليست فرعًا اختياريًّا كالسمات، وحذفُ ملفّها يجب أن
+    # يُخفق لا أن يُحوِّل الحارسَ إلى لا-عمليّةٍ صامتة.
+    assert os.path.isfile(src), "مصدر قشرة محراب مفقود: extensions/mihrab-shell/package.json"
+    d = os.path.join(APP, "extensions", "mihrab-shell")
+    assert os.path.isdir(d), "قشرة محراب غير مشحونة (extensions/mihrab-shell)"
+    shipped = os.path.join(d, "package.json")
+    assert os.path.isfile(shipped), "package.json القشرة مفقود في الحزمة"
+    want = json.load(open(src, encoding="utf-8"))["contributes"]["configurationDefaults"]
+    got = json.load(open(shipped, encoding="utf-8")).get("contributes", {}).get(
+        "configurationDefaults", {})
+    # التشخيصُ يشير إلى **أوّل مسارٍ مختلف** لا إلى مفاتيح المستوى الأعلى وحدها: انجرافُ
+    # محرفٍ داخل `[sad]` كان يُنتج «مفاتيحُ ناقصة/زائدة: []» — رسالةً تقرأ كأنّ الفحصَ
+    # معطوبٌ لا كأنّ الحزمةَ بائتة. (رصدَته مراجعةٌ هندسيّة بأربع طفرات.)
+    if got != want:
+        def _first_diff(a, b, path=""):
+            for k in sorted(set(a) | set(b)):
+                p = f"{path}.{k}" if path else k
+                if k not in a:
+                    return f"{p} (زائدٌ في الحزمة)"
+                if k not in b:
+                    return f"{p} (مفقودٌ من الحزمة)"
+                if isinstance(a[k], dict) and isinstance(b[k], dict):
+                    d = _first_diff(a[k], b[k], p)
+                    if d:
+                        return d
+                elif a[k] != b[k]:
+                    return f"{p}: المصدر={a[k]!r} الحزمة={b[k]!r}"
+            return None
+        raise AssertionError(
+            "افتراضاتُ قشرة محراب في الحزمة تخالف المصدر — نسخةٌ بائتةٌ شُحنت. "
+            f"أوّلُ فرق: {_first_diff(want, got)} [AR-04]")
+
+
 @check("خطّ AR-02: @font-face بـdata:URI في CSS المشحون (مشروط بتوريد الخطّ)")
 def _arabic_font_shipped():
     # الحقن مشروط بتوريد بايتات الخطّ (سقوط رشيق)؛ لا يمكن جعله غير مشروط وإلّا فشل حين لا خطّ.

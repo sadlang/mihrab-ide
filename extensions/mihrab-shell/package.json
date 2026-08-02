@@ -40,7 +40,9 @@
           "﴾": true,
           "﴿": true
         }
-      }
+      },
+      "[markdown]": { "editor.unicodeHighlight.nonBasicASCII": false },
+      "[plaintext]": { "editor.unicodeHighlight.nonBasicASCII": false }
     }
   },
   "repository": {

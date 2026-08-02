@@ -240,6 +240,100 @@ def _manifest_consistency():
     assert len(ed) >= 6, f"عدد ملفّات محرّر RTL غير متوقَّع: {len(ed)}"
 
 
+# ──────── L0-3ب: تقريرُ المنبع يواكب الرُقَع ────────
+UPSTREAM_REPORT = os.path.join(ROOT, "docs", "اقتراحات تعديلات المصدر", "README.md")
+
+
+def _report_drop_column():
+    """عمودُ «الرُقَع التي يُسقطها» من الجدول الموجز وحده — لا كلُّ التقرير ولا كلُّ الجدول.
+
+    قصرُ الفحص على هذا العمود مقصود من الطرفين: ذِكرُ الرقعة عَرَضًا في فقرةٍ لا يعني أنّ
+    لها مقترحًا مقابلًا (فيمرّ الفحصُ كذبًا)، و`dir` و`nameShort` في عمود الوصف أسماءُ
+    خصائصَ لا رُقَعٍ (فيُخفق كذبًا). العمودُ الثالث وحده هو الربطُ رقعةً↔مقترحًا.
+    """
+    text = _read(UPSTREAM_REPORT)
+    i = text.find("## الجدول الموجز")
+    assert i >= 0, "لا «## الجدول الموجز» في تقرير المنبع — تغيّرت بنيتُه فعمِيَ الفحص."
+    j = text.find("\n## ", i + 1)
+    rows = [ln for ln in text[i:j if j > 0 else len(text)].splitlines()
+            if ln.lstrip().startswith("|")]
+    assert len(rows) >= 5, f"الجدول الموجز شبهُ فارغ ({len(rows)} سطرًا) — عمِيَ الفحص."
+    cells = []
+    for ln in rows:
+        parts = ln.split("|")
+        assert len(parts) >= 6, f"صفٌّ بأعمدةٍ غيرِ متوقَّعة في الجدول الموجز: {ln[:60]}"
+        cells.append(parts[3])
+    return "\n".join(cells)
+
+
+@check("تقريرُ المنبع يغطّي كلّ رقعة (رقعةٌ بلا مقترحٍ = دَينٌ خفيّ)")
+def _upstream_report_covers_patchers():
+    """طلبُ المستخدم: «التقرير يُحدَّث بعد كلّ إضافةِ رقعةٍ في محراب».
+
+    بلا حارسٍ يبقى ذلك وعدًا يعتمد على الذاكرة: تُضاف رقعةٌ، ويُنسى بندُها، فيبدو
+    التقريرُ كاملًا وهو ناقص — وهذا أسوأ من غيابه، لأنّه يُطمئن. القائمةُ تُشتقّ من
+    **القرص** لا من المانيفست: `patch_cli_macapp` مثلًا ليس في المانيفست (يرقّع
+    VSCodium لا vscode) ومع ذلك يستحقّ بندًا (م-١٠).
+    """
+    assert os.path.isfile(UPSTREAM_REPORT), (
+        "تقريرُ اقتراحات المنبع مفقود: docs/اقتراحات تعديلات المصدر/README.md")
+    table = _report_drop_column()
+
+    stems = {f[len("patch_"):-3] for f in os.listdir(BUILD)
+             if f.startswith("patch_") and f.endswith(".py")}
+    stems |= {f[:-3] for f in M.BUILD_PATCHERS if not f.startswith("patch_")}
+    missing = sorted(s for s in stems if f"`{s}`" not in table)
+    assert not missing, (
+        "رُقَعٌ بلا بندٍ في الجدول الموجز — أضِف لكلٍّ مقترحَ المنبع الذي يُسقطها: "
+        + " · ".join(missing))
+
+
+@check("تقريرُ المنبع لا يذكر رقعةً زائلة (بندٌ ميّت يوهم بدَينٍ لم يعد قائمًا)")
+def _upstream_report_has_no_stale_rows():
+    table = _report_drop_column()
+    known = set(os.listdir(BUILD))
+    stale = []
+    for tok in re.findall(r"`([^`]+)`", table):
+        if "." in tok or "/" in tok:   # ملفّاتٌ ومساراتٌ لا أسماءُ رُقَع
+            continue
+        if f"patch_{tok}.py" not in known and f"{tok}.py" not in known:
+            stale.append(tok)
+    assert not stale, (
+        "أسماءُ رُقَعٍ في الجدول الموجز بلا ملفٍّ في build/ — أُزيلت الرقعةُ ولم يُحدَّث "
+        "التقرير، أو أُخطئ الاسم: " + " · ".join(sorted(set(stale))))
+
+
+@check("تقريرُ المنبع: لكلّ صفٍّ في الجدول قسمٌ مكتوب (لا فهرسَ يحيل إلى فراغ)")
+def _upstream_report_rows_have_sections():
+    """الصفُّ وحده ليس بندًا. حذفُ قسم «م-13» كاملًا مع إبقاء صفّه كان يمرّ أخضرَ —
+    فيبدو التقريرُ مغطّيًا وهو فهرسٌ يحيل إلى لا شيء. (رصدَته مراجعةٌ هندسيّة بطفرة.)
+    """
+    text = _read(UPSTREAM_REPORT)
+    i = text.find("## الجدول الموجز")
+    j = text.find("\n## ", i + 1)
+    rows = [ln for ln in text[i:j if j > 0 else len(text)].splitlines()
+            if ln.lstrip().startswith("|")]
+    nums = [m.group(1) for ln in rows for m in [re.search(r"\[م-([٠-٩]+)\]", ln)] if m]
+    assert len(nums) >= 10, f"لم أستخرج أرقامَ البنود من الجدول ({len(nums)}) — عمِيَ الفحص."
+    thin = []
+    for n in nums:
+        k = text.find(f"## م-{n})")
+        if k < 0:
+            thin.append(f"م-{n} (لا قسم)")
+            continue
+        end = text.find("\n## ", k + 1)
+        body = [ln for ln in text[k:end if end > 0 else len(text)].splitlines()[1:]
+                if ln.strip() and ln.strip() != "---"]
+        # المقياسُ **الفراغُ** لا الطول: حدُّ 400 محرفٍ جرّبناه فأخفق على م-12 وم-14 وهما
+        # قسمان تامّان قصيران (عطبُ سطرين لا يحتاج صفحة). ثلاثةُ أسطرٍ ومئةُ محرفٍ تفصل
+        # «قسمٌ مكتوب» عن «عنوانٌ يليه فاصل» بلا حكمٍ على الإسهاب.
+        if len(body) < 3 or len(" ".join(body)) < 100:
+            thin.append(f"م-{n} (قسمٌ فارغ)")
+    assert not thin, (
+        "بنودٌ في الفهرس بلا متنٍ مكتوب — مقترحٌ بلا نصٍّ لا يُرفَع ولا يُسقِط رقعة: "
+        + " · ".join(thin))
+
+
 # ───────────────────── L0-4: صحّة JSON ─────────────────────
 @check("product.json و package.json صالحة JSON")
 def _json_valid():
@@ -533,20 +627,24 @@ def _unicode_highlight():
         وأهمُّها للعربيّة `invisibleCharacters` (‏RLM/LRO وأخواتُها تقلب ترتيبَ السطر
         بصريًّا) ولم تُمسّ.
 
-        **باقٍ معلومًا:** الضجيجُ يبقى خارج `[sad]`. قِسناه فوجدناه هامشيًّا (‏md ‏0.05%،
-        ts ‏0.25%، json ‏0.07%) لأنّ النثر العربيّ بلا snake_case، لكنّه ليس صفرًا:
-        نمطُ «الـHTML» يُبطِل الإعفاء بحرفٍ لاتينيٍّ ملتصق. لم نوسّع النطاق لأنّ الإعفاء
-        العالميّ يُسقِط الحماية في كلّ لغة. وقيمةُ المستخدم لهذا المفتاح تغلب افتراضَنا
-        **ذرّيًّا** (لا دمج) — فمن ضبطه عالميًّا يفقد إعفاءَنا.
+        **وفخٌّ ظنَنّاه قائمًا فلم يكن — مُثبَتُ النفي بالقراءة، ومكتوبٌ هنا كي لا يُبعَث:**
+        الإصلاحُ السريع «استثنِ هذا المحرف» (`excludeCharFromBeingHighlighted`) يكتب فعلًا
+        في إعدادات المستخدم **عالميًّا** بلا `overrideIdentifier` — وهذا صحيح. واستنتجنا
+        منه أنّ نقرةً واحدةً في md تُبطِل إعفاءَنا المحصورَ في `[sad]` **ذرّيًّا**، فبنينا
+        عليه توسيعًا للنطاقات وبندًا رابعًا في م-13. **والاستنتاجُ خطأ:** الدمجُ بين
+        المصادر وبين تجاوزات اللغة **عميقٌ لا ذرّيّ** — `ConfigurationModel.merge` (‏:156)
+        و`createOverrideConfigurationModel` (‏:203) كلاهما يمرّ بـ`mergeContents` (‏:219)
+        وهي تعاود النزول في كلّ قيمةٍ كائنًا. فقيمةُ المستخدم `{«а»: true}` **تتّحد**
+        بمحارفنا التسعةَ عشرَ ولا تحلّ محلَّها. والمفاتيحُ الذرّيّةُ حقًّا هي البوليانيّة،
+        ولا مسارَ في الواجهة يكتب `nonBasicASCII: true` (أوامرُ التعطيل تكتب `false` فقط).
+        فلا فخَّ هنا. (رصدَته مراجعةٌ هندسيّة، وتحقّقناه بقراءة الملفّ لا بالثقة.)
 
-        **وفخٌّ يقودُ إليه المنبعُ نفسُه** (رصدَته مراجعةُ تجربةِ المستخدم): الإصلاحُ
-        السريع «استثنِ هذا المحرف» (`excludeCharFromBeingHighlighted`) يكتب في إعدادات
-        المستخدم **عالميًّا** بلا `overrideIdentifier`. فلقاءٌ واحدٌ بمستطيلٍ في md أو
-        json ⇒ نقرةٌ ⇒ قيمةٌ عالميّةٌ تُبطِل إعفاءَنا المحصورَ في `[sad]` ذرّيًّا، فيعود
-        المستطيلُ إلى كلّ ملفّ ص بلا رجعةٍ يعرفها المستخدم. العلاجُ المقترح: توسيعُ
-        الإعفاء **بالاسم** إلى md/json/jsonc (لا عالميًّا) ليبعد الفخُّ عن متناوله؛
-        مؤجَّلٌ لأنّه يقتضي إعادةَ بناءٍ كاملة، ومسجَّلٌ في م-13 من
-        docs/اقتراحات تعديلات المصدر بوصفه عطبًا منبعيًّا يستحقّ الرفع.
+        **ما بقي من التوسيع، بحيثيّةٍ أخرى:** `[markdown]` و`[plaintext]` تأخذان
+        `nonBasicASCII: false` **وحدَه** — لا إعفاءً بالاسم. السببُ ليس الفخّ بل أنّ
+        المفتاح افتراضُه `inUntrustedWorkspace`، وأيُّ مشروعٍ مُنزَّلٍ غيرُ موثوقٍ ابتداءً،
+        فيغرق README عربيٌّ كلُّه بالمستطيلات. والنثرُ لا يُنفَّذ. أمّا `[json]`/`[jsonc]`
+        فتُركتا عمدًا: `tasks.json` و`devcontainer.json` هما ما يقرؤه المراجعُ **قبل** منحِ
+        الثقة، وإسكاتُهما يُسقِط الإشارةَ في موضع القرار.
       • ‏`allowedLocales: {ar: true}` **عديم الأثر** لا حلّ: بيانات المحليّات في
         `strings.ts` لا تحوي `ar` أصلًا (‏cs/de/es/fr/it/ja/ko/pl/pt-BR/ru/tr/zh…)،
         والمُرشِّح `Object.hasOwn(data, l)` يُسقِط أيّ محليّة غير موجودة. أثبتناه بالقراءة.
@@ -563,19 +661,44 @@ def _unicode_highlight():
     lang_id = json.load(open(sad_pkg, encoding="utf-8"))["contributes"]["languages"][0]["id"]
     defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
     KEY = "editor.unicodeHighlight.nonBasicASCII"
-    scoped = defaults.get(f"[{lang_id}]", {})
-    assert scoped.get(KEY) is False, (
-        f"لا إعفاء `{KEY}: false` داخل `[{lang_id}]` في mihrab-shell — فتح مجلّد ص "
-        f"غير موثوق يُبرِز 62% من محارف الملفّ كتحذير يونيكود [AR-04]")
+    # نطاقان لا واحد، وبصلاحيّتين مختلفتين:
+    #   • `[sad]`: الإطفاءُ الشامل **والإعفاءُ بالاسم** — متنُ الملفّ عربيّ، ومعرّفاتُه
+    #     snake_case عربيّةٌ تُبرَز بالملتبِس (قياسُ نهلة: 12.8% من الكلمات).
+    #   • `[markdown]`/`[plaintext]`: الإطفاءُ الشامل **وحدَه**. النثرُ العربيّ لا يُبرَز
+    #     بالملتبِس أصلًا (قاعدةُ سياق الكلمة تُعفيه)، لكنّ `nonBasicASCII` يُبرِز كلَّ
+    #     غير-ASCII في مساحةِ عملٍ **غير موثوقة** — وهي حالُ أيّ مشروعٍ مُنزَّل — فيغرق
+    #     ملفُّ README عربيٌّ كلُّه. والإعفاءُ بالاسم هناك ممنوع، انظر أدناه.
+    PROSE_SCOPES = ("markdown", "plaintext")
+    SCOPES = (lang_id,) + PROSE_SCOPES
+    scoped_all = {sc: defaults.get(f"[{sc}]", {}) for sc in SCOPES}
+    scoped = scoped_all[lang_id]
+    for sc, s in scoped_all.items():
+        assert s.get(KEY) is False, (
+            f"لا إعفاء `{KEY}: false` داخل `[{sc}]` في mihrab-shell — فتح مجلّدٍ "
+            f"غير موثوق يُبرِز 62% من محارف الملفّ كتحذير يونيكود [AR-04]")
     assert KEY not in defaults, (
         f"‏`{KEY}` مضبوط **عالميًّا** — هذا يُطفئ حماية التماثل البصريّ في كلّ لغة. "
-        f"احصره في `[{lang_id}]` [AR-04]")
-    # الحماية التي نُبقيها عمدًا: لا نُطفئ الملتبِس ولا الخفيّ، لا عالميًّا ولا في ص.
+        f"احصره في `[{lang_id}]` وأخواتها [AR-04]")
+    # مجموعةٌ **مغلقة**: نطاقٌ لغويٌّ جديدٌ يحمل مفاتيحَ إبراز يونيكود يجب أن يُخفق حتّى
+    # يُقرَّر عمدًا. بلا هذا كان يمرّ `"[yaml]": {nonBasicASCII: false}` أخضرَ — أي توسّعٌ
+    # صامتٌ في إسقاط الحماية بلا قرارٍ ولا حيثيّة. (رصدَته مراجعةٌ هندسيّة بطفرةٍ مرّت.)
+    PREFIX = "editor.unicodeHighlight."
+    stray = sorted(k for k, v in defaults.items()
+                   if k.startswith("[") and k not in {f"[{sc}]" for sc in SCOPES}
+                   and isinstance(v, dict) and any(x.startswith(PREFIX) for x in v))
+    assert not stray, (
+        "نطاقاتٌ لغويّةٌ تضبط إبرازَ يونيكود خارج المجموعة المقرَّرة — كلُّ نطاقٍ إسقاطُ "
+        "حمايةٍ يحتاج حيثيّة: " + " ".join(stray) + " [AR-04]")
+    # الحماية التي نُبقيها عمدًا: لا نُطفئ الملتبِس ولا الخفيّ، لا عالميًّا ولا في نطاق.
     for keep in ("editor.unicodeHighlight.ambiguousCharacters",
                  "editor.unicodeHighlight.invisibleCharacters"):
-        assert keep not in defaults and keep not in scoped, (
+        assert keep not in defaults, (
             f"‏`{keep}` مُعطَّل — الإعفاء بالاسم (allowedCharacters) يكفي لإسكات الضجيج، "
             f"والإطفاء يُسقِط حماية التماثل البصريّ/المحارف الخفيّة كلَّها [AR-04]")
+        for sc, s in scoped_all.items():
+            assert keep not in s, (
+                f"‏`{keep}` مُعطَّل في `[{sc}]` — الإعفاء بالاسم يكفي، والإطفاء يُسقِط "
+                f"حماية التماثل البصريّ/المحارف الخفيّة كلَّها [AR-04]")
 
     # ── الإعفاء بالاسم: مشتقٌّ من جدول المنبع لا مكتوبٌ بالحدس ──
     # لو أضاف المنبع نقطةَ كودٍ عربيّةً جديدةً إلى `_common` لبقيت قائمتُنا ناقصةً **بصمت**،
@@ -590,6 +713,17 @@ def _unicode_highlight():
     assert allowed, (
         f"لا `{ALLOWED_KEY}` داخل `[{lang_id}]` — يعود المستطيلُ الأصفر حول كلّ ألفٍ "
         f"وهاءٍ في معرّفات ص [AR-04]")
+    # **والإعفاءُ بالاسم محصورٌ في ص وحدها.** `shouldHighlightNonBasicASCII` يفحص
+    # `allowedCodePoints` **أوّلًا ويعود None** (unicodeTextModelHighlighter.ts:190) — أي
+    # قبل الملتبِس والخفيّ معًا. فكلُّ محرفٍ نُعفيه يفقد حمايتَه كاملةً في ذلك النطاق،
+    # وقائمتُنا فيها ما يشبه l و o و 0 و 1 و 5 و 7 و * و , و / و . — أدواتُ الانتحال في
+    # أمرِ مهمّةٍ أو مسارِ صورة. في ص المقايضةُ مقصودةٌ ومقيسة؛ خارجَها لا مقابلَ لها.
+    # (رصدَته مراجعةٌ هندسيّة بقراءة ترتيب الفحص في المنبع.)
+    named = sorted(sc for sc in PROSE_SCOPES if ALLOWED_KEY in scoped_all[sc])
+    assert not named, (
+        f"‏`{ALLOWED_KEY}` في نطاقٍ غير `[{lang_id}]` — الإعفاءُ بالاسم يتخطّى الملتبِسَ "
+        "والخفيَّ معًا، فيُسقِط الحمايةَ حيث لا ضجيجَ يبرّرها: "
+        + " ".join(f"[{sc}]" for sc in named) + " [AR-04]")
     # القيمةُ تُفحَص لا المفتاح وحده: `validateBooleanMap` في المنبع تقبل `=== true` فقط
     # وتُسقِط ما عداه، فـ`"ا": false` إعفاءٌ **مُبطَل** بمفتاحٍ حاضر — أي مستطيلٌ أصفرُ عائد
     # وحارسٌ أخضر. رصدَته مراجعةٌ هندسيّة بطفرةٍ مرّت.
