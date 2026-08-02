@@ -199,27 +199,45 @@ jobs:
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             MAIN="$OUT/mihrab"
             test -x "$MAIN" || { echo "❌ لا ثنائيَّ إقلاع: $MAIN"; ls -la "$OUT" | head -20; exit 1; }
-            xvfb-run -a "$MAIN" --no-sandbox --disable-gpu --disable-dev-shm-usage \
+            # ‏--no-zygote مقصود: كروميوم يشتقّ عمليّاتِ العرض من «الزيغوت» بـfork،
+            # فترث سطرَ أوامره `--type=zygote` ولا يظهر `--type=renderer` في ps
+            # أبدًا (الاسمُ وحدَه يتغيّر عبر prctl). فسقطت الخطوةُ بـ«لم تُرفع
+            # نافذة» بينما كانت ثمانيُ عمليّاتِ mihrab حيّةً فعلًا — الحارسُ نظر
+            # حيث لا يمكن أن يجد. وبلا زيغوتٍ يحمل كلُّ ابنٍ سطرَ أوامره الصادق.
+            xvfb-run -a "$MAIN" --no-sandbox --no-zygote --disable-gpu \
+              --disable-dev-shm-usage --verbose \
               --user-data-dir=/tmp/mihrab-ud --extensions-dir=/tmp/mihrab-ext \
               /tmp > /tmp/boot.log 2>&1 &
             PID=$!
-            sleep 30
-            if ! kill -0 "$PID" 2>/dev/null; then
-              wait "$PID"; RC=$?
-              echo "❌ مات التطبيق بعد الإقلاع (خرج $RC):"
-              tail -40 /tmp/boot.log || true
-              exit 1
-            fi
-            # حياةُ العمليّةِ الأمّ وحدَها لا تكفي: «عمليّةُ عرض» حيّةٌ تعني أنّ
-            # كروميوم رفع نافذةً فعلًا لا أنّه علق قبلها.
-            if ! pgrep -f 'type=renderer' >/dev/null; then
-              echo "❌ لا عمليّةَ عرض — لم تُرفع نافذة:"
+
+            # استطلاعٌ لا نومٌ ثابت: العدّاءُ قد يكون بطيئًا، والانتظارُ الأعمى
+            # يقايض عطبًا حقيقيًّا بعطبٍ متقطّع. ٦٠ ثانيةً سقفًا، والنجاحُ فوريّ.
+            RENDERER=""
+            for _ in $(seq 60); do
+              if ! kill -0 "$PID" 2>/dev/null; then
+                wait "$PID"; RC=$?
+                echo "❌ مات التطبيق بعد الإقلاع (خرج $RC):"
+                tail -40 /tmp/boot.log || true
+                exit 1
+              fi
+              # القراءةُ من /proc مباشرةً: cmdline مفصولٌ بـNUL، وpgrep قد يقصّه.
+              for c in /proc/[0-9]*/cmdline; do
+                tr '\0' ' ' < "$c" 2>/dev/null | grep -q -- '--type=renderer' \
+                  && { RENDERER="${c%/cmdline}"; break; }
+              done
+              [[ -n "$RENDERER" ]] && break
+              sleep 1
+            done
+
+            if [[ -z "$RENDERER" ]]; then
+              echo "❌ لا عمليّةَ عرض بعد ٦٠ ثانية — لم تُرفع نافذة:"
+              ps -ef | grep -i mihrab | grep -v grep || true
               tail -40 /tmp/boot.log || true
               kill "$PID" 2>/dev/null || true
               exit 1
             fi
             kill "$PID" 2>/dev/null || true
-            echo "✅ النافذةُ أقلعت، وعمليّةُ العرض حيّةٌ بعد ٣٠ ثانية"
+            echo "✅ النافذةُ أقلعت، وعمليّةُ العرض حيّة (${RENDERER##*/})"
           fi
 
       - name: بصمةُ الإصدار
