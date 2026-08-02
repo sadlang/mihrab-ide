@@ -47,7 +47,7 @@
 **أدواتُ لغة ص** تُجلَب من الإصدار الرسميّ المنشور، فيحمل كلُّ بناءٍ أحدثَ ص رسميّة:
 
 ```bash
-bash build/fetch_sad_tools.sh          # ينزّل أصلَ هذه المنصّة ويعيد التسمية
+bash build/fetch_sad_tools.sh          # ينزّل أصولَ هذه المنصّة ويعيد التسمية
 source .upstream/.sad-tools/env.sh     # يصدّر MIHRAB_SAD_* لـbuild.sh
 ```
 

@@ -32,6 +32,20 @@ esac
 ARCH="$(uname -m)"; [[ "$ARCH" == "aarch64" ]] && ARCH=arm64
 [[ "$ARCH" == "x86_64" ]] && ARCH=x64
 
+# **رموزُ المنصّة متعدّدة عمدًا**: `v1.0.0` سمّى أصلَه `…-windows-x64.zip`، وسيرُ عمل
+# الإصدار على الفرع الرئيسيّ اليومَ يسمّي `…-windows-x86_64.zip` و`…-linux-aarch64.tar.gz`.
+# فرمزٌ واحدٌ يجعل الجالبَ يخرج بـ3 «لا أصلَ لهذه المنصّة» على إصدارٍ فيه أصلُها — قِسناه
+# على أسماء سير العمل المحدَّث. نطابق كلَّ الصيغ المعروفة بدل تخمين واحدة.
+TOKENS=()
+case "$PLATFORM/$ARCH" in
+  windows/x64) TOKENS=(windows-x86_64 windows-x64 win32-x64) ;;
+  windows/arm64) TOKENS=(windows-aarch64 windows-arm64) ;;
+  linux/x64) TOKENS=(linux-x86_64 linux-x64) ;;
+  linux/arm64) TOKENS=(linux-aarch64 linux-arm64) ;;
+  mac/x64) TOKENS=(macos-x86_64 macos-x64 mac-x64 darwin-x64) ;;
+  mac/arm64) TOKENS=(macos-aarch64 macos-arm64 mac-arm64 darwin-arm64) ;;
+esac
+
 command -v gh >/dev/null || { echo "❌ لا gh CLI — لازمٌ لجلب الإصدار الرسميّ." >&2; exit 1; }
 
 if [[ -z "$TAG" ]]; then
@@ -39,38 +53,53 @@ if [[ -z "$TAG" ]]; then
 fi
 log "إصدارُ لغة ص الرسميّ: $TAG (من $REPO) · المنصّة: $PLATFORM/$ARCH"
 
-# اختيارُ الأصل: نمطُ المنصّة، و**استبعادُ المثبِّتات** (`sad-setup-*`) — نريد نسخةً محمولةً
+# اختيارُ الأصول: نمطُ المنصّة، و**استبعادُ المثبِّتات** (`sad-setup-*`) — نريد نسخةً محمولةً
 # نستخرج منها، لا مثبِّتًا يحتاج تفاعلًا.
+#
+# و**كلُّ أصولِ المنصّة لا أوّلُها**: سيرُ عمل الإصدار يُخرج ثلاثَ عائلات — `sad-full-*`
+# (مفسّرٌ + مترجمٌ + أدوات)، و`sad-v*` (مفسّرٌ وأدواتٌ بلا مترجم)، و`sadc-*` (مترجمٌ وحدَه).
+# فأخذُ أوّلِ مطابقٍ قد يقع على `sadc` فيخرج محرابٌ ببناءٍ بلا تشغيل. نستخرجها كلَّها
+# بترتيبِ أفضليّةٍ صريح، والخريطةُ أدناه تأخذ أوّلَ موجودٍ لكلّ أداة.
 mapfile -t ASSETS < <(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
-PICK=""
-for a in "${ASSETS[@]}"; do
-  [[ "$a" == sad-setup-* ]] && continue
-  case "$a" in
-    *"$PLATFORM-$ARCH"*.zip|*"$PLATFORM-$ARCH"*.tar.gz|*"$PLATFORM-$ARCH"*.tar.xz) PICK="$a"; break ;;
-  esac
+PICKS=()
+for family in "sad-full" "sad" "sadc" ""; do
+  for a in "${ASSETS[@]}"; do
+    [[ "$a" == sad-setup-* ]] && continue
+    [[ -n "$family" && "$a" != "$family"-* ]] && continue
+    case "$a" in *.zip|*.tar.gz|*.tar.xz) ;; *) continue ;; esac
+    hit=""
+    for tok in "${TOKENS[@]}"; do [[ "$a" == *"$tok"* ]] && hit=1 && break; done
+    [[ -z "$hit" ]] && continue
+    [[ " ${PICKS[*]-} " == *" $a "* ]] && continue
+    PICKS+=("$a")
+  done
 done
-if [[ -z "$PICK" ]]; then
+if ((${#PICKS[@]} == 0)); then
   echo "⚠️ لا أصلَ لهذه المنصّة في $TAG (المتاح: ${ASSETS[*]:-لا شيء})." >&2
-  echo "   محرابُ هذه المنصّة سيُبنى **بلا أدوات ص**. انشر أصلًا باسمٍ يحوي «$PLATFORM-$ARCH»." >&2
+  echo "   محرابُ هذه المنصّة سيُبنى **بلا أدوات ص**. انشر أصلًا باسمٍ يحوي أحدَ: ${TOKENS[*]}." >&2
   exit 3
 fi
-log "الأصل المختار: $PICK"
+log "الأصول المختارة (${#PICKS[@]}): ${PICKS[*]}"
 
 rm -rf "$OUT"; mkdir -p "$OUT/raw" "$OUT/bin"
-gh release download "$TAG" --repo "$REPO" --pattern "$PICK" --dir "$OUT/raw" --clobber
-ARCHIVE="$OUT/raw/$PICK"
-case "$PICK" in
-  # ‏`unzip` يعيد 1 على **تحذير** لا على فشل — وأرشيفُ الإصدار الرسميّ يُطلق تحذيرَ
-  # «backslashes as path separators» (أُنشئ على ويندوز). تحت `set -e` كان ذلك يُسقِط
-  # الجلبَ صامتًا بعد تنزيلٍ ناجح. فنقبل 0 و1 ونرفض ما فوقهما.
-  *.zip) ( cd "$OUT/raw" && unzip -o -q "$PICK" -d ex ) || [[ $? -le 1 ]] ;;
-  *.tar.gz|*.tar.xz) mkdir -p "$OUT/raw/ex" && tar -xf "$ARCHIVE" -C "$OUT/raw/ex" ;;
-esac
-EX="$OUT/raw/ex"
+EX="$OUT/raw/ex"; mkdir -p "$EX"
+i=0
+for PICK in "${PICKS[@]}"; do
+  i=$((i + 1)); DEST="$EX/$i"; mkdir -p "$DEST"
+  gh release download "$TAG" --repo "$REPO" --pattern "$PICK" --dir "$OUT/raw" --clobber
+  case "$PICK" in
+    # ‏`unzip` يعيد 1 على **تحذير** لا على فشل — وأرشيفُ الإصدار الرسميّ يُطلق تحذيرَ
+    # «backslashes as path separators» (أُنشئ على ويندوز). تحت `set -e` كان ذلك يُسقِط
+    # الجلبَ صامتًا بعد تنزيلٍ ناجح. فنقبل 0 و1 ونرفض ما فوقهما.
+    *.zip) ( cd "$OUT/raw" && unzip -o -q "$PICK" -d "ex/$i" ) || [[ $? -le 1 ]] ;;
+    *.tar.gz|*.tar.xz) tar -xf "$OUT/raw/$PICK" -C "$DEST" ;;
+  esac
+done
 
 # ── الخريطة: اسمُ محرابٍ ⇐ أوّلُ موجودٍ من مرشّحي الإصدار ──
-# الاسمُ المطابقُ أوّلًا (كي يلتقط الإصداراتِ القادمة تلقائيًّا حين تنشر الأسماءَ الأربعة)،
-# ثمّ اسمُ الإصدار الحاليّ: `sad` مُشغِّلٌ و`sadc` مترجم. ولا مرشّحَ لـcheck/lsp اليوم.
+# الاسمُ المطابقُ أوّلًا، ثمّ أسماءُ `v1.0.0`: `sad` مُشغِّلٌ و`sadc` مترجم. والفرعُ الرئيسيّ
+# اليومَ يبني الأربعةَ بأسمائها المطابقة (‏`OUTPUT_NAME` في apps/ وtools/check وtools/lsp)،
+# فأوّلُ إصدارٍ يُوسَم منه يُلتقط بلا تعديلٍ هنا.
 declare -A CANDIDATES=(
   [sad-run]="sad-run sad"
   [sad-build]="sad-build sadc"
@@ -86,9 +115,12 @@ declare -A ENVVAR=(
 FOUND=0; MISSING=()
 for tool in sad-run sad-build sad-check sad-lsp; do
   src=""
+  # الأصلُ الأعلى أفضليّةً أوّلًا (‏`$EX/1` = `sad-full` حين يُنشَر)، ثمّ الاسمُ الأدقّ.
   for cand in ${CANDIDATES[$tool]}; do
-    hit="$(find "$EX" -maxdepth 3 -type f -name "$cand$EXE" -print -quit 2>/dev/null || true)"
-    [[ -n "$hit" ]] && { src="$hit"; break; }
+    for d in $(seq 1 ${#PICKS[@]}); do
+      hit="$(find "$EX/$d" -maxdepth 4 -type f -name "$cand$EXE" -print -quit 2>/dev/null || true)"
+      [[ -n "$hit" ]] && { src="$hit"; break 2; }
+    done
   done
   if [[ -z "$src" ]]; then MISSING+=("$tool"); continue; fi
   cp -f "$src" "$OUT/bin/$tool$EXE"
@@ -101,17 +133,20 @@ done
 # حمولةٌ مجاورة: المكتبةُ القياسيّة ومكتباتُ التشغيل. `sad.exe` يعمل بلا SDL2 لبرنامجٍ
 # نصّيّ (قِسناه)، لكنّ استيرادَ المكتبة القياسيّة وتوليدَ الواجهات يحتاجانهما.
 for extra in stdlib SDL2.dll; do
-  [[ -e "$EX/$extra" ]] && cp -rf "$EX/$extra" "$OUT/bin/" && log "حمولةٌ مجاورة: $extra"
+  # تُبحث لا تُفترض: `v1.0.0` وضعها في جذر الأرشيف، وحزمُ الفرع الرئيسيّ تضعها تحت
+  # مجلّدٍ باسم الحزمة (`sad-full-v…/stdlib`). مسارٌ ثابتٌ كان يفقدها صامتًا.
+  hit="$(find "$EX" -maxdepth 4 -name "$extra" -print -quit 2>/dev/null || true)"
+  [[ -n "$hit" ]] && cp -rf "$hit" "$OUT/bin/" && log "حمولةٌ مجاورة: $extra"
 done
 [[ -d "$OUT/bin/stdlib" || -f "$OUT/bin/SDL2.dll" ]] && \
   echo "export MIHRAB_SAD_PAYLOAD='$OUT/bin'" >> "$OUT/env.sh"
 
 if ((FOUND == 0)); then
-  echo "❌ لم تُطابَق أيُّ أداةٍ داخل $PICK — تغيّرت أسماءُ ملفّات الإصدار؟" >&2
+  echo "❌ لم تُطابَق أيُّ أداةٍ داخل ${PICKS[*]} — تغيّرت أسماءُ ملفّات الإصدار؟" >&2
   exit 1
 fi
 
-python - "$OUT" "$REPO" "$TAG" "$PICK" <<'PY'
+python - "$OUT" "$REPO" "$TAG" "$(IFS=,; echo "${PICKS[*]}")" <<'PY'
 import hashlib, json, os, sys
 out, repo, tag, asset = sys.argv[1:5]
 bins = {}
