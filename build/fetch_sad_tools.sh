@@ -160,6 +160,15 @@ json.dump({"repo": repo, "tag": tag, "asset": asset, "tools": bins},
 PY
 
 echo "✅ أدواتُ ص $TAG جاهزة: $FOUND/4 (${MISSING[*]:-لا نقص})"
-[[ ${#MISSING[@]} -gt 0 ]] && echo "   ⚠️ غيرُ منشورٍ في الإصدار الرسميّ: ${MISSING[*]} — محرابٌ يُشحن بلا ذكاءٍ لغويّ/تشخيصٍ حتّى تُنشَر."
+# الأثرُ يُذكر بأداته: نقصُ `sad-build` على macOS/Intel مثلًا يعني «بلا ترجمة» لا
+# «بلا إكمال» — ورسالةٌ واحدةٌ لكلّ الحالات كانت تقول الخطأ في أكثرها.
+declare -A LOSS=(
+  [sad-run]="تشغيلِ البرامج" [sad-build]="الترجمةِ إلى تنفيذيّ"
+  [sad-check]="التشخيصِ" [sad-lsp]="الإكمالِ وذكاءِ المحرّر"
+)
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  loss=""; for m in "${MISSING[@]}"; do loss+="${loss:+ و}${LOSS[$m]}"; done
+  echo "   ⚠️ غيرُ منشورٍ في الإصدار الرسميّ: ${MISSING[*]} — محرابُ هذه المنصّة بلا $loss حتّى يُنشَر."
+fi
 echo "   للاستعمال: source ${OUT#$ROOT/}/env.sh"
 exit 0
