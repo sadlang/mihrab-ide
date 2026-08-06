@@ -27,6 +27,9 @@ const {
   SEVERITY_WARNING,
   SEVERITY_INFORMATION,
 } = require("./lsp-protocol.js");
+// [DX-01] تطبيعُ البحث العربيّ — نسخةٌ **مطابقةٌ بايتًا ببايت** لنظيرتها في `mihrab-welcome`
+// (امتدادٌ مستقلّ لا يعتمد على غيره، كـ`tool-resolve.js`)، ويحرس تطابقَهما فحصُ L0 ببصمة.
+const { dualFilterText } = require("./arabic-normalize.js");
 
 // معرّف لغة ص (يطابق contributes.languages[].id) واسم الأمر والقناة.
 const SAD_LANGUAGE_ID = "sad";
@@ -167,7 +170,10 @@ function toCompletionItems(result) {
           : new vscode.MarkdownString(String(it.documentation.value || ""));
     }
     if (it.insertText) item.insertText = String(it.insertText);
-    if (it.filterText) item.filterText = String(it.filterText);
+    // [DX-01] نصُّ الترشيح يحمل **الرسمَين**: ما كتبه الخادمُ (أو التسمية)، وصورتَه المطبَّعة.
+    // فمن كتب «الفضه» يجد ما سُمّي «الفِضَّة» والعكس — والهمزةُ والتاءُ المربوطةُ والتشكيلُ
+    // والتطويلُ تبادلٌ يوميٌّ في العربيّة لا شذوذ. لا يُعرَض هذا النصُّ للمستخدم (يُعرَض `label`).
+    item.filterText = dualFilterText(it.filterText ? String(it.filterText) : item.label);
     if (it.sortText) item.sortText = String(it.sortText);
     return item;
   });

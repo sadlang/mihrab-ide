@@ -11,6 +11,7 @@
 const vscode = require("vscode");
 const cp = require("child_process");
 const { resolveBundledTool } = require("./tool-resolve.js");
+const { isolateEmbeddedRefs } = require("./error-format.js");
 
 // اسم أداة الفحص (المدمجة داخل الامتداد أوّلًا ثمّ على PATH) ولاحقة المنصّة.
 const SAD_CHECK = "sad-check";
@@ -98,7 +99,11 @@ function conciseMessage(ar, en) {
   const src = typeof ar === "string" && ar.trim() ? ar : typeof en === "string" ? en : "";
   const firstLine = src.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)[0] || src.trim();
   const cleaned = firstLine.replace(DECOR_PREFIX_RE, "").trim();
-  return cleaned.length > MAX_MSG_LEN ? cleaned.slice(0, MAX_MSG_LEN - 1) + "…" : cleaned;
+  const cut = cleaned.length > MAX_MSG_LEN ? cleaned.slice(0, MAX_MSG_LEN - 1) + "…" : cleaned;
+  // [DX-04] العزلُ **بعد القصّ** لا قبله: القصُّ في منتصف عزلٍ يترك FSI بلا PDI — قالبًا
+  // غيرَ متوازنٍ يُشخِّصه حارسُ الاتّجاه عندنا خطأً حرجًا على رسالةِ خطأٍ سليمة.
+  // ويقع هنا لا في ورقةِ أنماط: هذا النصّ يصل إلى aria-label وإلى الحافظة ولوحة المشاكل.
+  return isolateEmbeddedRefs(cut);
 }
 
 /**

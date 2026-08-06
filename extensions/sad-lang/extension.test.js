@@ -415,3 +415,24 @@ test("createSemanticGuard: مزلاجُ جلسة — يُبلّغ مرّةً و�
   assert.equal(g.disabled, false, "إعادةُ تشغيل الخادم تفتح الباب (قد تكون النسخة تغيّرت)");
   assert.equal(g.accept(good, L), true);
 });
+
+// ───────────────── [DX-01] ترشيحُ الإكمال بالرسمَين ─────────────────
+// الوصلُ الجديد يمسّ **كلّ** بندِ إكمالٍ يعود من الخادم، فيلزمه توكيدٌ لا قراءة.
+
+test("toCompletionItems: تسميةٌ عربيّةٌ ⇒ filterText يحمل الأصلَ والمطبَّع", () => {
+  const [item] = ext.toCompletionItems([{ label: "نصاب_الفضة" }]);
+  assert.strictEqual(item.label, "نصاب_الفضة", "المعروضُ لا يتغيّر");
+  assert.ok(item.filterText.includes("نصاب_الفضة"), "الأصلُ حاضر");
+  assert.ok(item.filterText.includes("نصاب_الفضه"), "المطبَّعُ حاضر — «الفضه» تجد «الفضة»");
+});
+
+test("toCompletionItems: تسميةٌ لاتينيّةٌ ⇒ لا تضخيمَ بلا فائدة", () => {
+  const [item] = ext.toCompletionItems([{ label: "main" }]);
+  assert.strictEqual(item.filterText, "main");
+});
+
+test("toCompletionItems: filterText من الخادم يُحترَم ويُوسَّع لا يُدهَس", () => {
+  const [item] = ext.toCompletionItems([{ label: "عرض", filterText: "الفِضَّة" }]);
+  assert.ok(item.filterText.startsWith("الفِضَّة"), "أصلُ الخادم في المقدّمة");
+  assert.ok(item.filterText.includes("الفضه"), "ومعه المطبَّع");
+});

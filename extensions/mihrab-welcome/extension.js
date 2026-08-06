@@ -12,6 +12,18 @@ const { SadDiagnostics } = require("./diagnostics.js");
 const { SadOutputPanel, ACTION_RUN, ACTION_BUILD } = require("./output-panel.js");
 const { resolveBundledTool, probeTool } = require("./tool-resolve.js");
 const unicodeGuard = require("./unicode-guard.js");
+const bidiGuard = require("./bidi-guard.js");
+const fontProbe = require("./font-probe.js");
+const bidiDecorate = require("./bidi-decorate.js");
+const clipboard = require("./clipboard-safety.js");
+const { activateNameGuard } = require("./name-guard.js");
+const { HelpPanel, OPEN_CMD: OPEN_HELP_CMD } = require("./help-panel.js");
+const releaseNotice = require("./release-notice.js");
+const terminalNotice = require("./terminal-notice.js");
+const { activateTerminalNotice } = terminalNotice;
+const diffNotice = require("./diff-notice.js");
+const { activateDiffNotice } = diffNotice;
+const importSettings = require("./import-settings.js");
 
 // اسم أداتَي تشغيل/بناء ص (مصدر حقيقة واحد داخل هذا الامتداد). sad-run يفسّر ويشغّل مباشرةً؛
 // sad-build يترجم إلى تنفيذيّ فقط (لا يشغّل) — «ابنِ» [SAD-04].
@@ -51,6 +63,34 @@ const CHECK_FILE_CMD = "mihrab.checkSadFile";
 const BUILD_FILE_CMD = "mihrab.buildSadFile";
 // مخرجُ التعافي من إعدادٍ عامٍّ يُبطِل افتراضاتِ إبراز يونيكود. [AR-04]
 const RESET_UNICODE_CMD = "mihrab.resetUnicodeHighlight";
+// إزالةُ محارف قلب الاتّجاه غير المتوازنة من المستند الحاليّ (إصلاحُ تشخيص BS-01). المعرّف
+// مصدرُه وحدةُ الحارس كي لا يفترق عن الإجراء الذي يستدعيه (نمطُ المصدر الواحد في المستودع).
+const REMOVE_BIDI_CMD = bidiGuard.REMOVE_CMD;
+const printCmd = require("./print-command.js");
+const EXPORT_PRINT_CMD = printCmd.EXPORT_CMD;
+// إعادةُ إظهار شارة الطرفيّة بعد إخفائها — المقبضُ الذي يجعل الإخفاءَ قرارًا لا بابًا مغلَقًا.
+const SHOW_TERMINAL_NOTICE_CMD = terminalNotice.SHOW_AGAIN_CMD;
+const SHOW_DIFF_NOTICE_CMD = diffNotice.SHOW_AGAIN_CMD;
+// [BS-02] تبديلُ عرضِ أسماء محارف الاتّجاه — «سمِّ الشيءَ لتُمكِّن من الفعل».
+const TOGGLE_BIDI_MARKERS_CMD = bidiDecorate.TOGGLE_CMD;
+// [ON-04] فحصُ إصدارٍ أحدث يدويًّا — المحدِّثُ التلقائيُّ معطَّلٌ عمدًا، والخبرُ ليس كذلك.
+const CHECK_UPDATE_CMD = "mihrab.checkForUpdate";
+// [BS-04] «انسخ للنشر»: يلفّ كلَّ سطرٍ بعزلٍ اتّجاهيّ كي يُعرَض خارج محرابٍ
+// بالترتيب نفسِه. المعرّفُ مصدرُه الوحدةُ لا نصٌّ مكرَّر.
+const COPY_SAFE_CMD = clipboard.COPY_SAFE_CMD;
+// [BS-04] بابُ العودة: يزيل عزلَ النشر من ملفٍّ لُصِق فيه. ميزةٌ تُدخِل شيئًا ولا تملك
+// إخراجَه ميزةٌ نصفُها فخّ — والمحارفُ متوازنةٌ فلا يمسّها زرُّ إصلاح BS-01.
+const STRIP_ISO_CMD = clipboard.STRIP_ISO_CMD;
+// أمرُ المنبع لفتح لوحة المشاكل — يُمرَّر إلى بلاغ اللصق زرًّا «أرِني الموضع».
+const SHOW_PROBLEMS_CMD = "workbench.actions.view.problems";
+// [ON-04] مصدرُ مانيفست الإصدارات وصفحةُ التنزيل — من هويّة المنتج لا مكتوبَين حرفيًّا هنا.
+const RELEASES_URL = "https://sad-lang.org/mihrab/dl/releases.json";
+const DOWNLOAD_URL = "https://sad-lang.org/mihrab/download/";
+// مهلةُ جلبِ المانيفست: خبرٌ تحسينيٌّ لا يُبطئ الإقلاعَ ولا ينتظر شبكةً متعثّرة.
+const RELEASES_TIMEOUT_MS = 8000;
+// عدّادُ الجلسات، وأقلُّ جلسةٍ يُطلَب فيها إذنُ فحص الإصدارات (لا في أوّل إقلاع).
+const SESSIONS_KEY = "mihrab.sessions";
+const MIN_SESSIONS_BEFORE_ASK = 2;
 // أوامر النواة المدمجة المُستدعاة (لا سلاسل حرفيّة موضعيّة — أسوة بـOPEN_WALKTHROUGH_CMD).
 const OPEN_FOLDER_CMD = "vscode.openFolder";
 const OPEN_CMD = "vscode.open";
@@ -59,6 +99,9 @@ const DEFAULT_EXTENSION_ID = "sadlang.mihrab-welcome";
 // حدّ نتائج البحث عن ملفّات ص في مساحة العمل (أداء على مساحة كبيرة) + استبعاد التبعيّات.
 const SAD_SEARCH_MAX = 50;
 const NODE_MODULES_GLOB = "**/node_modules/**";
+// [TY-03] مهلةُ إعادة قياس الخطّ بعد ضبطه. إن مضت بلا قياسٍ **لا يُدَّعى نجاح** — تُعرَض
+// رسالةُ «كُتِب ولم يُتحقَّق». صمتُ اللوحة ليس برهانَ أثر.
+const REMEASURE_TIMEOUT_MS = 3000;
 
 // نصوص الواجهة (عربيّة-أوّلًا).
 const COPY = {
@@ -118,7 +161,7 @@ function buildReadme(projectName, runnerReady) {
     "# " + projectName + "\n\n" +
     "أوّل مشروع لك بلغة ص داخل محراب.\n\n" +
     "## التشغيل\n\n" +
-    "- افتح ‹" + MAIN_FILE + "› ثمّ نفّذ أمر **«محراب: شغّل ملفّ ص الحاليّ»** — تظهر المخرجات في لوحة ص العربيّة (باتّجاهها الصحيح).\n" +
+    "- افتح ‹" + MAIN_FILE + "› ثمّ نفّذ أمر **«محراب: شغّل ملفّ ص الحاليّ»** — تظهر المخرجات في لوحة مخرجات محراب (باتّجاهها الصحيح).\n" +
     taskNote
   );
 }
@@ -480,7 +523,15 @@ async function maybeShowWelcome(context) {
   }
 }
 
+/** حالةُ الامتداد العامّة — تُضبَط عند التنشيط ويقرؤها ما يُستدعى من أوامرَ لاحقًا. */
+let extensionState = null;
+/** إصدارُ محراب المشحون (من مانيفست هذا الامتداد) — مرجعُ مقارنةِ الإصدارات [ON-04]. */
+let mihrabVersion = "";
+
 function activate(context) {
+  extensionState = context.globalState;
+  mihrabVersion = (context.extension && context.extension.packageJSON
+    && String(context.extension.packageJSON.version)) || "";
   // حلّ مساري sad-run/sad-build مرّة واحدة عند التنشيط (المدمج أوّلًا ثمّ PATH).
   sadRunCmd = resolveSadRun(context);
   sadBuildCmd = resolveSadBuild(context);
@@ -494,6 +545,55 @@ function activate(context) {
   // لوحة المخرجات العربيّة [AR-01]: وجهة تشغيل ملفّ ص (بديل الطرفيّة، bidi صحيح). نمرّر context
   // كي تقرأ الخطّ العربيّ المحزوم [AR-02] من media/ وتعرض المخرجات به عينه (webview معزول).
   sadOutput = new SadOutputPanel(context);
+  // [TY-03] القياسُ يقع في اللوحة (حيث DOM وخطٌّ مُحلَّل)، والحكمُ في وحدةٍ نقيّةٍ تُختبَر.
+  //
+  // **والإنذارُ لا يقع لحظةَ القياس.** أوّلُ «شغّل» ناجحٍ هو أثمنُ ثانيةٍ في عمر المبتدئ
+  // معنا — أوّلُ مرّةٍ يأمر فيها الحاسوبَ فيطيع — وإطارٌ أصفرُ فيها يُقرأ «برنامجي فيه خطأ»
+  // لا «خطُّ الشاشة غير مثاليّ». وانكسارُ الأعمدة مشكلةُ **كتابةٍ** لا مشكلةُ تشغيل. فنقيس
+  // صامتين، ونتكلّم عند أوّل تعديلٍ في ملفّ ص بعدها — حيث تصير الجملةُ قابلةً للتصديق لأنّه
+  // أمام أعمدته. (الفرصةُ واحدةٌ للأبد، فلا تُحرَق في غير سياقها.)
+  /** @type {{fontFamily:string, widths:Record<string,number>}|null} */
+  let pendingFontMeasurement = null;
+  /** @type {((m:*) => void)|null} مستقبِلُ قياسٍ لمرّةٍ واحدة (لإعادة القياس بعد الضبط). */
+  let awaitingRemeasure = null;
+  sadOutput.onFontProbe((m) => {
+    if (awaitingRemeasure) {
+      const fn = awaitingRemeasure;
+      awaitingRemeasure = null;
+      fn(m);
+      return;
+    }
+    pendingFontMeasurement = m;
+  });
+
+  /** يعرض إنذارَ الخطّ مرّةً، في سياق الكتابة لا في لحظة أوّل تشغيل. */
+  const flushFontWarning = () => {
+    const m = pendingFontMeasurement;
+    if (!m) return;
+    pendingFontMeasurement = null;
+    // مكدَّسُ الإصلاح يُقرَأ من افتراضنا لا يُكتَب حرفيًّا — مصدرُ حقيقةٍ واحدٌ في
+    // `mihrab-shell`، فلا يقترح الإصلاحُ مكدَّسًا يخالف ما نشحنه.
+    const info = vscode.workspace.getConfiguration().inspect(fontProbe.FONT_SETTING);
+    void fontProbe
+      .maybeWarnProportional(vscode, context.globalState, m, {
+        bundledStack: info && info.defaultValue,
+        inspect: info,
+        // إعادةُ القياس **من السطح نفسِه**: نطلبها ونصبر لها بمهلة، فإن لم تأتِ لم نَدَّعِ.
+        remeasure: () =>
+          new Promise((resolve) => {
+            const timer = setTimeout(() => {
+              awaitingRemeasure = null;
+              resolve(null);
+            }, REMEASURE_TIMEOUT_MS);
+            awaitingRemeasure = (mm) => {
+              clearTimeout(timer);
+              resolve(mm);
+            };
+            sadOutput.requestRemeasure();
+          }),
+      })
+      .catch(() => {});
+  };
 
   context.subscriptions.push(
     sadDiag,
@@ -509,12 +609,32 @@ function activate(context) {
     // ولا شيءَ في الواجهة يقول للمستخدم لماذا عادت الإطارات. الأمرُ يمسحها بنطاقها.
     vscode.commands.registerCommand(RESET_UNICODE_CMD,
       () => unicodeGuard.resetCommand(vscode, context.globalState)),
+    // [BS-01] إزالةُ الفواتح غير المتوازنة — إجراءُ إصلاحٍ للتشخيص وأمرٌ في لوحة الأوامر معًا.
+    vscode.commands.registerCommand(REMOVE_BIDI_CMD,
+      (uri, range) => bidiGuard.removeCommand(vscode, uri, range)),
+    // [PR-01] الورقةُ لا تحمل زخرفةً ولا تحويمًا ولا لونًا، فمراجعةٌ تُجرى على ورقٍ تفقد
+    // كلَّ ما بناه محرابٌ ضدّ قلبِ الاتّجاه. هذا الأمرُ يجعل الخفيَّ حبرًا — ويُبقي الأصلَ
+    // حرفًا بحرف في `data-src` كي لا يصير التصديرُ غسّالةَ هجوم.
+    vscode.commands.registerCommand(EXPORT_PRINT_CMD,
+      () => printCmd.exportForPrint(vscode, context)),
+    // المُحدِّدُ **مشتقٌّ من المخطّطات التي يمسحها الحارسُ فعلًا** لا مكتوبٌ بيده: كان
+    // ‏`{scheme:"file"}` وحدَه يترك ملفًّا غيرَ محفوظ (وهو أوّلُ ما يلصق فيه المستخدمُ من
+    // الشابكة، أي أعلى لحظاتِ الخطر) مُشخَّصًا **بلا مصباحِ إصلاح** — لومٌ بلا مخرَج.
+    vscode.languages.registerCodeActionsProvider(
+      [...bidiGuard.SCANNED_SCHEMES].map((scheme) => ({ scheme })),
+      new bidiGuard.BidiCodeActionProvider(vscode),
+      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }
+    ),
     // عدسات كود «شغّل/ابنِ» فوق دالّة رئيسية في ملفّات ص [SAD-04].
     vscode.languages.registerCodeLensProvider(
       { language: SAD_LANG_ID, scheme: "file" },
       new SadMainCodeLensProvider()
     ),
-    vscode.workspace.onDidSaveTextDocument((doc) => sadDiag.scheduleCheck(doc))
+    vscode.workspace.onDidSaveTextDocument((doc) => sadDiag.scheduleCheck(doc)),
+    // [TY-03] لحظةُ الإنذار: أوّلُ تعديلٍ في ملفّ ص **بعد** أن قِسنا صامتين.
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (e.document && e.document.languageId === SAD_LANG_ID) flushFontWarning();
+    })
   );
 
   // افحص الملفّ النشط عند التنشيط (إن كان ملفّ ص محفوظًا) كي تظهر التشخيصات فورًا لا بعد أوّل حفظ.
@@ -527,6 +647,100 @@ function activate(context) {
   // [AR-04] إنذارٌ عن إعدادٍ يُظلِّل افتراضَنا **بنطاق لغة** (الحالةُ الوحيدة التي تُنتِج
   // الإطارات)، مرّةً لكلّ حالةٍ لا في كلّ إقلاع.
   void unicodeGuard.maybeWarn(vscode, context.globalState).catch(() => {});
+
+  // [BS-01] كاشفُ قلب الاتّجاه: يُنشأ بعد تسجيل الأمر كي يجد الإصلاحُ أمرَه مسجَّلًا، ويُسجِّل
+  // نفسَه في subscriptions من مُنشِئه (كـSadDiagnostics).
+  new bidiGuard.BidiGuard(vscode, context);
+
+  // [BS-03] حارسُ أسماء الملفّات: يعمّم ما كان محصورًا في اسم المشروع على الإنشاء وإعادة
+  // التسمية. لا حقَّ نقضٍ لدينا (المنبع لا يمنحه)، فالصدقُ كشفٌ فوريٌّ بإصلاحٍ بنقرة.
+  activateNameGuard(vscode, context);
+
+  // [DR-03] شارةُ الطرفيّة ورسالتُها: الحدُّ المنبعيُّ مرئيٌّ ومعالَجٌ لا صامت — ومعه أمرُ
+  // إعادةِ إظهارٍ كي لا يصير الإخفاءُ بابًا بلا مقبض (درسُ «أزِل الإطارات الصفراء»).
+  const termNotice = activateTerminalNotice(vscode, context.globalState, RUN_FILE_CMD);
+  context.subscriptions.push(
+    termNotice,
+    vscode.commands.registerCommand(SHOW_TERMINAL_NOTICE_CMD, () => termNotice.showAgain())
+  );
+
+  // [DR-04] رسالةُ محرّر الفرق: الاستثناءُ الاتّجاهيُّ الوحيدُ الباقي يُسمّى بدل أن يُخمَّن.
+  // كان مسجَّلًا «لم يُنفَّذ» لأنّ ترويسةَ الفرق سطحٌ منبعيّ — والحكمُ كان على الموضع لا على
+  // الرسالة، والطبقةُ الأولى تبلغ اللحظةَ نفسَها بلا رقعة (سابقةُ رسالة الطرفيّة).
+  const dfNotice = activateDiffNotice(vscode, context.globalState);
+  context.subscriptions.push(
+    dfNotice,
+    vscode.commands.registerCommand(SHOW_DIFF_NOTICE_CMD, () => dfNotice.showAgain())
+  );
+
+  // [BS-02] تسميةُ محارف الاتّجاه — **مطفأةٌ افتراضيًّا**: نصُّ العربيّة السويُّ مليءٌ
+  // بعلاماتٍ مشروعة، فإظهارُها دائمًا يعيد الضجيجَ الذي بُني BS-01 كلُّه لتفاديه. تُفتَح
+  // بأمرٍ حين يسأل المستخدمُ «ما هذا؟».
+  const bidiMarkers = new bidiDecorate.BidiMarkerDecorator(vscode);
+  const helpPanel = new HelpPanel(vscode, context);
+  context.subscriptions.push(
+    bidiMarkers,
+    helpPanel,
+    vscode.commands.registerCommand(TOGGLE_BIDI_MARKERS_CMD, () => bidiMarkers.toggle()),
+    // [ON-03] المساعدةُ داخل المحرّر: المحتوى مكتوبٌ عندنا سلفًا، والناقصُ كان المنفذ.
+    vscode.commands.registerCommand(OPEN_HELP_CMD, () => helpPanel.open()),
+    // [ON-04] الفحصُ اليدويّ يتجاوز الفاصلَ الزمنيّ ويقول نتيجتَه دائمًا (صمتُ الطلب إهمال).
+    vscode.commands.registerCommand(CHECK_UPDATE_CMD, () => checkRelease(true)),
+    // [BS-04] بابا الحافظة. **الخروجُ أمرٌ صريح** فكلفتُه صفرٌ لمن لا يطلبه.
+    vscode.commands.registerCommand(COPY_SAFE_CMD, () => clipboard.copyForSharing(vscode)),
+    vscode.commands.registerCommand(STRIP_ISO_CMD, () => clipboard.stripIsolatesCommand(vscode))
+  );
+
+  // [MG-01] بابُ القادم من VS Code. **محلّيٌّ بلا شبكةٍ ولا حساب** — وهو القيدُ الذي يجعل
+  // الاستيرادَ متّسقًا مع موقف محرابٍ من الخصوصيّة لا ناقضًا له. والوحدةُ تُسجّل أمرَيها معًا:
+  // ميزةٌ تُدخِل شيئًا ولا تملك إخراجَه ميزةٌ نصفُها فخّ (سابقةُ «أزِل عزل النشر»).
+  context.subscriptions.push(...importSettings.activateImport(vscode, context));
+
+  // [BS-04] **والدخولُ بلاغٌ لا اعتراض**: اللصقُ أكثرُ عمليّةٍ تكرارًا في المحرّر، فتدخُّلٌ
+  // يعترضه ضريبةٌ على كلّ عمل. مرّةً في الجلسة، وحين يكون في الملصوق قالبٌ غيرُ متوازن
+  // وحدَه، وله «لا تُنبّهني» دائم. وأمرُ الإصلاح **يُمرَّر** لا يُكتَب هناك حرفيًّا.
+  clipboard.activatePasteNotice(vscode, context, {
+    removeCommand: REMOVE_BIDI_CMD,
+    showProblemsCommand: SHOW_PROBLEMS_CMD,
+  });
+
+  // [ON-04] فحصٌ خفيفٌ عند الإقلاع — **بإذنٍ صريحٍ**، وبفاصلٍ يوميّ، وبلا إرسالِ شيءٍ عن
+  // المستخدم. غيابُ المحدِّث قرارٌ سليم؛ غيابُ الخبر ليس كذلك.
+  //
+  // **ولا يُطلَب الإذنُ في أوّل إقلاع.** أوّلُ ثانيةٍ في محرابٍ تحمل الجولةَ وإنذارَ الإطارات
+  // الصفراء؛ وطلبُ إذنِ شبكةٍ يزاحمها يُرفَض **بالعادة لا بالقرار** — ورفضٌ مخزَّنٌ لا يُسأل
+  // عنه ثانيةً. فنؤجّله إلى الجلسة الثانية، حيث صار للسؤال معنًى عند من عرف المنتج.
+  const sessions = (context.globalState.get(SESSIONS_KEY) || 0) + 1;
+  void context.globalState.update(SESSIONS_KEY, sessions);
+  if (sessions >= MIN_SESSIONS_BEFORE_ASK) void checkRelease(false).catch(() => {});
+}
+
+/**
+ * [ON-04] يجلب مانيفست الإصدارات ويعرض الخبر. الجلبُ هنا (يمسّ الشبكة)، والقرارُ في وحدةٍ
+ * نقيّةٍ تُختبَر. مهلةٌ صريحةٌ: خبرٌ تحسينيٌّ لا يعلّق شيئًا على شبكةٍ متعثّرة.
+ */
+async function checkRelease(force) {
+  // **إصدارُ محرابٍ لا إصدارُ VS Code.** `vscode.version` رقمُ نواةِ المنبع التي بُني عليها،
+  // و`releases.json` يحمل إصدارَ محراب — فمقارنتُهما تقارن نظامَي ترقيمٍ مختلفَين، ونتيجتُها
+  // إمّا «محدَّث» أبديّةٌ وإمّا خبرٌ زائفٌ متكرّر. أي أنّ الميزةَ كلَّها كانت معطَّلةً صامتة.
+  const version = String(mihrabVersion || "");
+  if (!version) return { checked: false, newer: false, version: null };
+  return releaseNotice.checkForUpdate(vscode, extensionState, {
+    currentVersion: version,
+    downloadUrl: DOWNLOAD_URL,
+    now: Date.now(),
+    force,
+    fetchManifest: async () => {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), RELEASES_TIMEOUT_MS);
+      try {
+        const res = await fetch(RELEASES_URL, { signal: ctrl.signal });
+        return res && res.ok ? await res.json() : null;
+      } finally {
+        clearTimeout(t);
+      }
+    },
+  });
 }
 
 function deactivate() {}

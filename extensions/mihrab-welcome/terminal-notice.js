@@ -1,0 +1,154 @@
+"use strict";
+/**
+ * شارةُ الطرفيّة ورسالتُها [DR-03] — علاجُ تجربةٍ لقيدٍ منبعيٍّ مؤكَّد.
+ *
+ * ## القيدُ ومَن يدفع ثمنَه
+ * `@xterm/xterm` بلا خيارِ اتّجاهٍ أصلًا، وجردُنا يصنّفه بصدقٍ **خارجَ الطبقة**. لكنّ
+ * التصنيفَ ليس علاجَ تجربة. ضعْ نفسَك مكانَ الطالبة التي كتبت أوّلَ برنامجٍ لها بالعربيّة
+ * وضغطت «شغّل»: يُفتَح لها سطحٌ أسودُ يعرض جملتَها مقلوبةً مبعثرة. هي لا تعرف `xterm`، ولا
+ * تعرف أنّ العطبَ في مكتبةِ طرفيّةٍ منبعيّة — **تستنتج أنّ لغةَ ص لا تُخرِج العربيّةَ صحيحة**.
+ * وهذه لحظةُ فقدِ ثقةٍ لا تُستردّ بوثيقةٍ في `docs/`.
+ *
+ * ## ما نفعله (ثلاثةُ أشقّ)
+ *   (أ) **الوجهةُ الافتراضيّة** لأمر «شغّل» لوحةُ مخرجات محرابٍ العربيّة لا الطرفيّة —
+ *       منفَّذٌ في `extension.js` (`sadOutput.run`)، وهذه الوحدةُ تدلّ عليه.
+ *   (ب) **شارةٌ في شريط الحالة** ما دامت طرفيّةٌ مفتوحة، فالحدُّ مرئيٌّ لا صامت — **ولها
+ *       مخرَج**: من أخفاها بقي له أمرٌ يعيدها. شارةٌ دائمةٌ بلا مقبضٍ تُدرِّب على العمى،
+ *       وهو عينُ ما بُني كاشفُ `BS-01` لتفاديه.
+ *   (ج) **رسالةٌ لمرّةٍ واحدة** حين تُفتَح طرفيّةٌ **ومحرّرُ ص نشط** — لا عند كلّ طرفيّةٍ
+ *       تُفتَح لأمرِ `git`. الفرصةُ واحدةٌ للأبد، فلا تُحرَق في غير سياقها. وتُسمّي القيدَ
+ *       منبعيًّا صراحةً فلا تُحمَّل ص وزرَ غيرِها.
+ *
+ * لا رقعةَ نواةٍ ولا مسَّ بالمنبع — الطبقةُ الأولى وحدَها.
+ */
+
+/** مفتاحُ الحالة: هل عُرِضت رسالةُ الطرفيّة مرّةً على هذا الملفّ الشخصيّ؟ */
+const STATE_KEY = "mihrab.terminal.bidiNoticeShown";
+/** مفتاحُ الحالة: هل أخفى المستخدمُ الشارةَ عمدًا؟ (مخرَجُ من لا يريد تذكيرًا دائمًا.) */
+const BADGE_HIDDEN_KEY = "mihrab.terminal.badgeHidden";
+/** أولويّةُ شارةِ شريط الحالة — بعيدًا عن افتراضيّات اللغة والترميز. */
+const STATUS_PRIORITY = 90;
+/** معرّفُ لغة ص (مرآةٌ لِما في `extension.js`؛ يحرس تطابقَهما فحصُ `_lang_identity`). */
+const SAD_LANG_ID = "sad";
+/** أمرُ إعادة إظهار الشارة — المقبضُ الذي يجعل الإخفاءَ قرارًا لا بابًا مغلَقًا. */
+const SHOW_AGAIN_CMD = "mihrab.showTerminalDirectionNotice";
+
+const COPY = {
+  // نصُّ الشارة يصف **ما يراه المستخدم** لا ما ينقص المكتبة.
+  badge: "$(warning) العربيّة مقلوبة في الطرفيّة",
+  // اسمٌ يظهر في «إدارة عناصر شريط الحالة» — بدونه لا يعرف الخبيرُ ما الذي يخفيه.
+  itemName: "اتّجاه العربيّة في الطرفيّة",
+  ariaLabel:
+    "الطرفيّةُ لا تعرض العربيّةَ باتّجاهها الصحيح. فعّل لتشغيل ملفّ ص في لوحة مخرجات محراب.",
+  // **القيدُ مسمًّى بمصدره في الجملة الأولى.** بلا ذلك تُحمَّل ص وزرَ مكتبةٍ منبعيّة.
+  tooltip:
+    "الطرفيّةُ المدمجةُ (مكتبة xterm المنبعيّة) لا تدعم اتّجاهَ العربيّة، فتُعرَض المخرجاتُ " +
+    "العربيّةُ مقلوبةً أو مبعثرة. وهذا قيدٌ في المكتبة لا في لغة ص ولا في برنامجك.\n\n" +
+    "لوحةُ مخرجات محراب تعرضها باتّجاهها الصحيح — انقر لتشغيل ملفّ ص المفتوح فيها.",
+  notice:
+    "الطرفيّةُ المدمجةُ لا تدعم اتّجاهَ العربيّة (قيدٌ في مكتبة xterm المنبعيّة، لا في لغة ص). " +
+    "شغّل ملفّ ص في لوحة مخرجات محراب لترى المخرجاتِ العربيّةَ باتّجاهها الصحيح.",
+  runHere: "شغّل في لوحة مخرجات محراب",
+  dontRemind: "أخفِ هذا التنبيه",
+  hidden:
+    "أُخفيَ تنبيهُ الطرفيّة. لإعادته: لوحةُ الأوامر ← «محراب: أظهِر تنبيه اتّجاه الطرفيّة».",
+  shownAgain: "أُعيد تنبيهُ اتّجاه الطرفيّة.",
+};
+
+/**
+ * يبني شارةَ شريط الحالة ويُبقيها متزامنةً مع وجود طرفيّةٍ ومع رغبة المستخدم.
+ * يعيد كائنًا فيه `dispose` و`showAgain` (يستدعيه أمرُ الإعادة).
+ *
+ * @param {*} vscode واجهةُ المحرّر (محقونةٌ للاختبار).
+ * @param {*} memento ذاكرةُ الحالة العامّة (`context.globalState`).
+ * @param {string} runCommandId معرّفُ أمر «شغّل ملفّ ص» — يُمرَّر ولا يُكتَب حرفيًّا هنا
+ *        (مصدرُ حقيقةٍ واحدٌ في `extension.js`).
+ */
+function activateTerminalNotice(vscode, memento, runCommandId) {
+  const item = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    STATUS_PRIORITY
+  );
+  item.text = COPY.badge;
+  item.tooltip = COPY.tooltip;
+  item.command = runCommandId;
+  item.name = COPY.itemName;
+  // الدورُ معلَنٌ لقارئ الشاشة: بدونه يسمع نصًّا ولا يعرف أهو خبرٌ أم زرّ.
+  item.accessibilityInformation = { label: COPY.ariaLabel, role: "button" };
+  // لا خلفيّةَ تحذيرٍ دائمة: الخلفيّةُ الصفراءُ في شريط الحالة تُقرأ **عطلًا جاريًا**،
+  // وهذا **حدٌّ ثابتٌ معروف**. الأيقونةُ وحدَها تكفي للتنبيه بلا إلحاح.
+
+  const sync = () => {
+    const hidden = memento && memento.get(BADGE_HIDDEN_KEY);
+    const open = (vscode.window.terminals || []).length > 0;
+    if (open && !hidden) item.show();
+    else item.hide();
+  };
+
+  /**
+   * رسالةُ المرّةِ الواحدة — **مشروطةٌ بسياق ص**. اللحظةُ المقصودةُ في DR-03 هي «فتحتُ
+   * طرفيّةً وأنا أعمل على ص»، لا «فتحتُ طرفيّةً لأمرِ git». ورسالةٌ لمرّةٍ واحدةٍ تُحرَق إن
+   * جاءت في غير سياقها، فننتظر السياقَ ولا نحرقها.
+   */
+  const maybeNotice = async () => {
+    if (!memento || memento.get(STATE_KEY)) return;
+    const ed = vscode.window.activeTextEditor;
+    if (!ed || !ed.document || ed.document.languageId !== SAD_LANG_ID) return;
+    // نسِم «عُرِضت» **قبل** الانتظار: لا نريد رسالتين لو فُتِحت طرفيّتان معًا.
+    await memento.update(STATE_KEY, true);
+    const pick = await vscode.window.showInformationMessage(
+      COPY.notice,
+      COPY.runHere,
+      COPY.dontRemind
+    );
+    if (pick === COPY.runHere) {
+      await vscode.commands.executeCommand(runCommandId);
+    } else if (pick === COPY.dontRemind) {
+      // الزرُّ يفعل ما يقول: يُخفي **الشارةَ** أيضًا — وهي الشيءُ الوحيدُ المتكرّر.
+      await memento.update(BADGE_HIDDEN_KEY, true);
+      sync();
+      vscode.window.showInformationMessage(COPY.hidden);
+    }
+  };
+
+  const subs = [
+    item,
+    // **يُعاد الوعدُ عمدًا** لا يُبتلَع: VS Code يتجاهل قيمةَ عائدِ المستمع، لكنّ إعادتَه
+    // تجعل الرسالةَ **قابلةً للانتظار في الاختبار** — ورسالةٌ تُختبَر خيرٌ من رسالةٍ تُفترَض.
+    vscode.window.onDidOpenTerminal(() => {
+      sync();
+      return maybeNotice().catch(() => {});
+    }),
+    vscode.window.onDidCloseTerminal(() => sync()),
+  ];
+  sync();
+
+  return {
+    item,
+    /** أمرُ الإعادة: يُلغي الإخفاءَ ويُظهِر الشارةَ فورًا إن كانت ثمّة طرفيّة. */
+    async showAgain() {
+      if (memento) await memento.update(BADGE_HIDDEN_KEY, undefined);
+      sync();
+      vscode.window.showInformationMessage(COPY.shownAgain);
+    },
+    dispose() {
+      for (const s of subs) {
+        try {
+          s.dispose();
+        } catch {
+          /* تجاهُلٌ مقصود عند الإغلاق */
+        }
+      }
+    },
+  };
+}
+
+module.exports = {
+  activateTerminalNotice,
+  STATE_KEY,
+  BADGE_HIDDEN_KEY,
+  STATUS_PRIORITY,
+  SHOW_AGAIN_CMD,
+  SAD_LANG_ID,
+  COPY,
+};
