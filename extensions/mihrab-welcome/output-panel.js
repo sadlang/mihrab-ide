@@ -18,19 +18,28 @@ const cp = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { loadFontDataUri, BUNDLED_MEDIA_DIR, FONT_FILE, FONT_FAMILY } = require("./bundled-font");
 const { StringDecoder } = require("string_decoder");
 
 // معرّف/عنوان اللوحة (مفردة — تُعاد استعمالها لكلّ تشغيل).
 const PANEL_TYPE = "mihrab.sadOutput";
-const PANEL_TITLE = "مخرجات ص";
+// [VA-06] العنوانُ يخضع للمسرد كغيره — وكان الشيءَ الوحيدَ الذي تراه العينُ
+// ويخالف اللفظَ المعتمَد الذي وحّدناه في كلّ نصٍّ آخر.
+const PANEL_TITLE = "لوحة مخرجات محراب";
 
 // خطّ ص العربيّ المحزوم [AR-02] داخل اللوحة: الـwebview إطارٌ معزول عن وثيقة الـworkbench، فلا
 // يرث @font-face المحقون هناك. لذا نُضمِّن الخطّ نفسه في هذه اللوحة كـdata: URI (إن شُحن مع
 // الامتداد في media/) كي تعرض المخرجات بالخطّ المحزوم عينه لا بخطّ نظاميّ. سقوط رشيق: غيابه ⇒
 // اللوحة تسقط لمكدّس خطّ عربيّ نظاميّ (كما قبلُ). أسوة بحزم أدوات ص، المصدر يُحقَن وقت البناء.
-const BUNDLED_MEDIA_DIR = "media";
-const FONT_FILE = "kawkab-mono.woff2";
-const FONT_FAMILY = "Kawkab Mono";
+// المسارُ واسمُ الملفّ **لا يُعادان هنا**: صارا في `bundled-font.js` مصدرًا واحدًا للمُحمِّلَين.
+// وإبقاءُ نسختين منهما هو **السيناريو الحرفيّ** الذي وُجد ذلك الملفُّ ليمنعه (إعادةُ تسمية
+// `media/` تُصلَح في مكانٍ وتبقى في آخر)، فحملُ ثابتٍ ميّتٍ مُصدَّرٍ يُبقي البابَ مفتوحًا.
+// (‏تُستورَد أعلاه مع `loadFontDataUri` — سطرُ استيرادٍ واحدٌ لملفٍّ واحد.)
+// [TY-02] ارتفاع سطر هذه اللوحة — **القيمة المشتقّة نفسها** التي يضبطها mihrab-shell للمحرّر،
+// لا رقمًا آخر. هذه لوحة مخرجات ص العربيّة (وجهة AR-01 وDR-03)، أي أشدّ أسطحنا امتلاءً
+// بالتشكيل — وكانت عند 1.5، أي دون الأرضيّة المشتقّة 1.88 ⇒ تُقصّ قمّة الهمزة وذيل التنوين
+// في السطح الذي بُني ليعرض العربيّة صحيحةً. الاشتقاق الكامل: patches/fonts/README.md.
+const ARABIC_LINE_HEIGHT = 1.95;
 
 // أنواع رسائل الجسر — ثوابت السلك.
 const MSG_START = "start"; // ext→web: بدء تشغيل جديد (label = سطر «يشغّل: …»)
@@ -39,6 +48,15 @@ const MSG_EXIT = "exit"; // ext→web: انتهاء (label + ok)
 const MSG_CLEAR = "clear"; // ext→web: تفريغ السجلّ
 const MSG_STOP = "stop"; // web→ext: طلب إيقاف التشغيل الجاري
 const MSG_READY = "ready"; // web→ext: الـwebview حمّل واستمع (مصافحة تمنع فقدان أوّل رسائل)
+// web→ext: قياسُ عرض المحارف الفعليّ [TY-03]. عيّنةُ القياس تُستورَد من `font-probe.js`
+// (مصدرُ حقيقةٍ واحد: مَن يقيس ومَن يحكم على القياس يتشاركان القائمةَ نفسَها).
+const MSG_FONT_PROBE = "fontProbe";
+// ext→web: أعِد القياس (بعد ضبطِ خطّ) — كي يُتحقَّق من الأثر لا يُدَّعى.
+const MSG_REMEASURE = "remeasure";
+const FONT_PROBE_SAMPLES = require("./font-probe.js").SAMPLES;
+// [TY-06] تحويلُ أرقام **رسائلنا** وحدَها (رمزُ الخروج، عددُ الأسطر) — لا مخرَجِ
+// البرنامج ولا مواضعِ الأخطاء: تلك أرقامُ تعاملٍ تُنسَخ وتُطابَق بأدواتٍ أخرى.
+const { formatDigits, SETTING: DIGITS_SETTING } = require("./digits.js");
 
 // وسما مجرى الإخراج (يحدّدان لون/نمط السطر في اللوحة).
 const STREAM_OUT = "out";
@@ -129,13 +147,12 @@ function makeNonce() {
  */
 function loadBundledFontDataUri(context) {
   if (!context || !context.extensionPath) return null;
-  try {
-    const p = path.join(context.extensionPath, BUNDLED_MEDIA_DIR, FONT_FILE);
-    if (!fs.statSync(p).isFile()) return null;
-    return "data:font/woff2;base64," + fs.readFileSync(p).toString("base64");
-  } catch {
-    return null; // لا خطّ محزوم — تسقط اللوحة لمكدّس الخطّ النظاميّ
-  }
+  // المسارُ والقراءةُ وفحصُ البصمة في `bundled-font.js` — مصدرُ حقيقةٍ واحدٌ يشترك فيه هذا
+  // السطحُ وتصديرُ الطباعة [PR-01]. ونسختان لمسارِ ملفٍّ واحدٍ تنجرفان: يُعاد تسميةُ
+  // ‏`media/` فتُصلَح واحدةٌ وتبقى الأخرى تسقط سقوطًا رشيقًا بلا أن يلاحظ أحد.
+  // وهنا `required: false` **عن عمد**: اللوحةُ أمام المستخدم فيرى السقوطَ ويُصلحه —
+  // بخلاف ملفٍّ يُصدَّر للطباعة فيذهب حيث لا تصحيح. التعليلُ كاملًا في `bundled-font.js`.
+  return loadFontDataUri(context.extensionPath, { required: false });
 }
 
 /**
@@ -183,10 +200,14 @@ function buildHtml(fontDataUri) {
      لاتينيّ صرف لو غاب الخطّ المحزوم والمتغيّر معًا. */
   #log { flex: 1; overflow: auto; margin: 0; padding: 8px 12px;
          font-family: "${FONT_FAMILY}", var(--vscode-editor-font-family, ui-monospace, "Cascadia Mono", Consolas, "Segoe UI", "Noto Sans Arabic", monospace);
-         font-size: var(--vscode-editor-font-size, 13px); line-height: 1.5; }
+         font-size: var(--vscode-editor-font-size, 13px); line-height: ${ARABIC_LINE_HEIGHT}; }
   /* جوهر AR-01: كلّ سطر يأخذ اتّجاهه من أوّل محرف قويّ فيه (عربيّ⇐يمين، لاتينيّ/أرقام⇐يسار). */
   .line { unicode-bidi: plaintext; text-align: start; white-space: pre-wrap; word-break: break-word; min-height: 1.2em; }
   .line.err { color: var(--vscode-errorForeground); }
+  /* [ON-02] الحالة الفارغة: نبرة خبريّة لا اعتذاريّة، وموجّهة للفعل لا للوصف. */
+  #empty { padding: 32px 16px; text-align: center; opacity: .8; }
+  #empty p { margin: 0 0 6px; }
+  #empty .hint { font-size: .92em; opacity: .8; }
   .sys { opacity: 0.85; font-style: italic; }
   .sys.ok { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, inherit)); }
   .sys.bad { color: var(--vscode-errorForeground); }
@@ -195,9 +216,16 @@ function buildHtml(fontDataUri) {
 <body>
   <div id="head"><span id="file"></span><button id="stop" hidden>أوقِف</button></div>
   <div id="log"></div>
+  <!-- [ON-02] الحالةُ الفارغة: اللحظاتُ التي يكون فيها المستخدمُ عالقًا وحاضرَ الذهن.
+       جملةُ حالٍ + فعلٌ واحدٌ بزرّ — لا فراغٌ صامتٌ يُقرأ عطبًا. -->
+  <div id="empty">
+    <p>لم يُشغَّل شيءٌ بعد.</p>
+    <p class="hint">افتح ملفَّ ص واضغط F5 — تظهر مخرجاتُ برنامجك هنا باتّجاهها الصحيح.</p>
+  </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const log = document.getElementById('log');
+  const emptyEl = document.getElementById('empty');
   const fileEl = document.getElementById('file');
   const stop = document.getElementById('stop');
   const MAX = ${MAX_LOG_LINES};
@@ -211,6 +239,8 @@ function buildHtml(fontDataUri) {
   // يضيف دفعة أسطر بصنف واحد: تمريرة تخطيط واحدة (لا خطف تمرير لكلّ سطر)، ولصق تمرير لاصق —
   // نتبع الأسفل تلقائيًّا فقط إن كان المستخدم عنده، وإلّا نحترم موضع قراءته أعلى.
   function append(texts, cls) {
+    // أوّلُ سطرٍ يُخفي الحالةَ الفارغة — لا حاجةَ لرسالةٍ ثانيةٍ تقول إنّ التشغيل بدأ.
+    if (emptyEl) { emptyEl.hidden = true; }
     const stick = nearBottom();
     for (const t of texts) {
       const d = document.createElement('div');
@@ -228,6 +258,7 @@ function buildHtml(fontDataUri) {
   window.addEventListener('message', (e) => {
     const m = e.data || {};
     if (m.type === '${MSG_CLEAR}') {
+      if (emptyEl) { emptyEl.hidden = false; }
       log.textContent = '';
     } else if (m.type === '${MSG_START}') {
       fileEl.textContent = m.label || '';
@@ -239,6 +270,48 @@ function buildHtml(fontDataUri) {
       append([m.label], 'line sys ' + (m.ok ? 'ok' : 'bad'));
       stop.hidden = true;
     }
+  });
+  // [TY-03] قياسُ أحاديّة العرض **حيًّا**، حيث توجد شاشةٌ وخطٌّ مُحلَّلٌ فعلًا. مُضيفُ الامتداد
+  // بلا DOM فلا يستطيع هذا القياس، وحارسا L0/L2 يفحصان الإعدادَ والحزمةَ لا ما يُرسَم على
+  // جهاز المستخدم. وهذه اللوحةُ **أنسبُ موضعٍ**: هي السطحُ الذي يظهر فيه خرجُ ص العربيّ،
+  // وهي تُفتَح في أوّل تشغيل — قياسٌ بلا سطحٍ جديدٍ ولا مقاطعةٍ للمستخدم.
+  //
+  // **ولا نقيس خطَّ اللوحة نفسِها.** مكدَّسُ سجلّ اللوحة يبدأ بالوجه المحزوم، ووجهُه
+  // مُضمَّنٌ في هذه الوثيقة، فقياسُه يعطي «أحاديُّ العرض» **دائمًا** — أي أنّ الكاشفَ يعمى
+  // بالضبط عن الحالة التي بُني لها (مستخدمٌ ضبط خطَّ المحرّر إلى وجهٍ متناسب).
+  // فنقيس على عنصرٍ مخصَّصٍ خطُّه **خطُّ المحرّر وحدَه**، بلا وجهنا في مقدّمة المكدّس.
+  // (بلا شواهدَ خلفيّةٍ هنا: نحن داخل قالبٍ نصّيّ، والشاهدةُ تُنهيه فتُسقِط الملفَّ.)
+  function probeEditorFont() {
+    const el = document.createElement('div');
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;top:-9999px;' +
+      'font-family:var(--vscode-editor-font-family);font-size:var(--vscode-editor-font-size,14px)';
+    document.body.appendChild(el);
+    try {
+      const cs = getComputedStyle(el);
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = cs.fontSize + ' ' + cs.fontFamily;
+      const widths = {};
+      for (const ch of ${JSON.stringify(FONT_PROBE_SAMPLES)}) {
+        widths[ch] = ctx.measureText(ch).width;
+      }
+      vscode.postMessage({ type: '${MSG_FONT_PROBE}', fontFamily: cs.fontFamily, widths: widths });
+    } finally {
+      el.remove();
+    }
+  }
+  // ننتظر تحميلَ الوجوه: القياسُ قبلها يقع على الاحتياطيّ المتناسب ⇒ **إنذارٌ كاذبٌ في
+  // أوّل فتحة**. وdocument.fonts.ready موجودةٌ في كلّ متصفّحٍ يشغّل هذه اللوحة.
+  try {
+    const run = () => { try { probeEditorFont(); } catch (e) {} };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(run, run);
+    else run();
+  } catch (e) {
+    // القياسُ تحسينيّ: فشلُه لا يمنع اللوحةَ من عرض المخرجات.
+  }
+  // يُعاد القياسُ عند الطلب (بعد ضبطِ خطٍّ) كي يُتحقَّق من الأثر لا يُدَّعى.
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === '${MSG_REMEASURE}') { try { probeEditorFont(); } catch (err) {} }
   });
   // مصافحة: أبلِغ الامتداد أنّ المستمع جاهز كي يبثّ الرسائل المؤجّلة (START/CLEAR أوّل تشغيل).
   vscode.postMessage({ type: '${MSG_READY}' });
@@ -267,7 +340,20 @@ class SadOutputPanel {
     this._pending = [];
     // الخطّ المحزوم كـdata: URI (يُقرأ مرّةً؛ null إن غاب ⇒ سقوط رشيق لمكدّس الخطّ النظاميّ).
     this._fontDataUri = loadBundledFontDataUri(context);
+    // [TY-03] مستقبِلُ قياس عرض المحارف — يُحقَن من `activate` ولا تعرفه اللوحة.
+    /** @type {((m:{fontFamily:string, widths:Record<string,number>}) => void) | null} */
+    this._onFontProbe = null;
     this._disposed = false;
+  }
+
+  /** يسجّل مستقبِلَ قياس الخطّ [TY-03]. يُستدعى مرّةً لكلّ فتحةِ لوحة. */
+  onFontProbe(fn) {
+    this._onFontProbe = fn;
+  }
+
+  /** يطلب إعادةَ القياس [TY-03] — بعد ضبطِ خطٍّ، كي يُتحقَّق من الأثر لا يُدَّعى. */
+  requestRemeasure() {
+    if (this._panel && this._ready) void this._panel.webview.postMessage({ type: MSG_REMEASURE });
   }
 
   /** يُنشئ اللوحة عند الحاجة (كسولًا) ويربط جسر الرسائل ودورة الإغلاق. */
@@ -293,6 +379,16 @@ class SadOutputPanel {
         for (const msg of queued) void panel.webview.postMessage(msg);
       } else if (m.type === MSG_STOP) {
         this.stop();
+      } else if (m.type === MSG_FONT_PROBE) {
+        // [TY-03] القياسُ يُرفَع إلى مَن حقنه، ولا تحكم عليه اللوحة: فصلُ القياس عن الحكم
+        // يُبقي اللوحةَ لوحةَ مخرجاتٍ ويجعل القرارَ قابلًا للاختبار وحدَه.
+        if (this._onFontProbe) {
+          try {
+            this._onFontProbe({ fontFamily: m.fontFamily, widths: m.widths });
+          } catch {
+            /* تحسينيّ — لا يُفشِل اللوحة */
+          }
+        }
       }
     });
     panel.onDidDispose(() => {

@@ -116,7 +116,7 @@ function fakeCtxWithFont(withFont) {
   const dir = fs.mkdtempSync(npath.join(os.tmpdir(), "mihrab-font-"));
   if (withFont) {
     fs.mkdirSync(npath.join(dir, "media"), { recursive: true });
-    fs.writeFileSync(npath.join(dir, "media", "kawkab-mono.woff2"), Buffer.from("wOFF-fake-bytes"));
+    fs.writeFileSync(npath.join(dir, "media", "kawkab-mono.woff2"), Buffer.from("wOF2-fake-bytes"));
   }
   return { context: { extensionPath: dir }, dir };
 }
@@ -265,13 +265,16 @@ test("loadBundledFontDataUri: خطّ غائب ⇒ null (سقوط رشيق)", () 
   }
 });
 
+// ‏[PR-01] العيّنةُ تبدأ ببصمة «wOF2» لا «wOFF»: صار المُحمِّلُ يفحص بصمةَ الصيغة، لأنّ
+// ‏`readFileSync` ينجح على ملفٍّ مقتطعٍ وعلى كعبٍ فارغ، و«الحمولةُ موجودة» تأكيدٌ ينجح
+// عليهما معًا. والفحصُ في `bundled-font.js` مشتركٌ بين هذا السطح وتصدير الطباعة.
 test("loadBundledFontDataUri: خطّ حاضر ⇒ data:font/woff2;base64 من بايتات الملفّ", () => {
   const { context, dir } = fakeCtxWithFont(true);
   try {
     const uri = loadBundledFontDataUri(context);
     assert.ok(uri && uri.startsWith("data:font/woff2;base64,"));
     // البايتات المُرمَّزة تطابق الملفّ.
-    assert.ok(uri.includes(Buffer.from("wOFF-fake-bytes").toString("base64")));
+    assert.ok(uri.includes(Buffer.from("wOF2-fake-bytes").toString("base64")));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
