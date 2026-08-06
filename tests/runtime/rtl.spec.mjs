@@ -2,7 +2,8 @@
 import { editorGeometry, suggestGap, findWidget, welcomeHeader, explorerSadIcon, titlebarAppicon, editorLetterpress, editorBidi, tabsDropRtl, chromeTypography, arabicInkMetrics, welcomePattern, langRuleProof, bidiLabels, bidiAudit, directionalGlyphs, unicodeHighlight, activateSadTab, activateWelcomeTab,
          bidiPanels, glyphOrder, breadcrumbsBar, key, MOD, escape, sleep, insertText, focusEditor,
 openDiffFromScm, confirmDialog, walkthroughAlign, waitFor, resetWorkbench, editorHover,
-openExtensionDetails, dialogButtons, statusbarOrder, discardUntitled, pinActiveTab, recoverWelcomeTab } from "./harness.mjs";
+openExtensionDetails, dialogButtons, statusbarOrder, discardUntitled, pinActiveTab, recoverWelcomeTab,
+bidiSweep, documentLangDir, editorInkMetrics, focusOrder } from "./harness.mjs";
 
 // جزء من الجملة الاستعاريّة (يطابق نصّ العنوان الفرعيّ الفعليّ في الترويسة).
 // ⚠️ مقترن بـWELCOME_TAGLINE في build/patch_welcome_rtl.py: إعادة صياغة تُسقِط هذا الجزء تكسر المِجَسّ.
@@ -291,18 +292,144 @@ export async function designAssertions(cdp) {
       `en→ar بدّل المكدّس: «${r.before.font}» ⇒ «${r.after.font}» (اللغة الأصليّة ${r.originalLang})`));
   } catch (e) { out.push(skip("AR-03: برهان :lang(ar) حيًّا", "تعذّر: " + e.message, true)); }
 
-  // [بند سالي] اقتطاع التشكيل — قياسٌ يحسم ما كان حدسًا. نُبلِّغ الرقم دائمًا؛ ونُفشِل فقط
-  // حين يتجاوز حبرُ العربيّة المُشكَّلة صندوقَ السطر (اقتطاع مؤكَّد حيث overflow:hidden).
+  // [TY-02] حبرُ العربيّة داخل سطر **المحرّر** — حيث يسري `editor.lineHeight` فعلًا.
+  // كانت العتبةُ القديمةُ `tashkeelRatio > 1` تقيس **القشرة** وترصد القصَّ بعد وقوعه؛ وهذه
+  // تقيس السطحَ الصحيح، وتطلب **هامشًا** لا انعدامَ قصّ، وتقيس **الطرفَين الموثَّقَين في
+  // الاشتقاق** (الألفُ بهمزةٍ فوق U+0623 عند ‎+1.265em‎، وتنوينُ الكسر U+064D عند ‎−0.533em‎)
+  // لا عيّنةً أرخى منهما.
+  try {
+    const m = await editorInkMetrics(cdp);
+    if (!m || !m.present) out.push(skip("TY-02: حبر العربيّة داخل سطر المحرّر", "لا سطرَ محرّرٍ ظاهر", true));
+    else {
+      // ‏MARGIN **مشتقٌّ لا مختار**: الاشتقاق يعطي مدى الحبر ‎1.798em‎ في سطرٍ ‎1.95em‎ ⇒
+      // هامشٌ نظريٌّ ‎7.8٪‎. ونصفُه عتبةً يترك متّسعًا لتفاوت التنعيم بين المنصّات دون أن
+      // يقبل قيمةً تقترب من القصّ. (رقمٌ من القياس، لا من الذوق.)
+      const MARGIN = 0.039;
+      const ratio = Math.max(m.extremesRatio, m.tashkeelRatio);
+      const margin = 1 - ratio;
+      const d = `سطرُ المحرّر ${m.lineHeightPx}px (${m.lineHeightEm}em) · حبرُ الأطراف ` +
+        `${m.extremes}px والمُشكَّلة ${m.tashkeel}px ⇒ نسبة ${ratio} (هامش ${(margin * 100).toFixed(1)}٪` +
+        `، كلفة التشكيل +${m.tashkeelExtraPx}px)`;
+      if (ratio > 1) {
+        out.push(fail("TY-02: حبر العربيّة داخل سطر المحرّر",
+          d + " — يتجاوز السطر ⇒ اقتطاعٌ واقع. ارفع editor.lineHeight (الأرضيّة المشتقّة 1.88em)"));
+      } else if (margin < MARGIN) {
+        out.push(fail("TY-02: حبر العربيّة داخل سطر المحرّر",
+          d + ` — الهامش دون ${(MARGIN * 100).toFixed(1)}٪: القصُّ لم يقع بعدُ ويقع بأوّل محرفٍ أطول.` +
+          " ارفع editor.lineHeight في mihrab-shell (الأرضيّة المشتقّة 1.88em)"));
+      } else out.push(pass("TY-02: حبر العربيّة داخل سطر المحرّر", d));
+    }
+  } catch (e) { out.push(skip("TY-02: حبر العربيّة داخل سطر المحرّر", "تعذّر: " + e.message, true)); }
+
+  // [TY-03] أحاديّةُ العرض **مقيسةً في المحرّر**: نظيرُ إنذارِ المستخدم، من جهة الحارس.
+  try {
+    const m = await editorInkMetrics(cdp);
+    if (!m || !m.present) out.push(skip("TY-03: أحاديّة عرض العربيّة في المحرّر", "لا سطرَ محرّرٍ ظاهر", true));
+    else {
+      const w = m.widths;
+      const d = `M=${w.M} · ا=${w["ا"]} · م=${w["م"]} · ص=${w["ص"]} (تفاوت ${(m.monoSpread * 100).toFixed(1)}٪) — «${m.fontFamily}»`;
+      if (m.monoSpread > 0.02) out.push(fail("TY-03: أحاديّة عرض العربيّة في المحرّر",
+        d + " — الوجهُ الجاري متناسبٌ لا أحاديُّ العرض: تكذب المسطرةُ والمحاذاةُ والتحديدُ الكتليّ بلا خطأٍ واحد"));
+      else out.push(pass("TY-03: أحاديّة عرض العربيّة في المحرّر", d));
+    }
+  } catch (e) { out.push(skip("TY-03: أحاديّة عرض العربيّة في المحرّر", "تعذّر: " + e.message, true)); }
+
+  // [TY-02 مساعِد] حبرُ القشرة — سطحٌ آخرُ بمقبضٍ آخر. ارتفاعُ سطر القشرة مثبَّتٌ منبعيًّا
+  // ولا يمسّه `editor.lineHeight`، فالإحالةُ هنا إلى ورقتِنا لا إلى ذلك الإعداد.
   try {
     const m = await arabicInkMetrics(cdp);
-    if (!m || !m.present) out.push(skip("طباعة: حبر التشكيل داخل السطر", "لا قشرة", true));
+    if (!m || !m.present) out.push(skip("طباعة: حبر التشكيل في القشرة", "لا قشرة", true));
     else {
-      const d = `حبر المُشكَّلة ${m.tashkeel.height}px ÷ سطر ${m.lineHeightPx}px = ${m.tashkeelRatio}` +
+      const d = `حبر المُشكَّلة ${m.tashkeel.height}px ÷ سطر القشرة ${m.lineHeightPx}px = ${m.tashkeelRatio}` +
         ` (لاتينيّ ${m.latinRatio}، كلفة التشكيل +${m.tashkeelExtraPx}px)`;
-      if (m.tashkeelRatio > 1) out.push(fail("طباعة: حبر التشكيل داخل السطر", d + " — يتجاوز السطر ⇒ اقتطاع"));
-      else out.push(pass("طباعة: حبر التشكيل داخل السطر", d));
+      if (m.tashkeelRatio > 1) out.push(fail("طباعة: حبر التشكيل في القشرة",
+        d + " — يتجاوز سطرَ القشرة ⇒ اقتطاع. المقبضُ هنا `line-height` في patches/mihrab-rtl.css لا editor.lineHeight"));
+      else out.push(pass("طباعة: حبر التشكيل في القشرة", d));
     }
-  } catch (e) { out.push(skip("طباعة: حبر التشكيل داخل السطر", "تعذّر: " + e.message, true)); }
+  } catch (e) { out.push(skip("طباعة: حبر التشكيل في القشرة", "تعذّر: " + e.message, true)); }
+
+  // [VA-02] لغةُ المستند ودورُ اتّجاهه — **حارسٌ دائمٌ لا برهانُ آليّة**. سمةٌ واحدةٌ تحمل
+  // الوصولَ (نطقُ قارئات الشاشة، WCAG 3.1.1) وكلَّ طباعتِنا العربيّة (القاعدة ٢٠ معلَّقةٌ
+  // بـ`:lang(ar)`) — وقد سقطت مرّةً صامتةً واجتازت حارسَي L0 وL2 معًا.
+  // ويُقسَم إلى توكيدَين: عنوانُ التوكيد أوّلُ نصفِ ثانيةٍ من التشخيص، وتوكيدٌ يحمل ثلاثةَ
+  // ادّعاءاتٍ يرسل المطوّرَ يفتّش في السليم حين يسقط على الثالث.
+  try {
+    const L = await documentLangDir(cdp);
+    if (!L || !L.present) out.push(skip("VA-02أ: لغة المستند واتّجاهه", "لا قشرة", true));
+    else {
+      // **الاتّجاهُ يُفحَص دائمًا**: لا علاقةَ له بخبز اللغة، وربطُه بـ`baked` كان يجعل
+      // الحارسَ «الدائم» يتخطّى نفسَه في كلّ تشغيلِ تطوير — أي في أكثر التشغيلات.
+      if (L.dir !== "rtl" || L.workbenchDir !== "rtl") {
+        out.push(fail("VA-02أ: لغة المستند واتّجاهه",
+          `‏dir غير rtl (html=${L.dir}، workbench=${L.workbenchDir}) — الاتّجاهُ يورَّث منهما إلى Shadow DOM والنوافذ المساعِدة`));
+      } else if (!L.baked) {
+        out.push(skip("VA-02أ: لغة المستند واتّجاهه",
+          `‏dir=rtl سليم؛ وlang=${L.lang} صحيحةٌ في وضع التطوير (رسائل غير مخبوزة)`, true));
+      } else if (L.lang !== "ar") {
+        out.push(fail("VA-02أ: لغة المستند واتّجاهه",
+          `‏html lang=${L.lang} في بناءٍ مخبوز — تسقط معه القاعدة ٢٠ كلُّها ونطقُ قارئ الشاشة (WCAG 3.1.1)`));
+      } else {
+        out.push(pass("VA-02أ: لغة المستند واتّجاهه", `‏lang=ar · html dir=rtl · workbench dir=rtl`));
+      }
+    }
+  } catch (e) { out.push(skip("VA-02أ: لغة المستند واتّجاهه", "تعذّر: " + e.message, true)); }
+
+  // [VA-02ب] **برهانُ تطبيقٍ لا كتابة.** الفحصُ النصّيُّ على اسم المكدّس يكرّر AR-03 ولا
+  // يضيف؛ والبرهانُ الحقيقيُّ أنّ الوجهَ الجاري **أحاديُّ العرض للعربيّة** — وهو ما ينكسر
+  // بالضبط لو مات محدِّدُ اللغة وسقط المكدّسُ إلى خطّ نظامٍ متناسب.
+  try {
+    const L = await documentLangDir(cdp);
+    if (!L || !L.present) out.push(skip("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا", "لا قشرة", true));
+    else if (L.arabicWidth === null || !L.charWidths) {
+      out.push(skip("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا", "تعذّر القياس (بلا canvas)", true));
+    } else {
+      const d = `مكدّس «${L.monospaceFont}» · عرضُ «نصاب_الفضة» ${L.arabicWidth}px · ` +
+        `تفاوتُ المحارف ${(L.charSpread * 100).toFixed(1)}٪`;
+      if (L.charSpread > 0.02) out.push(fail("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا",
+        d + " — الوجهُ الجاري متناسب: المكدّسُ مكتوبٌ ولم يُطبَّق (محدِّدُ اللغة قد يكون مات صامتًا)"));
+      else if (!/Kawkab Mono/.test(L.monospaceFont)) out.push(fail("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا",
+        d + " — الوجهُ أحاديُّ العرض لكنّه ليس الوجهَ المحزوم"));
+      else out.push(pass("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا", d));
+    }
+  } catch (e) { out.push(skip("VA-02ب: الوجه المحزوم مطبَّقٌ فعلًا", "تعذّر: " + e.message, true)); }
+
+  // [VA-03] ترتيبُ التركيز في تخطيطٍ معكوس: التركيزُ يتبع DOM لا البصر، فحيثما كان القلبُ
+  // بصريًّا محضًا يقفز قفزاتٍ لا يفسّرها البصر. ونفحص أشدَّ الأسطح استعمالًا بلوحة المفاتيح.
+  for (const [name, sel] of [["شريط الأنشطة", ".part.activitybar .composite-bar"],
+                             ["أداة البحث", ".editor-widget.find-widget"],
+                             ["شريط الحالة", ".part.statusbar"]]) {
+    try {
+      const f = await focusOrder(cdp, sel);
+      if (!f || !f.present) out.push(skip(`VA-03: ترتيب التركيز — ${name}`, "غيرُ ظاهرٍ الآن", true));
+      else if (f.count < 2) out.push(skip(`VA-03: ترتيب التركيز — ${name}`,
+        `عنصرٌ واحدٌ أو لا شيء (${f.count}) — لا ترتيبَ يُفحَص`, true));
+      else if (f.violations.length) out.push(fail(`VA-03: ترتيب التركيز — ${name}`,
+        `التركيزُ يقفز يسارًا في تخطيطٍ يُقرأ يمينًا: ${f.violations.slice(0, 3).join(" · ")}` +
+        ` (${f.count} عنصرًا في ${f.rows} صفًّا)`));
+      else out.push(pass(`VA-03: ترتيب التركيز — ${name}`,
+        `${f.count} عنصرًا في ${f.rows} صفًّا — التسلسلُ يتبع البصر (يمينًا ⇐ يسارًا)`));
+    } catch (e) { out.push(skip(`VA-03: ترتيب التركيز — ${name}`, "تعذّر: " + e.message, true)); }
+  }
+
+  // [TY-07] مسحُ مزجٍ عامّ — يقلب العلاقةَ من «اكتشِف ثمّ عالِج» إلى «امنع الانحدارَ ابتداءً».
+  // ثلاثون محدِّدًا مكتوبًا يدويًّا لا تنتهي مطاردتُها: تنتهي دورةٌ وتبدأ أخرى مع كلّ مزامنة،
+  // والمستخدمُ هو من يكتشف الباقي (القاعدة ٣٢ نجت من ثلاثين توكيدًا حتّى أبلغ عنها إنسان).
+  try {
+    const s = await bidiSweep(cdp);
+    if (!s || !s.present) out.push(skip("TY-07: مسح المزج العامّ", "لا قشرة", true));
+    else if (!s.checked) out.push(skip("TY-07: مسح المزج العامّ",
+      `لا نصَّ لاتينيًّا مرئيًّا في حاويةٍ RTL (فُحِص ${s.scanned}) — لا حكم`, true));
+    else if (s.flaggedTotal) {
+      // **الاقتطاعُ يُعلَن.** عرضُ خمسةٍ من سبعةَ عشرَ بلا قولِ ذلك يجعل المطوّرَ يُصلِح
+      // خمسةً ويظنّ السطحَ نظيفًا — وهو «الحدُّ الصامت» الذي يمنعه المستودعُ في L2.
+      const shown = s.flagged.map((f) => `«${f.text}» في ${f.selector} (bidi=${f.bidi})`).join(" · ");
+      const hidden = s.flaggedTotal > s.flagged.length ? ` (وأُخفي ${s.flaggedTotal - s.flagged.length})` : "";
+      out.push(fail("TY-07: مسح المزج العامّ",
+        `${s.flaggedTotal} من ${s.checked} نصًّا تنقلب أطرافُه: ${shown}${hidden}`));
+    } else out.push(pass("TY-07: مسح المزج العامّ",
+      `${s.checked} نصًّا لاتينيًّا في حاويات RTL — كلُّها تُعرَض بترتيبها (مقيسًا بموضع أوّل محرفٍ وآخره)` +
+      (s.truncated ? ` ⚠️ توقّف المسحُ عند ${s.visited} عقدة (سقفٌ) — التغطيةُ ناقصة` : "")));
+  } catch (e) { out.push(skip("TY-07: مسح المزج العامّ", "تعذّر: " + e.message, true)); }
 
 
   // [القاعدة 21] المحايدات: تسمياتٌ محتواها يحدّد اتّجاهه (نقاط «‎…‎» ومسارات مختلطة).
@@ -446,6 +573,21 @@ const PANELS = [
   ["المخرجات", [[85, "KeyU", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.panel.output")`],
   ["وحدة التصحيح", [[89, "KeyY", MOD.CTRL | MOD.SHIFT]], null, `ID("workbench.panel.repl")`],
   ["الطرفيّة", [[192, "Backquote", MOD.CTRL]], null, `V(".terminal-outer-container")`],
+  // **جزءُ التنقيح بلا جلسة — سطحُنا نحن لا سطحُ المنبع** ‏[DG-01]. `workbench.view.debug`
+  // كان خارجَ القائمة كلَّها، وفيه **كتلةُ `viewsWelcome` التي كتبناها بأنفسنا** («شغّل ملفّ
+  // ص المفتوح بلا إعدادٍ ولا ملفّ launch.json») — نصٌّ عربيٌّ فيه اسمُ ملفٍّ لاتينيٌّ محايدُ
+  // الطرفين، أي عائلةُ القاعدة 30 حرفيًّا. أن يبقى نصُّنا نحن غيرَ ممسوحٍ أسوأُ من بقاء
+  // نصِّ المنبع.
+  //
+  // **والبصمةُ مقترنةٌ لا مجرّدةٌ من الحاوية:** الكتلةُ مشروطةٌ بـ`editorLangId == sad`،
+  // فحاويةٌ حاضرةٌ بلا نصِّنا تعني أنّ الشرطَ لم يتحقّق — والمسحُ حينها يمسح فراغًا ويُبلّغ
+  // «نظيف». فنشترط عربيّةً داخل ورقةِ الترحيب نفسِها.
+  //
+  // وما **لا** يبلغه هذا المدخل: لوحاتُ المتغيّرات وكومةِ الاستدعاء والمراقبة — لا تُصيَّر
+  // إلّا في **جلسةِ تنقيحٍ حيّة**، ولا جلسةَ في مسحِ اللوحات. موضعُها `debug_panes.live.mjs`
+  // الذي يبني مساحتَه ويطلق جلستَه بنفسِه. (النطاقُ بلا محتوًى يُبلِّغ «نظيف» بلا أن يمسح.)
+  ["جزء التنقيح (ترحيبُنا)", [[68, "KeyD", MOD.CTRL | MOD.SHIFT]], null,
+   `[...document.querySelectorAll("#workbench\\\\.view\\\\.debug .welcome-view-content, #workbench\\\\.view\\\\.debug .monaco-list-row")].some(e => /[\\u0600-\\u06ff]/.test(e.textContent || ""))`],
   // التحكّم بالمصادر وترٌ في الإصدارات الحديثة (‏Ctrl+Shift+G ثمّ G) لا ضغطةٌ واحدة.
   ["التحكّم بالمصادر", [[71, "KeyG", MOD.CTRL | MOD.SHIFT], [71, "KeyG", 0]], null, `ID("workbench.view.scm")`],
   // **قائمة السياق بالمفتاح لا بالفأرة.** ‏Shift+F10 يفتحها على العنصر المركَّز عليه، فلا
@@ -477,6 +619,21 @@ const PANELS = [
   ["اقتراحات المحرّر", [], "editor:32,Space,2", `V(".suggest-widget.visible")`],
   ["إجراءات الكود", [], "editor:190,Period,2", `V(".action-widget")`],
   ["نظرة المشاكل", [], "editor:119,F8,0", `V(".zone-widget")`],
+  // ── عدساتُ الكود [LN-01]: سطحٌ **نصنعه بأنفسنا** ولم يُقَس قطّ ─────────────────────
+  // ‏`SadMainCodeLensProvider` يضع «▶ شغّل» و«🔨 ابنِ» فوق دالّة البداية في كلّ ملفّ ص،
+  // وامتدادُ `merge-conflict` المحزوم يضع عدساتِه العربيّة فوق كتلة التعارض. وهو الفردُ
+  // الخامسُ من عائلة «القاعدة 30» (عربيٌّ في حاوية LTR) التي قِيست فوُجدت مكسورةً في
+  // أربعة أسطحٍ متتالية — ولم يُفتَح هذا الخامسُ ولا مرّة.
+  //
+  // **أرخصُ محفِّزٍ في القائمة كلِّها:** لا وترَ ولا نقرة — تنشيطُ تبويب العيّنة وحده يكفي،
+  // فالعدسةُ تظهر تلقائيًّا فوق `دالة رئيسية()` في العيّنة القائمة. لكنّ التنشيطَ **شرطٌ
+  // لا زينة**: التبويبُ غير النشط لا يُصيَّر أصلًا (الدرسُ نفسُه المدفوعُ في صفحة الترحيب).
+  //
+  // **والبصمةُ تشترط عربيّةً في ورقةٍ لا مجرّدَ وجودِ الحاوية:** المنبعُ يصيّر
+  // `'no commands'` حين تُحلّ الرموزُ بلا أوامر، فحاويةٌ حاضرةٌ ليست عدسةً مأهولة.
+  // وحلُّ العدسات **غيرُ متزامنٍ** وتالٍ لتنشيط الامتداد، فالبصمةُ تُنتظَر لا تُفترَض.
+  ["عدسات الكود", [], "codelens",
+   `[...document.querySelectorAll(".codelens-decoration a")].some(a => /[\\u0600-\\u06ff]/.test(a.textContent || ""))`],
   // ── محرّرُ المقارنة: سطحُ محرّرٍ كاملٌ لم يبلغه مِجَسّ ──────────────────────────
   // يُفتَح بنقر مَورِدٍ متغيّر في جزء التحكّم بالمصادر — لا اسمَ أمرٍ مترجَمًا في الطريق.
   // نمسح **أوراقَ واجهته وحدها** (شريطُ الأسطر المطويّة ومراجعةُ المقارنة) لا سطورَه:
@@ -547,6 +704,14 @@ export async function panelAssertions(cdp) {
         await key(cdp, +vk, code, +mods);
       } else if (mode === "scm-diff") {
         if (!(await openDiffFromScm(cdp))) { notOpened.push(label); continue; }
+      } else if (mode === "codelens") {
+        // تنشيطُ تبويب العيّنة ثمّ **انتظارُ البصمة صراحةً**: `activateSadTab` تعود صادقةً
+        // لمجرّد وجود التبويب، وحلُّ العدسات يقع بعده بمهلةٍ غيرِ محدّدة. ومن لم ينتظر
+        // البصمةَ هنا يقيس نطاقًا فارغًا ويُبلِّغ «نظيف» — الفخُّ الموثَّقُ أربعَ مرّاتٍ أعلاه.
+        if (!(await activateSadTab(cdp))) { notOpened.push(label); continue; }
+        if (!(await waitFor(cdp, FP(fingerprint), 12000))) {
+          notOpened.push(label + " (لم تُحَلّ عدسةٌ عربيّةٌ في المهلة)"); continue;
+        }
       } else if (mode === "hover") {
         if (!(await editorHover(cdp))) { notOpened.push(label); continue; }
       } else if (mode === "ext-details") {
