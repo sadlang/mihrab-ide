@@ -49,11 +49,18 @@ def log(msg):
 
 
 def sync_css(up):
-    src = os.path.join(ROOT, M.CSS_PATCH)
-    dst = os.path.join(up, "src", "vs", "workbench", "browser", "media", "mihrab-rtl.css")
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copyfile(src, dst)
-    log(f"ورقة الأنماط ← {os.path.relpath(dst, up)}")
+    """ينسخ ورقتَي الأنماط: الاتّجاه ثمّ الهويّة [VA-05].
+
+    الاسمُ في الوجهة مشتقٌّ من اسم الملفّ في المصدر لا مكتوبًا حرفيًّا — فتبديلُ مسارٍ في
+    المانيفست ينتقل إلى هنا وحدَه، ولا يبقى اسمٌ قديمٌ يُنسَخ إليه صامتًا.
+    """
+    media = os.path.join(up, "src", "vs", "workbench", "browser", "media")
+    os.makedirs(media, exist_ok=True)
+    for rel in (M.CSS_PATCH, M.IDENTITY_CSS):
+        src = os.path.join(ROOT, rel)
+        dst = os.path.join(media, os.path.basename(rel))
+        shutil.copyfile(src, dst)
+        log(f"ورقة الأنماط ← {os.path.relpath(dst, up)}")
 
 
 def sync_assets(up):
@@ -71,6 +78,33 @@ def sync_assets(up):
         shutil.copyfile(src, dst)
         n += 1
     log(f"أصول الهوية: نُسِخ {n}")
+
+
+def apply_core_diffs(up):
+    """رُقَعُ المنبع (diff موحَّد) — تُطبَّق بـ`git apply --3way` كما في البناء الحقيقيّ.
+
+    مُتسامِحٌ مع «مطبَّقةٌ مسبقًا»: التشغيل الحيّ يُعاد على الشجرة نفسها مرارًا، و`git apply`
+    ليس idempotent. نفحص أوّلًا بـ`--check --reverse`: إن نجح فالرقعةُ فيها فعلًا."""
+    rc = 0
+    for diff_rel in getattr(M, "CORE_DIFFS", []):
+        patch = os.path.join(ROOT, *diff_rel.split("/"))
+        if not os.path.isfile(patch):
+            print(f"  ⚠️ رُقعةُ منبعٍ مفقودة (تخطٍّ): {diff_rel}", file=sys.stderr)
+            continue
+        name = os.path.basename(diff_rel)
+        rev = subprocess.run(["git", "apply", "--check", "--reverse", patch], cwd=up,
+                             capture_output=True)
+        if rev.returncode == 0:
+            print(f"  ⏭️ {name}: مطبَّقةٌ مسبقًا")
+            continue
+        p = subprocess.run(["git", "apply", "--3way", patch], cwd=up, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+        if p.returncode == 0:
+            print(f"  ✅ {name}: طُبِّقت")
+        else:
+            rc = 1
+            print(f"  ❌ {name}: {(p.stdout or p.stderr).strip()[:300]}")
+    return rc
 
 
 def sync_patchers(up):
@@ -158,6 +192,7 @@ def main():
     sync_css(up)
     sync_assets(up)
     rc = sync_patchers(up)
+    rc |= apply_core_diffs(up)
     sync_extensions(up)
     sync_product(up)
     print("═══ " + ("✅ جاهز للتشغيل الحيّ" if rc == 0 else "❌ فشل مرقِّع — راجع أعلاه") + " ═══")

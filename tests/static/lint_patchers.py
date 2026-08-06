@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -26,11 +27,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # جذر mihrab-ide
 BUILD = os.path.join(ROOT, "build")
 
-# أصناف هويّة محراب المحقونة (عناصر نملكها) — تُعفى قواعدها من قصر [dir=rtl] لأنّها غير
-# اتّجاهيّة وتستهدف عناصرنا لا عناصر VSCode العامّة. أضِف هنا كلّ صنف هويّة جديد.
-IDENTITY_CLASSES = ("mihrab-welcome-mark", "mihrab-welcome-pattern", "mihrab-welcome-lede")
+
+
+# أوامرُ المنبع المسموحُ استدعاؤها من روابط `command:` في خطوات الجولة. تُسرَد بالاسم
+# لا بقاعدةٍ عامّة: `workbench.*` كان سيُمرِّر خطأً مطبعيًّا في اسمٍ لا نملكه.
+UPSTREAM_CMDS_IN_WALKTHROUGH = ("workbench.action.openSettings",)
 sys.path.insert(0, os.path.dirname(HERE))  # tests/
 import patch_manifest as M  # noqa: E402
+
+# أصنافُ الهويّة المحقونة — من المانيفست لا نسخةً محلّيّة [VA-05].
+IDENTITY_CLASSES = M.IDENTITY_CLASSES
 
 _checks = []
 
@@ -154,17 +160,80 @@ def _no_single_escape_in_templates():
             f"{offenders} — يصل الصفحةَ حرفًا عاديًّا فيموت فرعُ الكشف صامتًا. ضاعِف الشرطة.")
 
 
-# ───────────────────── L0-2: بنية FILES في patch_editor_rtl ─────────────────────
-@check("patch_editor_rtl.FILES سليمة (وسوم فريدة، عدّ موجب، شكل صحيح)")
+# ───────────────────── L0-2: سلامةُ رُقَع المنبع (diff) ─────────────────────
+@check("رُقَعُ المنبع (CORE_DIFFS) موجودةٌ وسليمةُ الشكل ولا تمسّ غير src/")
+def _core_diffs_shape():
+    for diff in getattr(M, "CORE_DIFFS", []):
+        path = os.path.join(ROOT, diff.replace("/", os.sep))
+        assert os.path.isfile(path), f"رُقعةُ منبعٍ مفقودة: {diff}"
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            text = f.read()
+        assert text.startswith("diff --git "), f"ليست diff موحَّدة: {diff}"
+        files = M.core_diff_files(ROOT, diff)
+        assert files, f"رُقعةٌ بلا ملفّات: {diff}"
+        for rel in files:
+            assert rel.startswith("src/"), f"رُقعةُ منبعٍ تمسّ خارج src/: {rel} ({diff})"
+        # وسمُ محرابٍ في شيفرةٍ يُفترَض أنّها منبعيّةٌ صرفة = دَينٌ لا يُرفَع.
+        for token in ("mihrab", "محراب"):
+            assert token not in text.lower() if token == "mihrab" else token not in text, (
+                f"رُقعةُ المنبع {diff} تحوي «{token}» — لن تُقبَل في الرفع")
+
+
+@check("كلُّ رُقعةِ منبعٍ موصولةٌ: تُنسَخ في build.sh وتُطبَّق في كتلة الحقن فشلًا لا تخطّيًا")
+def _core_diffs_wired():
+    """رُقعةٌ في `patches/core/` لا ينسخها أحدٌ ولا يطبّقها أحدٌ **تُقرأ كأنّها تعمل**.
+
+    والمسارُ موضعان لا واحد: `build.sh` ينسخها إلى جوار شجرة المنبع باسمٍ مُنقَّط،
+    و`patch_bundle_extensions.py` يطبّقها من داخل الشجرة بعد الـreset. وسقوطُ أيٍّ منهما
+    لا يُفشِل بناءً ولا يترك أثرًا في سجلّه — يخرج المنتجُ ناقصَ الإصلاح وحسب.
+
+    ويُفحَص كذلك أنّ الفشلَ **قاتلٌ**: `git apply` لرقعةٍ انجرفت مرساتُها يجب أن يوقف
+    البناء، لا أن يمرّ فيَشحن إصلاحًا لم يُطبَّق.
+    """
+    diffs = getattr(M, "CORE_DIFFS", [])
+    assert diffs, "لا رُقَعَ منبعٍ في المانيفست — عمِيَ الفحص"
+    build_sh = _read(os.path.join(ROOT, "build/build.sh"))
+    inject = _read(os.path.join(ROOT, "build/patch_bundle_extensions.py"))
+    for diff in diffs:
+        # اسمُ الوجهة يُقرأ من `build.sh` نفسِه لا يُخمَّن: السطرُ الذي يذكر الرقعةَ هو
+        # الذي يسمّي الملفَّ المنقوط، فالمِجَسُّ يتبع الصياغةَ ولا يفرضها.
+        lines = [ln for ln in build_sh.splitlines() if diff in ln]
+        assert lines, f"build.sh لا ينسخ رُقعةَ المنبع {diff} — تصل الشجرةَ من العدم؟"
+        m = re.search(r'\$UP/(\.[\w.-]+\.patch)', lines[0])
+        assert m, f"سطرُ نسخِ {diff} في build.sh لا يسمّي ملفَّ وجهةٍ منقوطًا: {lines[0].strip()}"
+        dest = m.group(1)
+        assert dest in inject, (
+            f"‏{dest} يُنسَخ ولا يُطبَّق: لا ذكرَ له في كتلة الحقن — رقعةٌ تُشحَن ولا تُقرأ ({diff})")
+        applied = [ln for ln in inject.splitlines() if dest in ln and "git apply" in ln]
+        assert applied, f"‏{dest} مذكورٌ في كتلة الحقن بلا `git apply` — لا يُطبَّق ({diff})"
+        assert "exit 1" in applied[0], (
+            f"تطبيقُ {dest} لا يُفشِل البناء عند الخطأ — انجرافُ مرساةٍ يمرّ صامتًا ({diff})")
+        # ورقعةٌ بلا سطرٍ في جدول `patches/README.md` دَينٌ لا يعرفه أحدٌ بعد أشهر.
+        assert os.path.basename(diff) in _read(os.path.join(ROOT, "patches/README.md")), (
+            f"‏{diff} غيرُ مذكورٍ في patches/README.md — رقعةٌ تُشحَن بلا مبرَّرٍ مكتوب")
+
+
+# ───────────────────── L0-2ب: بنية FILES في مرقِّعات الجذر ─────────────────────
+@check("FILES في مرقِّعات الجذر سليمة (وسوم فريدة، عدّ موجب، شكل صحيح)")
 def _editor_files_shape():
     import importlib.util
+    root_patchers = [n for n, m, _t in M.PATCHERS if m == "root"]
+    assert root_patchers, "لا مرقِّعَ جذرٍ في المانيفست"
+    for patcher in root_patchers:
+        _check_files_shape(patcher)
+
+
+def _check_files_shape(patcher):
+    import importlib.util
     spec = importlib.util.spec_from_file_location(
-        "_ed", os.path.join(BUILD, "patch_editor_rtl.py"))
+        "_root_" + patcher.replace(".", "_"), os.path.join(BUILD, patcher))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert hasattr(mod, "FILES") and mod.FILES, "FILES مفقودة/فارغة"
+    attr = M.ROOT_PATCHER_FILES_ATTR.get(patcher, "FILES")
+    files = getattr(mod, attr, None)
+    assert files, f"{attr} مفقودة/فارغة في {patcher}"
     marks = []
-    for entry in mod.FILES:
+    for entry in files:
         assert len(entry) == 3, f"إدخال FILES ليس ثلاثيًّا: {entry[:1]}"
         relpath, mark, edits = entry
         assert isinstance(relpath, str) and relpath.startswith("src/"), f"مسار غير صالح: {relpath}"
@@ -178,9 +247,13 @@ def _editor_files_shape():
             assert isinstance(new, str) and new, f"استبدال فارغ في {relpath}"
             assert isinstance(count, int) and count > 0, f"عدّ غير موجب في {relpath}"
             assert old != new, f"مرساة == استبدال في {relpath} (لا عمل)"
-            assert old in new or mark in new, (
-                f"الاستبدال لا يحوي المرساة ولا الوسم في {relpath} — قد يفشل idempotency")
-    assert len(marks) == len(set(marks)), f"وسوم مكرّرة في FILES: {marks}"
+    # لا نُلزِم «الاستبدالُ يحوي المرساةَ أو الوسم»: مرقِّعاتُ الجذر تختلف في آليّة
+    # الـidempotency (وسمٌ في الملفّ · ثابتٌ مستورَد · استبدالٌ كامل)، وL1 يبرهنها فعليًّا
+    # بإعادة تشغيل المرقِّع والتأكّد أنّ شيئًا لم يتغيّر — وهو برهانٌ لا ادّعاء.
+    # المسارات لا تتكرّر (إدخالان لملفٍّ واحد ⇒ الثاني يُتخطّى بالوسم فيموت صامتًا).
+    # أمّا الوسمُ نفسُه فقد يتكرّر عبر ملفّاتٍ عمدًا (رقعةٌ واحدة بوسمٍ واحد لملفّين).
+    paths = [e[0] for e in files]
+    assert len(paths) == len(set(paths)), f"مساراتٌ مكرّرة في {patcher}: {paths}"
 
 
 # ───────── L0-2أ: وسم إصدار الرُقَع مضمَّن في كتلة الحقن ─────────
@@ -235,9 +308,10 @@ def _manifest_consistency():
         assert mode in ("file", "root"), f"وضع غير معروف لـ{name}: {mode}"
     for name in M.BUILD_PATCHERS:
         assert os.path.isfile(os.path.join(BUILD, name)), f"مرقِّع بناء مفقود: {name}"
-    # ملفّات محرّر RTL قابلة للاشتقاق:
-    ed = M.editor_target_files(BUILD)
-    assert len(ed) >= 6, f"عدد ملفّات محرّر RTL غير متوقَّع: {len(ed)}"
+    # رُقَعُ المنبع موجودةٌ وملفّاتُها قابلةٌ للاشتقاق:
+    for diff in getattr(M, "CORE_DIFFS", []):
+        assert os.path.isfile(os.path.join(ROOT, diff.replace("/", os.sep))), f"رُقعةُ منبعٍ مفقودة: {diff}"
+        assert M.core_diff_files(ROOT, diff), f"رُقعةٌ بلا ملفّات: {diff}"
 
 
 # ──────── L0-3ب: تقريرُ المنبع يواكب الرُقَع ────────
@@ -633,14 +707,157 @@ def _css_lint():
             part = part.strip()
             if not part:
                 continue
-            # استثناء قواعد هويّة محراب: محدّد يستهدف عنصرًا **نملكه** (صنف هوية مُحقَن) لا
-            # عنصر VSCode عامّ ⇒ لا تسرّب عالميّ ممكن، ويجب أن يظهر في الاتّجاهين (الشعار غير
-            # اتّجاهيّ، كالعنوان). قائمة صريحة (لا بادئة mihrab- عامّة كي لا نُعفي .mihrab-grid-sv
-            # في القاعدة 12 التي يجب أن تبقى مقصورة على RTL).
-            if any(idc in part for idc in IDENTITY_CLASSES):
-                continue
+            # **لا استثناءَ بعد اليوم** [VA-05]: كان هنا إعفاءٌ لأصناف الهويّة، وقد نُقِلت
+            # قواعدُها إلى `patches/mihrab-identity.css`. فصارت هذه الورقةُ **اتّجاهًا خالصًا**
+            # وصار الشرطُ مطلقًا. وقاعدةُ هويّةٍ تُكتَب هنا سهوًا تسقط هنا صراحةً.
             assert '[dir="rtl"]' in part, (
-                f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…»")
+                f"جزء محدّد غير مقصور على RTL (تسرّب عالميّ): «{part[:60]}» ضمن «{sel[:40]}…» — "
+                f"إن كانت قاعدةَ هويّةٍ لا اتّجاه فمكانُها {M.IDENTITY_CSS} [VA-05]")
+    # وحارسٌ معاكس: الأصنافُ نفسُها لا تعود إلى هنا من الباب الآخر.
+    for idc in IDENTITY_CLASSES:
+        assert idc not in body, (
+            f"صنفُ هويّةٍ «{idc}» عاد إلى {M.CSS_PATCH} — مكانُه {M.IDENTITY_CSS} [VA-05]")
+
+
+@check("محرّرُ الدمج [SC-02]: انعكاسُ اللوحات مقبولٌ عن قياس — فلا قاعدةَ تردُّه بيدٍ")
+def _merge_editor_not_flipped_back():
+    """يحرس القرارَ التاسع في `docs/rtl/typography-decisions.md` **ساكنًا**.
+
+    القرارُ بالقبول قرارُ **إبقاءٍ**، وأخطرُ ما يصيبه أن يُنقَض ضمنًا بيدٍ حسنةِ النيّة:
+    يقرأ أحدُهم القاعدةَ 3 (لوحا الفرق يُثبَّتان LTR) فيقيس عليها محرّرَ الدمج ويضيف
+    قاعدةً «تُصلِح» الانعكاس — فيُلغى قرارٌ مبنيٌّ على قياسٍ حيٍّ بسطرٍ لا قياسَ خلفه.
+
+    والقلبُ هنا **مشتقٌّ من `dir=rtl` على الجذر وحدَه**؛ فما يُمنَع هو **ردُّه يدويًّا**:
+    ‏`direction` أو `flex-direction: row-reverse` أو `order` على حاويات اللوحات.
+    والمنعُ على `mihrab-rtl.css` — الورقةُ الوحيدةُ التي تملك سطحَ العناصر المنبعيّة.
+    """
+    body = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+    import re as _re
+    # كلُّ كتلةٍ محدِّدُها يمسّ `.merge-editor`: يُفحَص متنُها لا اسمُها.
+    for m in _re.finditer(r"([^{}]*)\{([^{}]*)\}", body):
+        sel, decls = m.group(1), m.group(2)
+        if "merge-editor" not in sel:
+            continue
+        for prop, bad in (("direction", None),
+                          ("flex-direction", "row-reverse"),
+                          ("order", None)):
+            hit = _re.search(r"(?<![\w-])" + prop + r"\s*:\s*([^;]+)", decls)
+            if not hit:
+                continue
+            val = hit.group(1).strip()
+            if bad is not None and bad not in val:
+                continue
+            raise AssertionError(
+                f"قاعدةٌ تردُّ انعكاسَ محرّر الدمج يدويًّا: «{sel.strip()[:60]}» ⇐ {prop}: {val} — "
+                "القرارُ التاسع [SC-02] قبِل الانعكاسَ عن قياسٍ حيّ (كلُّ لوحةٍ تحمل اسمَها ظاهرًا، "
+                "فالموضعُ زائدٌ عن الاسم). إن كان معك قياسٌ ينقضه فانقض القرارَ في الوثيقة أوّلًا.")
+
+
+@check("mihrab-identity.css [VA-05]: هويّةٌ خالصةٌ — أصنافُنا وحدَها وبلا خاصّيّةٍ اتّجاهيّة")
+def _identity_css_lint():
+    """يحرس **الحدَّين** اللذين يجعلان فصلَ الورقتين صادقًا لا محاسبيًّا.
+
+    الفصلُ بلا حارسٍ يصير بابًا خلفيًّا: قاعدةُ اتّجاهٍ تُكتَب هنا فتنجو من قصر `[dir="rtl"]`
+    المفروضِ على الورقة الأخرى — أي أنّ التنظيمَ نفسَه يصير ثغرة. فالشرطان:
+
+      ‏(١) **كلُّ محدّدٍ يستهدف صنفًا نملكه.** فلا قاعدةَ عالميّةٌ تمسّ عنصرًا منبعيًّا. وهذا
+          هو ما يُبرّر غيابَ `[dir="rtl"]` أصلًا: لا سطحَ للتسرّب.
+      ‏(٢) **لا خاصّيّةَ اتّجاهيّةً واحدة.** `direction`/`text-align`/`float`/`clear`، والحوافُّ
+          والحشواتُ والإزاحاتُ **الفيزيائيّةُ الجانبيّة** (`left`/`right`). أمّا `margin: 0 auto`
+          فمتماثلٌ حول المحور ⇒ لا اتّجاه فيه، ويُقبَل.
+    """
+    path = os.path.join(ROOT, M.IDENTITY_CSS)
+    text = _read(path)
+    assert text.count("{") == text.count("}"), "أقواس CSS غير متوازنة في ورقة الهويّة"
+    body = _strip_css_comments(text)
+    selectors, depth, buf = [], 0, []
+    decls = []
+    for ch in body:
+        if ch == "{":
+            if depth == 0:
+                selectors.append("".join(buf).strip())
+                buf = []
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                decls.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    selectors = [s for s in selectors if s]
+    assert selectors, f"{M.IDENTITY_CSS} بلا قواعد — الفصلُ بلا محتوًى فصلٌ صوريّ"
+    for sel in selectors:
+        for part in sel.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            assert any(idc in part for idc in IDENTITY_CLASSES), (
+                f"محدّدٌ في {M.IDENTITY_CSS} لا يستهدف صنفَ هويّةٍ مملوكًا: «{part[:60]}» — "
+                f"أصنافُ الهويّة المعلَنة: {', '.join(IDENTITY_CLASSES)}")
+            assert "[dir=" not in part, (
+                f"محدّدٌ مقصورٌ على اتّجاهٍ في ورقة الهويّة: «{part[:60]}» — مكانُه {M.CSS_PATCH}")
+    # الخاصّيّاتُ الاتّجاهيّة المحظورة. `margin`/`padding` تُفحَص بالاختصار الجانبيّ وحدَه:
+    # `margin: 0 auto` و`margin-bottom` غيرُ اتّجاهيّتَين، و`margin-left` اتّجاهيّة.
+    # ‏`transform:` في القائمة **عن قصدٍ لا احتياطًا**: `scaleX(-1)` هو أداةُ القلب الأولى
+    # في هذا المستودع (القاعدتان ٨ و٢٢ في ورقة الاتّجاه) — فقاعدةُ هويّةٍ تقلب رمزًا به
+    # كانت تمرّ من الباب الخلفيّ نفسِه الذي بُني هذا الحارسُ لسدّه.
+    BANNED = ("direction:", "text-align:", "float:", "clear:", "unicode-bidi:",
+              "writing-mode:", "text-indent:", "flex-direction:", "order:", "transform:",
+              "margin-left:", "margin-right:", "padding-left:", "padding-right:",
+              "border-left:", "border-right:", "left:", "right:", "inset:", "inset-inline",
+              "margin-inline", "padding-inline")
+    for d in decls:
+        flat = "".join(d.split()).lower()
+        for prop in BANNED:
+            assert prop not in flat, (
+                f"خاصّيّةٌ اتّجاهيّةٌ «{prop.rstrip(':')}» في {M.IDENTITY_CSS} — "
+                f"ورقةُ الهويّة لا تحمل اتّجاهًا؛ مكانُها {M.CSS_PATCH} [VA-05]")
+
+
+@check("ورقة الهويّة [VA-05]: محقونةٌ في مسار البناء كلِّه — لا ملفًّا يتيمًا")
+def _identity_css_wired():
+    """ملفٌّ مُنشأٌ ولا يُنسَخ ولا يُستورَد **أسوأُ من عدمه**: يُقرأ في المستودع كأنّه يعمل.
+
+    فالفصلُ لا يكتمل بإنشاء ملفّ، بل بأن يبلغ الحزمةَ. والمواضعُ الأربعةُ هي المسارُ كلُّه:
+    التهيئة (‏`build.sh`) ← الحقن (‏`patch_bundle_extensions.py`) ← الاستيراد
+    (‏`patch_workbench_rtl.py`) ← ومزامنةُ التطوير (‏`dev_sync.py`).
+    """
+    base = os.path.basename(M.IDENTITY_CSS)
+    # المِجَسُّ **جذرُ الاسم** لا المسارُ الكامل: التهيئةُ والحقنُ يمرّان على الورقتين
+    # بحلقةٍ (`for _sheet in mihrab-rtl mihrab-identity`) فلا يَرِد المسارُ حرفيًّا —
+    # ومِجَسٌّ على نصٍّ حرفيٍّ كان سيُفشِل صياغةً **أصحَّ** من التي كتبناه لأجلها.
+    stem = base[:-len(".css")] if base.endswith(".css") else base
+    wiring = [
+        ("build/build.sh", stem, "تهيئةُ الورقة في مجلّد المنبع"),
+        ("build/patch_bundle_extensions.py", stem, "نسخُها إلى media/ في كتلة الحقن"),
+        ("build/patch_workbench_rtl.py", "media/" + base, "استيرادُها في workbench.ts"),
+    ]
+    for rel, needle, what in wiring:
+        text = _read(os.path.join(ROOT, rel))
+        assert needle in text, f"{what}: لا ذكرَ لـ«{needle}» في {rel} — ورقةُ الهويّة يتيمة [VA-05]"
+    # dev_sync يشتقّ الاسمَ من المانيفست لا يكتبه — فالفحصُ على المرجع لا على النصّ.
+    dev = _read(os.path.join(ROOT, "build/dev_sync.py"))
+    assert "IDENTITY_CSS" in dev, "dev_sync.py لا يزامن ورقةَ الهويّة — بيئةُ التطوير تفقد الشعار"
+    # **وترتيبُ الاستيراد جزءٌ من العقد لا تفصيل**: ورقةُ الهويّة تأتي ثانيةً كي تفوز عند
+    # تساوي الخصوصيّة. وعكسُ السطرين تغييرٌ صامتٌ لا يُسقِط بناءً ولا مِجَسًّا.
+    wb = _read(os.path.join(ROOT, "build/patch_workbench_rtl.py"))
+    i_rtl = wb.find("media/" + os.path.basename(M.CSS_PATCH))
+    i_id = wb.find("media/" + base)
+    assert 0 <= i_rtl < i_id, (
+        "ترتيبُ استيراد الورقتين معكوسٌ في patch_workbench_rtl.py — الهويّةُ يجب أن تأتي "
+        "بعد الاتّجاه كي تفوز عند تساوي الخصوصيّة [VA-05]")
+    # **والوسمُ لا يكفي وحدَه للـidempotency بعد نموّ الرُقعة**: شجرةٌ رُقِّعت قبل VA-05
+    # تحمل الوسمَ وتنقصها ورقةُ الهويّة، فالتخطّي بالوسم كان يترك الشعارَ غائبًا بلا خطأ.
+    assert "IDENTITY_IMPORT in text" in wb, (
+        "patch_workbench_rtl.py يتخطّى بالوسم وحدَه — شجرةٌ مُرقَّعةٌ بنسخةٍ أقدم لن تُكمَل، "
+        "فتخرج ترويسةُ الترحيب بلا شعارٍ ولا رسالةَ خطأ [VA-05]")
+    # **والمِجَسُّ الخامس**: مِجَسّات L2 هي دليلُ الوصول الوحيد بعد التحزيم — سقوطُها من
+    # `check_injected.py` يترك الاستيرادَ بلا شاهد.
+    inj = _read(os.path.join(ROOT, "tests/bundle/check_injected.py"))
+    for cls in IDENTITY_CLASSES:
+        assert cls in inj, (
+            f"مِجَسُّ «{cls}» سقط من توكيدات L2 — لا دليلَ على وصول ورقة الهويّة [VA-05]")
 
 
 @check("إبراز يونيكود [AR-04]: إعفاء ص من nonBasicASCII — مقصورًا على اللغة لا عالميًّا")
@@ -914,14 +1131,178 @@ def _arabic_font():
             "build.sh لا يعرّف WELCOME_MEDIA لمجلّد media لوحة الترحيب [AR-01↔AR-02]"
         assert any("cp -f" in ln and "WELCOME_MEDIA/kawkab-mono.woff2" in ln for ln in bsh_code), \
             "build.sh لا ينسخ الخطّ فعلًا إلى media/ لوحة الترحيب (سطر cp لا سطر log) [AR-01↔AR-02]"
+        # السلسلةُ صارت من حلقتين بعد [PR-01]: اللوحةُ تفوّض، والوحدةُ المشتركةُ تبني الـURI.
+        # ويُفحَص **الطرفان** لا أحدُهما: فحصُ اللوحة وحدَها يمرّ أخضرَ لو صار التفويضُ إلى
+        # دالّةٍ لا تبني شيئًا، وفحصُ الوحدة وحدَها يمرّ أخضرَ لو كفّت اللوحةُ عن ندائها.
         panel_js = _read(os.path.join(welcome, "output-panel.js"))
-        assert "loadBundledFontDataUri" in panel_js and "data:font/woff2" in panel_js, \
-            "output-panel.js لا يُضمِّن الخطّ المحزوم كـdata:URI في اللوحة [AR-01↔AR-02]"
+        font_js = _read(os.path.join(welcome, "bundled-font.js"))
+        assert "loadFontDataUri" in panel_js, \
+            "output-panel.js لا ينادي مُحمِّلَ الخطّ المشترك [AR-01↔AR-02]"
+        assert "data:font/woff2" in font_js and "base64" in font_js, \
+            "bundled-font.js لا يبني data:URI للخطّ المحزوم [AR-01↔AR-02]"
+        # وبصمةُ الصيغة: `readFileSync` ينجح على ملفٍّ مقتطعٍ وعلى كعبٍ فارغ، و«الحمولةُ
+        # موجودة» تأكيدٌ ينجح عليهما معًا — فالحارسُ يشترط أن يبقى فحصُ البصمة قائمًا.
+        assert "wOF2" in font_js, \
+            "bundled-font.js لا يفحص بصمةَ WOFF2 — «قُرئ الملفّ» ليس «الملفُّ خطّ» [AR-02]"
+        # و[PR-01] يشترط أن يبقى للتصدير مسارُ فشلٍ صريح: ملفٌّ يُطبَع بخطٍّ ساقطٍ عند غير
+        # مُصدِّره أسوأُ من فشلٍ يُصلَح، لأنّ الانحرافَ الصامتَ يُوقَّع عليه.
+        assert "required" in font_js, \
+            "bundled-font.js فقد سياسةَ الفشل الإلزاميّ — تصديرُ الطباعة يسقط رشيقًا فيكذب [PR-01]"
+        print_cmd = _read(os.path.join(welcome, "print-command.js"))
+        assert "required: true" in print_cmd, \
+            "print-command.js لا يشترط الخطَّ — يُصدَّر ملفٌّ بلا خطّ [PR-01]"
         # الخطّ ثنائيّ يُحقَن وقت البناء (كـbin/) ويُقرأ من extensionPath/media؛ يجب تجاهله في git
         # كي لا يُودَع لو أسقطه مطوّر في media/ (المتعقَّب لوسائط الجولة) للتجربة المحلّيّة.
         gitignore = _read(os.path.join(ROOT, ".gitignore"))
         assert "extensions/mihrab-welcome/media/kawkab-mono.woff2" in gitignore, \
             ".gitignore لا يتجاهل خطّ media المحقون (extensions/mihrab-welcome/media/kawkab-mono.woff2) — خطر إيداعه [AR-01↔AR-02]"
+
+
+@check("صندوق رسالة الالتزام [SC-01]: المفتاحان اللذان تقبلهما قائمةُ السماح مضبوطان")
+def _scm_input_defaults():
+    """
+    ‏[SC-01] صندوقُ الرسالة في جزء المصادر **لا يقرأ خدمةَ الإعدادات**: `isSimpleWidget: true`
+    (‏`scmInput.ts:613`) ⇒ `editorConfiguration.ts:73-88` تبني الخياراتِ من كائنٍ مُمرَّرٍ بلا
+    حقن `IConfigurationService`. فما يبلغ الصندوقَ هو ما يقرؤه `SCMInputWidget` بيده في
+    **قائمةِ سماحٍ مغلقة** (‏`scmInput.ts:310`). ومن مفاتيحنا الخمسة لا يبلغه إلّا اثنان،
+    وبطريقٍ غير مباشر: `scm.inputFontFamily: "editor"` (يُحيل إلى `editor.fontFamily`،
+    ‏`scmInput.ts:315-317`) و`scm.inputFontSize`.
+
+    وهذا الحارسُ يمنع **انحدارًا صامتًا** بعينه: إسقاطُ أحد المفتاحين لا يكسر شيئًا ولا
+    يُظهِر خطأً — يعود الصندوقُ إلى خطّ القشرة وحجمِ ‎13‎، فيكتب المستخدمُ أطولَ نصٍّ عربيٍّ
+    في يومه بوجهٍ لم يُقَس وحجمٍ دون المقيس، ولا حارسَ في الطبقتين الأخريَين يبلغه
+    (‏`.view-line` وحدَها ما تفحصه الحرّاسُ الحيّة، والصندوقُ ليس منها).
+
+    ويُقاس التساوي مع `editor.fontSize` لا رقمٌ مكتوبٌ بيده: القياسُ في VA-04 خاصّيّةُ
+    **وجهٍ** لا خاصّيّةُ سطح، فانجرافُ أحد الرقمين وحده يكسر الحجّةَ التي بُني عليها.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
+    fam = defaults.get("scm.inputFontFamily")
+    assert isinstance(fam, str) and fam.strip().lower() == "editor", (
+        "‏`scm.inputFontFamily` ليس `editor` في mihrab-shell — صندوقُ رسالة الالتزام "
+        "يعود إلى خطّ القشرة (افتراضُ المنبع `default`) بدل الوجه المحزوم [SC-01]")
+    size = defaults.get("scm.inputFontSize")
+    editor_size = defaults.get("editor.fontSize")
+    assert size == editor_size, (
+        f"‏`scm.inputFontSize`={size} لا يساوي `editor.fontSize`={editor_size} — "
+        f"القياسُ في VA-04 خاصّيّةُ وجهٍ لا خاصّيّةُ سطح، فلا يجوز أن ينجرف أحدُهما [SC-01]")
+
+
+@check("وحدةُ التصحيح [DG-01]: المفاتيحُ الثلاثةُ مضبوطةٌ ومشدودةٌ إلى قياس المحرّر")
+def _debug_console_defaults():
+    """
+    ‏[DG-01] وحدةُ التصحيح **نسخةٌ ثانيةٌ من عطب SC-01**: ‏`repl.ts:750` ينشئ حقلَ الإدخال
+    بـ`getSimpleCodeEditorWidgetOptions()` و`simpleEditorOptions.ts:61` يمرّر
+    ‏`isSimpleWidget: true`. والفرقُ أنّها **لا تقرأ `editor.*` إطلاقًا** بل ثلاثةَ مفاتيحَ
+    خاصّةٍ بها — وهي **مفتوحةٌ لنا كلُّها**، فالبندُ يُغلَق من الطبقة الأولى بلا رقعةٍ ولا
+    قاعدة. المقيسُ حيًّا قبلَها: ‏14px · ‏1.429em · ‏Consolas.
+
+    والحارسُ يمنع **انحدارًا صامتًا**: إسقاطُ مفتاحٍ منها لا يرمي خطأً ولا يكسر بناءً —
+    تعود وحدةُ التصحيح إلى خطٍّ لاتينيٍّ وارتفاعِ سطرٍ يقصّ التشكيل، في السطح الذي يقرأ
+    فيه المستخدمُ **نتيجةَ برنامجه ورسالةَ خطئه**. ولا حارسَ حيٌّ يبلغه في المسار العاديّ
+    (‏`debug_panes.live.mjs` يحتاج جلسةَ تنقيحٍ يبنيها بنفسه).
+
+    والأرقامُ **مشدودةٌ إلى قياسِ المحرّر لا مكتوبةٌ بيد**: الحجمُ يساوي `editor.fontSize`
+    (‏VA-04)، وارتفاعُ السطر يُقرأ بالبكسل هنا لا بالمضاعِف (‏`debug.console.lineHeight`
+    بكسلات، و‎0‎ تعني «احسبه بمعامِل ‎1.4‎») فيجب أن يبلغ حاصلَ الحجم × مضاعِف المحرّر —
+    وإلّا انجرف أحدُهما وحدَه وسقطت الحجّةُ التي بُني عليها الآخر.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
+    fam = defaults.get("debug.console.fontFamily")
+    editor_fam = defaults.get("editor.fontFamily")
+    assert fam == editor_fam, (
+        "‏`debug.console.fontFamily` لا يطابق `editor.fontFamily` — وحدةُ التصحيح تعود "
+        "إلى خطٍّ لاتينيٍّ (المقيسُ حيًّا: Consolas) في السطح الذي يقرأ فيه المستخدمُ "
+        "مخرَجَ برنامجه [DG-01]")
+    size = defaults.get("debug.console.fontSize")
+    editor_size = defaults.get("editor.fontSize")
+    assert size == editor_size, (
+        f"‏`debug.console.fontSize`={size} لا يساوي `editor.fontSize`={editor_size} — "
+        f"قياسُ VA-04 خاصّيّةُ وجهٍ لا خاصّيّةُ سطح [DG-01]")
+    lh_px = defaults.get("debug.console.lineHeight")
+    lh_em = defaults.get("editor.lineHeight")
+    assert isinstance(lh_px, (int, float)) and lh_px > 0, (
+        "‏`debug.console.lineHeight` غائبٌ أو صفر — والصفرُ يعني في المنبع «احسبه بمعامِل "
+        "‎1.4‎»، وهو دون أرضيّة الحبر المقيسة ‎1.88em‎ فيُقصّ التشكيل [DG-01 · TY-02]")
+    if isinstance(size, (int, float)) and isinstance(lh_em, (int, float)):
+        want = round(size * lh_em)
+        assert abs(lh_px - want) <= 1, (
+            f"‏`debug.console.lineHeight`={lh_px}px لا يطابق قياسَ المحرّر "
+            f"({size} × {lh_em} ≈ {want}px) — الرقمُ يُشتقّ ولا يُكتَب بيد [DG-01 · TY-02]")
+
+
+@check("حدودُ الكلمة [IN-01]: الفواصلُ بادئتُها المنبعُ حرفًا، وزيادتُها ترقيمٌ لا فاصلُ عدد")
+def _word_separators_prefix():
+    """
+    ‏[IN-01] ‏`editor.wordSeparators` سُلَّميّةٌ من نوع `string`: تجاوزُها **يستبدل**
+    الافتراضَ ولا يُضيف إليه (‏`editorOptions.ts:6763` يسجّلها `EditorStringOption`
+    بافتراضٍ هو `USUAL_WORD_SEPARATORS`، و`WordCharacterClassifier` يتلو السلسلةَ
+    المُمرَّرةَ وحدَها حرفًا حرفًا). فنحن مضطرّون إلى **نسخ ثابتٍ منبعيٍّ** إلى ملفّنا كي
+    نزيد عليه اثنَي عشرَ محرفَ ترقيمٍ عربيّ.
+
+    وهذا يفتح بابَ انحدارٍ صامتٍ من جهتين، والحارسُ يسدّهما:
+
+      (أ) **نقصٌ في البادئة.** لو كُتبت الزيادةُ وحدَها («،؛؟») سقط الواحدُ والثلاثون
+          محرفًا اللاتينيّة، فصارت `()` و`[]` و`.` جزءًا من الكلمة والتقط النقرُ المزدوجُ
+          على `اطبع(نص)` السطرَ كلَّه. عطبٌ فادحٌ لا يرمي خطأً ولا يكسر بناءً.
+      (ب) **انجرافُ المنبع.** لو زاد المنبعُ محرفًا إلى `USUAL_WORD_SEPARATORS` بقيت
+          نسختُنا ناقصةً بلا إشعار. ولذلك تُقرأ البادئةُ **من ملفّ المنبع نفسِه** — أو من
+          لقطة L1 المُلتزَمة (‏`REFERENCE_FILES`) لأنّ `.upstream/` مُتجاهَلٌ في git وبلا
+          الارتداد يكون لُبُّ الفحص معطَّلًا في CI صامتًا. الصنفُ نفسُه الذي يحرسه AR-04.
+
+    والشرطُ الثالثُ ليس شكليًّا: **«٫» U+066B و«٬» U+066C ممنوعتان**. هما فاصلا *عدد*
+    عربيَّان لا علامتا ترقيم، وإضافتُهما تشقّ ‎٣٫١٤‎ إلى ‎٣‎ — أي تُدخِل انحدارًا في
+    أرقام المستخدم ثمنًا لمكسبٍ لا وجودَ له، إذ لا تردان في النثر أصلًا. قِيست الزيادةُ
+    محرفًا محرفًا قبل الشحن، وهذان وحدَهما سقطا في القياس.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get("configurationDefaults", {})
+    ours = defaults.get("editor.wordSeparators")
+    assert isinstance(ours, str) and ours, (
+        "‏`editor.wordSeparators` غائبٌ من mihrab-shell — يعود حدُّ الكلمة إلى المِسطرة "
+        "اللاتينيّة، فيلتقط النقرُ المزدوجُ الفاصلةَ العربيّةَ مع الكلمة [IN-01]")
+
+    REL = os.path.join("src", "vs", "editor", "common", "core", "wordHelper.ts")
+    src_path = os.path.join(ROOT, ".upstream", "vscode", REL)
+    if not os.path.isfile(src_path):
+        src_path = os.path.join(os.path.dirname(HERE), "apply", "snapshot", REL)
+    assert os.path.isfile(src_path), (
+        "لا `wordHelper.ts` — لا في المنبع المثبَّت ولا في لقطة L1. شغّل "
+        "`python tests/apply/refresh_snapshot.py` والتزِم اللقطة [IN-01]")
+    m = re.search(r"USUAL_WORD_SEPARATORS\s*=\s*'((?:\\.|[^'\\])*)'",
+                  open(src_path, encoding="utf-8").read())
+    assert m, "تعذّر إيجاد `USUAL_WORD_SEPARATORS` في المنبع — تغيّر شكلُه؟ [IN-01]"
+    upstream = m.group(1).replace("\\\\", "\\").replace("\\'", "'")
+    # تحقّقٌ من أنّنا أمسكنا الثابتَ الصحيح لا سلسلةً أخرى بالاسم نفسِه.
+    assert "(" in upstream and "." in upstream and len(upstream) >= 20, (
+        f"الثابتُ المُلتقَط لا يشبه قائمةَ فواصل ({upstream!r}) — مرساةٌ أمسكت غيرَه [IN-01]")
+
+    assert ours.startswith(upstream), (
+        f"‏`editor.wordSeparators` لا يبدأ بالافتراض المنبعيِّ حرفًا. المنبع: {upstream!r}\n"
+        f"وقيمتُنا: {ours!r}\n"
+        "والقيمةُ **تستبدل** ولا تضيف — فالنقصُ هنا يجعل الأقواسَ والنقطةَ جزءًا من "
+        "الكلمة، وهو عطبٌ لا يرمي خطأً [IN-01]")
+
+    extra = ours[len(upstream):]
+    assert extra, (
+        "‏`editor.wordSeparators` يساوي الافتراضَ المنبعيَّ بلا زيادة — نسخٌ بلا سبب. "
+        "إمّا أن يُزاد الترقيمُ العربيُّ وإمّا أن يُحذَف المفتاحُ كلُّه [IN-01]")
+    for ch in ("٫", "٬"):
+        assert ch not in extra, (
+            f"‏{ch!r} فاصلُ **عدد** عربيٌّ لا علامةُ ترقيم — إضافتُه تشقّ ‎٣٫١٤‎ إلى ‎٣‎ "
+            f"بلا مكسبٍ في النثر [IN-01]")
+    for ch in "،؛؟":
+        assert ch in extra, (
+            f"‏{ch!r} غائبٌ عن الزيادة — وهو أكثرُ الترقيم العربيّ ورودًا، والعطبُ الذي "
+            f"فُتح البندُ لأجله [IN-01]")
 
 
 # ───────────── L0-8: سمتا محراب (خريطة الرموز ↔ نحو ص) ─────────────
@@ -1142,6 +1523,169 @@ def _directional_glyphs():
         "فقلبه يكسر ما لم يكن مكسورًا؛ اقصِر القلب على الأصناف المخصَّصة [القاعدة 22]")
 
 
+@check("مسرَد المصطلحات مصدرُ حقيقةٍ للمنتج لا للموقع وحدَه [VA-06]")
+def _glossary_governs_product():
+    """يحرس VA-06 — ولمحرابٍ مسؤوليّةٌ خاصّةٌ هنا.
+
+    نحن نكتب نصوصَ ثلاثةِ مصادرَ في آن: إضافاتُنا (عربيّةٌ مصنوعة)، وحزمةُ `language-pack-ar`
+    (**مورَّدةٌ من طرفٍ ثالث**)، ومعجمُ الإعدادات المشتقّ. فمن الطبيعيِّ أن يظهر المفهومُ
+    الواحدُ بثلاثة ألفاظٍ في ثلاث نوافذَ من التطبيق نفسِه. وهذا يضرب **الثقةَ قبل الجمال**:
+    المستخدمُ الذي يقرأ «ملحق» و«امتداد» و«إضافة» في مكانٍ واحدٍ يظنّها أشياءَ مختلفة.
+
+    وكان المسرَدُ يحكم **التوثيقَ وحدَه**. هذا الحارسُ يمدّه إلى **نصوص المنتج**: مانيفستات
+    إضافاتنا وسلاسلُ `COPY` فيها. ويفحص البدائلَ الممنوعةَ صراحةً — لا يخترع حكمًا.
+    """
+    gpath = os.path.join(ROOT, "site", "data", "glossary.json")
+    if not os.path.isfile(gpath):
+        return
+    terms = json.load(open(gpath, encoding="utf-8")).get("terms", [])
+    assert terms, "المسرَدُ فارغ — عمِيَ الحارس [VA-06]"
+
+    # الأسطحُ المفحوصة: كلُّ نصٍّ **نكتبه نحن** ويراه المستخدم. حزمةُ `language-pack-ar`
+    # مستثناةٌ صراحةً: مورَّدةٌ من طرفٍ ثالثٍ ولا نملك صياغتَها — وتوحيدُها بندٌ آخر.
+    # **مشيٌ متكرّرٌ لا مستوًى واحد.** الصيغةُ الأولى مشت على المستوى الأوّل وقبلت
+    # `package.json` و`*.js` وحدَهما — فعمِيَت عن `media/*.md`، وهو **محتوى الجولة الذي
+    # يقرؤه المبتدئ حرفًا حرفًا**. وفاتها انجرافٌ حقيقيٌّ فيه أحدثته الموجةُ نفسُها.
+    SKIP_DIRS = {"node_modules", "bin", "data", ".vscode", "__pycache__"}
+    targets = []
+    ext_root = os.path.join(ROOT, "extensions")
+    for name in sorted(os.listdir(ext_root)) if os.path.isdir(ext_root) else []:
+        if name == "language-pack-ar":   # مورَّدةٌ من طرفٍ ثالث — لا نملك صياغتَها
+            continue
+        base = os.path.join(ext_root, name)
+        if not os.path.isdir(base):
+            continue
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for f in sorted(files):
+                if f.endswith(".test.js") or f == "README.md":
+                    continue
+                if f == "package.json" or f.endswith(".js") or f.endswith(".md"):
+                    targets.append(os.path.join(root, f))
+    assert targets, "لا أسطحَ نصٍّ لفحصها — عمِيَ الحارس [VA-06]"
+
+    def _ui_text_only(path):
+        """يعيد النصَّ **الذي يراه المستخدم** وحدَه — لا التعليقات.
+
+        فحصُ التعليقات يُنتج ضجيجًا: «الخيارات» في شرحِ خياراتِ `Intl` ليست مصطلحَ واجهة،
+        و«التصحيح» في تعليقٍ عن تصحيح خطأٍ برمجيّ ليست `Debug`. وحارسٌ يُنذِر على ما لا
+        يراه المستخدمُ يُعلَّم تجاهُلُه — وهو العطبُ نفسُه الذي بُني `BS-01` كلُّه لتفاديه.
+        """
+        raw = _read(path)
+        if path.endswith(".md"):
+            return raw     # ماركداون الجولة نصٌّ يراه المستخدم كلُّه
+        if path.endswith(".json"):
+            # في المانيفست: القيمُ التي تُعرَض وحدَها (لا مفاتيحُ التعليق `_comment*`).
+            try:
+                data = json.loads(raw)
+            except Exception:
+                return raw
+            shown, UI_KEYS = [], ("title", "shortTitle", "description",
+                                  "markdownDescription", "displayName", "detail")
+            def walk(node, key=None):
+                if isinstance(node, dict):
+                    for k, v in node.items():
+                        if not str(k).startswith("_comment"):
+                            walk(v, k)
+                elif isinstance(node, list):
+                    for v in node:
+                        walk(v, key)
+                elif isinstance(node, str) and key in UI_KEYS:
+                    shown.append(node)
+            walk(data)
+            return "\n".join(shown)
+        # في JS: تُجرَّد التعليقاتُ السطريّةُ والكتليّة، ويبقى ما بين علامات الاقتباس.
+        no_block = re.sub(r"/\*.*?\*/", "\n", raw, flags=re.S)
+        return "\n".join(re.sub(r"(^|[^:\"'\\])//.*$", r"\1", ln) for ln in no_block.splitlines())
+
+    hits = []
+    for path in targets:
+        text = _ui_text_only(path)
+        for t in terms:
+            for bad in t.get("forbidden", []):
+                # نبحث عن اللفظ الممنوع **محاطًا بحدود كلمة عربيّة**: «الإضافة» ممنوعةٌ
+                # لـExtension، لكنّ «الإضافات» في سياقٍ آخرَ قد تكون كلمةً عاديّة. فنطلب
+                # تطابقًا تامًّا للمقطع بين فواصلَ غيرِ حرفيّة.
+                # حدُّ الكلمة: حرفٌ عربيٌّ أو لاتينيٌّ أو رقم. و**علاماتُ الترقيم العربيّة
+                # مستثناة** (‏، ؛ ؟ …) رغم وقوعها في كتلة العربيّة — كانت تُقرأ حرفًا فيمرّ
+                # لفظٌ ممنوعٌ يليه فاصلة: ثغرةٌ صامتةٌ في الحارس نفسِه.
+                for m in re.finditer(re.escape(bad), text):
+                    before = text[m.start() - 1] if m.start() else " "
+                    after = text[m.end()] if m.end() < len(text) else " "
+                    WORD = r"[\w\u0620-\u065F\u0660-\u0669\u066E-\u06D3\u06FA-\u06FF]"
+                    if re.match(WORD, before) or re.match(WORD, after):
+                        continue
+                    line = text[:m.start()].count("\n") + 1
+                    hits.append(f"{os.path.relpath(path, ROOT)}:{line} «{bad}» ⇐ المعتمَد «{t['ar']}»")
+    assert not hits, (
+        "ألفاظٌ ممنوعةٌ في نصوص المنتج (المسرَدُ يحكمها): \n       " + "\n       ".join(hits[:12])
+        + ("\n       …" if len(hits) > 12 else "") + " [VA-06]")
+
+
+@check("كتالوج الأيقونات الاتّجاهيّة [DR-06]: الكتالوج ↔ الورقة في الاتّجاهين")
+def _directional_icon_catalog():
+    """يحرس DR-06 — نقلُ قاعدةِ القلب من الأذهان إلى الشيفرة.
+
+    كانت القواعدُ ٨ و٢٢ تقلب أيقوناتٍ مسمّاةً واحدةً واحدة، والقرارُ «تُقلَب / لا تُقلَب» موزَّعٌ
+    في محدِّدات CSS — فكلُّ أيقونةٍ جديدةٍ رهنُ انتباهِ مَن كتبها. والحارسُ **ثنائيُّ الاتّجاه**
+    عمدًا، لأنّ الخطأ ممكنٌ في الجهتين: أيقونةٌ اتّجاهيّةٌ تُنسى فلا تُقلَب، أو أخرى تُقلَب بلا
+    مبرّر فيقلب `scaleX(-1)` معها أيَّ نصٍّ أو تدرُّجٍ داخلها.
+    """
+    cat_path = os.path.join(ROOT, "patches", "directional-icons.json")
+    assert os.path.isfile(cat_path), (
+        "كتالوجُ الأيقونات الاتّجاهيّة مفقود (patches/directional-icons.json) — تعود القاعدةُ "
+        "إلى الأذهان [DR-06]")
+    cat = json.load(open(cat_path, encoding="utf-8"))
+    css = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
+
+    # كلُّ قواعد القلب في الورقة: (المحدِّدات، جسمُ القاعدة). القلبُ هو ما يعنينا هنا — لا
+    # وجودُ الصنف: صنفٌ في `keep` قد تكون له قاعدةُ لونٍ أو حشوةٍ مشروعةٌ تمامًا.
+    FLIP_PROPS = ("scalex(-1)", "matrix(-1", "rotate(180deg)", "rotatey(180deg)",
+                  "scale(-1", "scalex( -1")
+    flip_rules = []
+    for m in re.finditer(r"\{([^{}]*)\}", css):
+        body = m.group(1).lower().replace(" ", " ")
+        if not any(p in body.replace(" ", "") for p in
+                   (x.replace(" ", "") for x in FLIP_PROPS)):
+            continue
+        start = css.rfind("}", 0, m.start()) + 1
+        flip_rules.append(css[start:m.start()])
+
+    # (١) كلُّ ما في الكتالوج **مقلوبٌ فعلًا** — والحكمُ من قواعد القلب لا من ورودِ الصنف
+    #     في أيّ مكان. الصيغةُ الأولى بنت `needle` ولم تستعمله، وفحصت أنّ الصنفَ يرد في
+    #     الورقة والنطاقَ يرد فيها **منفصلَين** — فمدخلٌ لصنفٍ له قاعدةُ لونٍ فقط كان يمرّ.
+    for e in cat.get("flip", []):
+        cls, scope = e["class"], e.get("scope")
+        assert e.get("why"), f"مدخلٌ بلا مبرّرٍ مكتوب: {cls} [DR-06]"
+        cls_re = re.compile(r"\." + re.escape(cls) + r"(?![\w-])")
+        assert any(cls_re.search(s_) and (not scope or scope in s_) for s_ in flip_rules), (
+            f"‏«{cls}» في الكتالوج ولا **قاعدةَ قلبٍ** له في {M.CSS_PATCH}"
+            + (f" بنطاق «{scope}»" if scope else "") +
+            " — أيقونةٌ اتّجاهيّةٌ تشير عكسَ اتّجاه القراءة [DR-06]")
+
+    # (٢) وكلُّ ما في `keep` **لا يُقلَب**: قلبُ صنفٍ عامٍّ يكسر ما لم يكن مكسورًا.
+    for e in cat.get("keep", []):
+        cls = e["class"]
+        assert e.get("why"), f"مدخلُ استثناءٍ بلا مبرّرٍ مكتوب: {cls} [DR-06]"
+        cls_re = re.compile(r"\." + re.escape(cls) + r"(?![\w-])")
+        hit = next((s_ for s_ in flip_rules if cls_re.search(s_)), None)
+        assert hit is None, (
+            f"‏«{cls}» مُدرَجٌ في `keep` (لا يُقلَب) ومع ذلك يقع في قاعدة قلبٍ: "
+            + hit.strip().replace("\n", " ")[:120] +
+            " — إمّا انتقل قرارُه فيُنقَل في الكتالوج، وإمّا قلبٌ بلا مبرّر [DR-06]")
+
+    # (٣) **الاتّجاهُ المعاكس:** كلُّ قاعدةِ قلبٍ في الورقة يذكرها الكتالوج. بلا هذا يبقى
+    #     الكتالوجُ توثيقًا يتقادم بدل أن يكون مصدرَ حقيقة.
+    known = {e["class"] for e in cat.get("flip", [])}
+    for selectors in flip_rules:
+        classes = set(re.findall(r"\.([a-zA-Z][\w-]*)", selectors))
+        # أصنافُ النطاق (`monaco-workbench`، `command-center`) ليست أيقونات؛ يكفي أن يكون
+        # **أحدُ** أصناف القاعدة مذكورًا في الكتالوج.
+        assert classes & known, (
+            "قاعدةُ قلبٍ بلا مدخلٍ في الكتالوج: "
+            + selectors.strip().replace("\n", " ")[:120] + " [DR-06]")
+
+
 @check("اتّجاه التسميات المحايدة [القاعدة 21]: تغطية الأهداف المرصودة + حصر أزرار الأيقونة")
 def _bidi_neutrals():
     """يحرس القاعدة 21 — و**انحدارًا رصدناه حيًّا مرّة فلا يعود**.
@@ -1273,10 +1817,22 @@ def _bidi_panels():
         # فاصلة/قوس/سطر — فهذا هو المدى الصحيح.
         head = css[max((css.rfind(c, 0, m) for c in ",{}\n"), default=-1) + 1:m]
         tail = css[m + len(".view-line"):m + len(".view-line") + 8].strip()
-        assert ".suggest-input-container" in head, (
-            "‏`.view-line` مستهدَف خارج `.suggest-input-container` — هذا يبتلع محرّر "
-            "الشيفرة الرئيس، واتّجاه أسطره شأنُ patch_editor_rtl.py [القاعدة 24]")
-        assert tail.startswith(">"), (
+        # **نطاقان مسموحان لا واحد — والثاني أُضيف بقياسٍ لا بتوسيعِ استثناء.**
+        # ‏[SC-01] صندوقُ رسالة الالتزام محرّرُ Monaco **آخر** (‏`.scm-editor-container`)، وليس
+        # محرّرَ الشيفرة الرئيس الذي جاء هذا الحصرُ ليحميه. وهو السطحُ الوحيدُ الذي لا تبلغه
+        # إعداداتُنا (قائمةُ سماحٍ مغلقة، `scmInput.ts:310`)، فورقةُ الأنماط هي مخرجُه الوحيد
+        # في طبقاتنا. وقِيس حيًّا (‏`tests/runtime/scm_input.live.mjs`) أنّ حقن
+        # ‏`font-feature-settings` على `.view-line` **يغيّر القيمةَ المحسوبة فعلًا** — فليست
+        # قاعدةً ميّتة، بخلاف حالة `plaintext` التي رُصدت في حقل الاقتراح.
+        SCM_SCOPE = ".scm-editor-container" in head
+        assert ".suggest-input-container" in head or SCM_SCOPE, (
+            "‏`.view-line` مستهدَف خارج `.suggest-input-container` و`.scm-editor-container` — "
+            "هذا يبتلع محرّر الشيفرة الرئيس، واتّجاه أسطره شأنُ رقعة المنبع [القاعدة 24]")
+        # شرطُ `> span` **خاصٌّ بحالة الاتّجاه** لا قاعدةٌ عامّة: سببُه أنّ `plaintext` على
+        # ‏`.view-line` لا تغلب سمةَ `dir="rtl"` التي يبصمها Monaco. والوراثةُ الطباعيّة
+        # (‏`font-feature-settings`) تسري من العنصر إلى ذرّيّته بلا معارِض — فاشتراطُه هنا
+        # كان سيمنع القاعدةَ الوحيدةَ التي **قِيس** أثرُها.
+        assert SCM_SCOPE or tail.startswith(">"), (
             "‏`.view-line` مستهدَف عاريًا — عليها سمة `dir=\"rtl\"` من Monaco فلا تفعل "
             "`plaintext` شيئًا (مقيس). الهدف هو `> span` الداخليّة [القاعدة 24]")
 
@@ -1349,6 +1905,209 @@ def colors_of(td):
 def _delta_e(c1, c2):
     """ΔE76 (إقليديّ في CIELAB) — كافٍ لحارس «هل اللونان متمايزان؟»؛ لا نحتاج دقّة CIEDE2000."""
     return sum((a - b) ** 2 for a, b in zip(_lab(c1), _lab(c2))) ** 0.5
+
+
+@check("طباعة السطر [TY-02 · DR-05]: ارتفاع سطرٍ يتّسع للتشكيل + قفل مسار GPU")
+def _line_height_and_gpu():
+    """يحرس رقمين لكلٍّ منهما اشتقاقٌ مكتوب، لا ذوقٌ ولا نسخٌ يدويّ.
+
+    **‏`editor.lineHeight`** مشتقٌّ من مقاييس الوجه المحزوم: مدى الحبر العربيّ ‎1.798em‎
+    (‏«أ» U+0623 عند ‎+1.265‎ وتنوينُ الكسر U+064D عند ‎−0.533‎)، ومدى الخطّ المعلَن ‎1.95em‎.
+    ونموذجُ CSS يتوسّط صندوقَ المحتوى في صندوق السطر، فيُقتطَع الحبرُ العلويُّ متى نزل
+    ارتفاعُ السطر عن ‎1.88em‎ — وافتراضُ المنبع ‎1.35‎ (ويندوز/لينكس). فالحدُّ **محسوبٌ لا
+    مختار**، والحارسُ يمنع النزولَ تحته لا يمدح رقمًا بعينه.
+
+    **‏`experimentalGpuAcceleration`** يُقفَل على `off`: طبقةُ GPU المنبعيّة بلا أيّ معالجة
+    اتّجاه، والحمايةُ اليومَ ظرفيّةٌ («مطفأٌ افتراضيًّا في المنبع») لا بنيويّة. ويومَ يقلب
+    المنبعُ الافتراضَ يسقط اتّجاهُ المحرّر **في مزامنةٍ روتينيّةٍ بلا سطر خطأٍ واحد**.
+    """
+    MIN_LINE_HEIGHT = 1.88   # الأرضيّة المشتقّة — أيّ نزولٍ تحتها اقتطاعٌ مؤكَّد
+    MAX_EM_VALUE = 8         # المنبع يقرأ ما دونها مضاعِفَ em (fontInfo.ts:37)
+    FONT_SIZES = range(10, 21)  # مدى أحجام الخطّ العمليّ الذي يجب أن تصمد فيه القيمة
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get(
+        "configurationDefaults", {})
+    lh = defaults.get("editor.lineHeight")
+    assert isinstance(lh, (int, float)), (
+        "لا `editor.lineHeight` افتراضيّ — يُورَث افتراضُ المنبع ‎1.35‎ (ويندوز/لينكس) "
+        "فيُقتطَع التشكيلُ في التعليقات والسلاسل والتوثيق [TY-02]")
+    assert lh < MAX_EM_VALUE, (
+        f"‏`editor.lineHeight` = {lh} ‏≥ {MAX_EM_VALUE} فيُقرأ **بكسلات** لا مضاعِفَ em "
+        f"(fontInfo.ts:37) — فلا يتبع حجمَ خطّ المستخدم [TY-02]")
+    # **الفحصُ بعد التقريب لا قبله.** المنبع يفعل `Math.round(lineHeight)` (fontInfo.ts:43)،
+    # فقيمةٌ تساوي الأرضيّةَ بالضبط تنكسر عند أحجامٍ بعينها: ‎1.88‎ تعطي ‎round(1.88×13)=24‎
+    # ‏⇒ ‎1.846em‎ و‎round(1.88×16)=30‎ ⇒ ‎1.875em‎ — كلاهما دون الأرضيّة. فالمطلوبُ قيمةٌ
+    # تصمد **في كلّ حجمٍ عمليّ**، وهذا هو السببُ الحقيقيُّ لاختيار ‎1.95‎ دون ‎1.88‎.
+    broken = [s for s in FONT_SIZES if round(lh * s) / s < MIN_LINE_HEIGHT]
+    assert not broken, (
+        f"‏`editor.lineHeight` = {lh} ينكسر بعد تقريب المنبع عند أحجام {broken} — "
+        f"‏`Math.round(lh×size)/size` ينزل دون الأرضيّة المشتقّة {MIN_LINE_HEIGHT} فيُقتطَع "
+        f"الحبرُ العلويُّ للعربيّة (أعلاه ‎+1.265em‎ عند «أ») [TY-02]")
+    # الاشتقاقُ موثَّقٌ **بجانب القيمة وبمحتواه** لا بذكرِ رمزٍ: رقمٌ بلا سندٍ يصير ذوقًا
+    # بعد ستّة أشهر، وتوكيدٌ يقنع بورودِ «TY-02» في أيّ مكانٍ لا يفحص شيئًا.
+    note = str(defaults.get("_comment_line_height", ""))
+    missing_note = [t for t in ("TY-02", str(MIN_LINE_HEIGHT), str(lh), "1.265", "1.35")
+                    if t not in note]
+    assert not missing_note, (
+        "‏`_comment_line_height` لا يحمل الاشتقاقَ كاملًا (ينقصه: " + " · ".join(missing_note) +
+        ") — الرقمُ بلا سندِه يصير ذوقًا [TY-02]")
+
+    # **الاشتقاقُ يسري على كلّ سطحٍ يعرض عربيّةً بالوجه نفسِه، لا على المحرّر وحدَه.**
+    # الطرفيّةُ افتراضُها المنبعيّ ‎1‎ (نصفُ ما يحتاجه الحبر)، ولوحةُ مخرجات ص هي **أشدُّ**
+    # أسطحنا امتلاءً بالتشكيل — فسطرٌ ضيّقٌ فيهما يقصّ العربيّةَ في السطح الذي بُني لعرضها.
+    tlh = defaults.get("terminal.integrated.lineHeight")
+    assert isinstance(tlh, (int, float)) and tlh >= MIN_LINE_HEIGHT, (
+        f"‏`terminal.integrated.lineHeight` = {tlh!r} دون الأرضيّة المشتقّة {MIN_LINE_HEIGHT} "
+        f"— يُقصّ التشكيلُ في مخرجات الطرفيّة [TY-02]")
+    _panel_src = _read(os.path.join(ROOT, "extensions", "mihrab-welcome", "output-panel.js"))
+    _m = re.search(r"ARABIC_LINE_HEIGHT\s*=\s*([\d.]+)", _panel_src)
+    assert _m and float(_m.group(1)) >= MIN_LINE_HEIGHT, (
+        "لوحةُ مخرجات ص بلا `ARABIC_LINE_HEIGHT` ≥ الأرضيّة المشتقّة — يُقصّ التشكيلُ في "
+        "أشدّ أسطحنا امتلاءً به [TY-02]")
+    assert "line-height: ${ARABIC_LINE_HEIGHT}" in _panel_src, (
+        "ارتفاعُ سطر لوحة المخرجات مكتوبٌ حرفيًّا لا مشتقٌّ من الثابت — خطرُ انجرافٍ صامت [TY-02]")
+
+    gpu = defaults.get("editor.experimentalGpuAcceleration")
+    assert gpu == "off", (
+        f"‏`editor.experimentalGpuAcceleration` = {gpu!r} (متوقَّع 'off') — طبقةُ GPU "
+        f"المنبعيّة بلا معالجة اتّجاه، ويومَ يقلب المنبعُ الافتراضَ يسقط الاتّجاهُ صامتًا [DR-05]")
+    # واسمُ المفتاح مُتحقَّقٌ منه في **اللقطة المتعقَّبة** لا في `.upstream/` — تلك مُتجاهَلةٌ
+    # في git وغائبةٌ عن CI، فالتحقّقُ عبرها كان يُتخطّى صامتًا حيث يلزم أكثرَ ما يلزم.
+    snap = os.path.join(ROOT, "tests", "apply", "snapshot", "src", "vs", "editor", "common",
+                        "config", "editorOptions.ts")
+    assert os.path.isfile(snap), (
+        "لقطةُ `editorOptions.ts` مفقودة — لا سبيلَ للتحقّق من اسم مفتاح GPU [DR-05]")
+    assert "experimentalGpuAcceleration" in _read(snap), (
+        "‏`experimentalGpuAcceleration` غيرُ موجودٍ في لقطة `editorOptions.ts` — أُعيدت "
+        "تسميتُه في المنبع، فإعدادُنا صار بلا أثر [DR-05]")
+
+
+@check("حجم الخطّ [VA-04]: مربوطٌ بحصيلة قياسٍ ملتزَمة، لا برقمٍ منسوخٍ في تعليق")
+def _font_size_measured():
+    """يحرس `editor.fontSize` — **وقد كان آخرَ رقمٍ في الطباعة بلا قياس**.
+
+    ## الحارسُ يقرأ القياسَ، لا يصدّق التعليق
+    ‏`tests/dx/arabic_legibility.measured.json` حصيلةٌ **مولَّدةٌ** من كونتورات الوجه
+    (‏`arabic_legibility.py --json`). والحارسُ يشتقّ منها حدودَه. ونسخةٌ أولى منه كانت
+    تطابق سلاسلَ نصّيّةً في التعليق (`"0.135"`) — أي **ترضى بنسخِ الرقم لا بصحّته**.
+
+    ## والحدُّ الأدنى ليس أرضيّةَ الوضوح
+    أرضيّةُ الوضوح المقيسة ‎12px‎، و**افتراضُ المنبع ‎14‎ يعلوها** — فحدٌّ عندها لا يمنع
+    شيئًا، ويجعل الرجوعَ إلى ‎14‎ (وهو الانحدارُ الوحيدُ المحتمَل) يمرّ بلا اعتراض. فالحدُّ
+    الأدنى هنا **‎15‎**: القرارُ المتّخَذُ بعد القياس. ومن أراد خفضَه يغيّر الحارسَ معه —
+    وهذا هو المقصود: أن يكون التغييرُ قرارًا لا انزلاقًا.
+
+    ## والحدُّ الأعلى مقيس
+    ‏`14 ÷ bandRatio` = معادلةُ ارتفاع الحبر اللاتينيّ الكاملة. وفوقها كلفةُ أعمدةٍ بلا
+    مقابلٍ بصريّ — وتقدُّمُ الوجه ‎0.70em‎ يجعل كلَّ بكسلٍ أغلى ممّا يبدو.
+    """
+    UPSTREAM_DEFAULT = 14      # افتراضُ المنبع على ويندوز/لينكس — نقطةُ الانطلاق لا الهدف
+    DECIDED_SIZE = 15          # القرارُ بعد القياس (‏[قرارات الطباعة §٤])
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return
+    measured_path = os.path.join(ROOT, "tests", "dx", "arabic_legibility.measured.json")
+    assert os.path.isfile(measured_path), (
+        "حصيلةُ القياس `tests/dx/arabic_legibility.measured.json` مفقودة — "
+        "والقرارُ يستند إليها [VA-04]")
+    m = json.load(open(measured_path, encoding="utf-8"))
+    for key in ("solidEm", "bandRatio", "floorLegiblePx", "sha256", "unitsPerEm"):
+        assert key in m, f"حصيلةُ القياس بلا «{key}» — أُنتِجت بنسخةٍ أقدم من الأداة [VA-04]"
+
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get(
+        "configurationDefaults", {})
+    size = defaults.get("editor.fontSize")
+    assert isinstance(size, (int, float)), (
+        "لا `editor.fontSize` افتراضيّ — يُورَث افتراضُ المنبع ‎14‎ الموضوعُ لِـ`x-height` "
+        f"لاتينيّ، ونطاقُ الجسم العربيّ في الوجه المحزوم أقصرُ منه (النسبة {m['bandRatio']}) [VA-04]")
+    max_size = round(UPSTREAM_DEFAULT / m["bandRatio"])
+    assert DECIDED_SIZE <= size <= max_size, (
+        f"‏`editor.fontSize` = {size} خارج النطاق [{DECIDED_SIZE}, {max_size}] — الحدُّ "
+        f"الأدنى هو القرارُ المتّخَذ بعد القياس (والرجوعُ دونه رجوعٌ إلى افتراض المنبع "
+        f"{UPSTREAM_DEFAULT} الذي قِيس عجزُه)، والأعلى `{UPSTREAM_DEFAULT} ÷ "
+        f"{m['bandRatio']}` = معادلةُ ارتفاع الحبر اللاتينيّ الكاملة [VA-04]")
+    # وأرضيّةُ الوضوح المقيسة لا تُخرَق مهما تغيّر القرار.
+    assert size >= m["floorLegiblePx"], (
+        f"‏`editor.fontSize` = {size} دون أرضيّة الوضوح المقيسة {m['floorLegiblePx']}px — "
+        f"الفارقُ المميِّزُ ({m['solidEm']}em) ينزل تحت ‎1.5px‎ فتلتبس عائلاتُ الرسم [VA-04]")
+    # وارتفاعُ السطر يجب أن يصمد **عند هذا الحجم بالذات** بعد تقريب المنبع.
+    lh = defaults.get("editor.lineHeight")
+    if isinstance(lh, (int, float)):
+        assert round(lh * size) / size >= 1.88, (
+            f"‏`lineHeight`={lh} مع `fontSize`={size} يعطي "
+            f"{round(lh * size) / size:.3f}em بعد تقريب المنبع — دون أرضيّة ‎1.88‎ [TY-02]")
+    # **الطرفيّةُ تتبع**: حجّةُ VA-04 خاصّيّةُ **وجهٍ** لا خاصّيّةُ محرّر، والوجهُ نفسُه
+    # مضبوطٌ للطرفيّة. فتركُها على ‎14‎ يجعل مخرجاتِ ص العربيّةَ أصغرَ ممّا قِيس أنّه كافٍ.
+    tsize = defaults.get("terminal.integrated.fontSize")
+    assert tsize == size, (
+        f"‏`terminal.integrated.fontSize` = {tsize!r} ≠ `editor.fontSize` = {size} — "
+        f"عجزُ ارتفاع الحبر خاصّيّةُ وجهٍ لا خاصّيّةُ محرّر، والوجهُ واحدٌ في السطحين [VA-04]")
+    # والسندُ **مربوطٌ بالحصيلة لا منسوخًا**: أرقامُ التعليق تُقارَن بالمقيس.
+    note = str(defaults.get("_comment_font_size", ""))
+    for key in ("solidEm", "bandRatio"):
+        val = str(m[key])
+        assert val in note, (
+            f"‏`_comment_font_size` لا يذكر «{key}» = {val} كما قِيس — "
+            f"السندُ الذي يخالف حصيلتَه سندٌ يكذب [VA-04]")
+    assert "VA-04" in note and "arabic_legibility" in note, (
+        "‏`_comment_font_size` بلا إحالةٍ إلى البند والأداة [VA-04]")
+    # والقياسُ نفسُه موجودٌ وقابلٌ لإعادة التشغيل، **وحصيلتُه منسوبةٌ إلى وجهٍ بعينه**.
+    assert os.path.isfile(os.path.join(ROOT, "tests", "dx", "arabic_legibility.py")), (
+        "‏`tests/dx/arabic_legibility.py` مفقود — والسندُ يحيل إليه [VA-04]")
+    assert len(m["sha256"]) == 64, (
+        "بصمةُ الوجه المقيس ناقصة — رقمٌ بلا وجهٍ يُنسَب إليه رقمٌ معلَّق [VA-04]")
+
+
+@check("اتّجاه المحرّر بنطاق لغة [DR-02]: rtl عالميًّا ⇐ تجاوز ltr للغات اللاتينيّة الصرفة")
+def _editor_direction_scoped():
+    """يحرس DR-02 — كلفةٌ إدراكيّةٌ خالصةٌ يدفعها المستخدمُ يوميًّا.
+
+    مطوّرُ ص لا يكتب ص وحدَها: يفتح `package.json` و`tsconfig.json` و`.yml` و`Dockerfile` —
+    ملفّاتٍ لاتينيّةً صرفًا بلا حرفٍ عربيٍّ واحد. وفي كلٍّ منها يجد مزرابَ الأرقام يمينًا
+    والخريطةَ يسارًا ومرساةَ التمرير الأفقيّ منعكسة: **اتّجاهٌ بلا مضمونٍ يبرّره**.
+
+    والحارسُ **مشروط**: من أزال الفرضَ العالميّ لا يلزمه تجاوز. أمّا من أبقاه فيلزمه.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if not os.path.isfile(shell):
+        return  # لا قشرة في هذا الفرع — تخطٍّ
+    defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get(
+        "configurationDefaults", {})
+    if defaults.get("editor.textDirection") != "rtl":
+        return  # لا فرضَ عالميّ ⇒ لا حاجةَ لتجاوز
+    # اللغاتُ التي **تُفتَح فعلًا** في مشروع ص ولا حرفَ عربيَّ فيها. ليست كلَّ لغةٍ لاتينيّة:
+    # القائمةُ تُقاس بما يفتحه المستخدمُ لا بما يوجد في العالم.
+    REQUIRED = ("json", "yaml", "dockerfile", "shellscript", "properties")
+    missing = [lang for lang in REQUIRED
+               if (defaults.get(f"[{lang}]") or {}).get("editor.textDirection") != "ltr"]
+    assert not missing, (
+        "‏`editor.textDirection: rtl` مفروضٌ عالميًّا بلا تجاوز `ltr` بنطاق لغةٍ لـ: "
+        + " · ".join(missing) +
+        " — مزرابٌ يمينيٌّ في ملفٍّ بلا حرفٍ عربيٍّ واحد [DR-02]")
+
+
+@check("روابط لوح الحالة [DR-01]: كلّ رابط نسبيّ في milestones.md يحلّ إلى ملفٍّ موجود")
+def _milestones_links_resolve():
+    """لوحُ الحالة الوحيدُ لا يجوز أن يحيل إلى معدوم.
+
+    وحّدنا المصادرَ في `milestones.md` ثمّ صار أوّلَ ما يقرؤه القادمُ الجديد — فرابطٌ ميّتٌ
+    فيه أسوأُ من تناقضٍ في ثلاثة ملفّات: التناقضُ يُكتشَف، والرابطُ الميّتُ يُقرأ إهمالًا.
+    """
+    path = os.path.join(ROOT, "docs", "milestones.md")
+    if not os.path.isfile(path):
+        return
+    base = os.path.dirname(path)
+    dead = []
+    for target in re.findall(r"\]\(([^)#]+?)(?:#[^)]*)?\)", _read(path)):
+        if target.startswith(("http://", "https://", "mailto:")):
+            continue
+        resolved = os.path.normpath(os.path.join(base, urllib.parse.unquote(target)))
+        if not os.path.exists(resolved):
+            dead.append(target)
+    assert not dead, (
+        "روابطُ نسبيّةٌ ميّتةٌ في لوح الحالة الوحيد: " + " · ".join(dead) + " [DR-01]")
 
 
 @check("سمتا محراب: تباين AA لكلّ رمز + تمايز اللوحة (ΔE) + اشتقاق القشرة من اللوحة")
@@ -1656,6 +2415,36 @@ def _ext_nls_supplement():
     assert "mihrab_ext_nls_ar.json" in inj_src, "patch_extension_nls.py لا يشير إلى الملفّ التكميليّ"
 
 
+@check("تطبيع الهويّة: الوحدة موصولةٌ بكلّ مسارٍ يُكتَب فيه نصٌّ مُصيَّر، والمسارُ المقروء مقصود")
+def _brand_wiring():
+    assert os.path.isfile(os.path.join(BUILD, "mihrab_brand.py")), \
+        "وحدة تطبيع الهويّة مفقودة: build/mihrab_brand.py"
+    # النصُّ المُصيَّر يُكتَب في مسارين اثنين لا غير؛ كلاهما يجب أن يمرّ بالتطبيع، وإلّا
+    # تسرّب اسمُ التوزيعة الأمّ من المسار المنسيّ — وهو بعينه ما وقع قبل [م1].
+    for f in ("bake_nls_arabic.py", "patch_extension_nls.py"):
+        src = _read(os.path.join(BUILD, f))
+        assert "mihrab_brand" in src, f"{f} لا يستدعي تطبيع الهويّة (تسرّبُ اسمِ المنبع)"
+        assert "rebrand" in src, f"{f} يستورد التطبيع ولا يستعمله"
+    # **الملفّ المقروء**: حين لا حزمةَ لغةٍ مسجَّلة يقرأ المنبعُ package.nls.json وحدَه
+    # (‏extensionsScannerService.ts). كتابةٌ في غيره وحدَه = صفرُ تعريبٍ بمقياسٍ يقول 100%.
+    inj = _read(os.path.join(BUILD, "patch_extension_nls.py"))
+    assert '_write_json_atomic(pnls, ar_map)' in inj, \
+        "الحقن لا يكتب في package.nls.json — وهو الملفّ الوحيد الذي يُقرأ بلا حزمة لغة"
+    # بوّابةٌ واحدةٌ يستدعيها البناءُ والاختبار: لا عتبتان تفترقان ولا grep يشهد لبايت.
+    assert "def verify(" in inj, "المرقِّع بلا بوّابةِ حكمٍ على المشحون (verify)"
+    sh = _read(os.path.join(BUILD, "build.sh"))
+    assert "patch_extension_nls.py\" --verify" in sh, \
+        "build.sh لا يستدعي بوّابةَ تعريب بيانات الامتدادات على المشحون"
+    assert "vscodium" in sh and "تسرّبُ هويّة" in sh, \
+        "build.sh بلا حرسٍ على تسرّب اسم التوزيعة الأمّ في المخبوز"
+    # ‏`\|` امتدادُ GNU: grep البِسْديّ (macOS) يقرؤه حرفيًّا فيُفشِل بناءً سليمًا. مرّةً
+    # وقعنا فيه في الحرس نفسِه الذي حذّر تعليقُه من فخّ PCRE — فليمسكه حارسٌ لا ذاكرة.
+    for _ln in sh.splitlines():
+        _code = _ln.split("#", 1)[0]           # التعليقاتُ تشرح الفخَّ ولا تقع فيه
+        assert not ("grep" in _code and "\\|" in _code), \
+            f"نمطُ grep يستعمل \\| (امتدادُ GNU) — يفشل على macOS: {_ln.strip()[:70]}"
+
+
 # ───────────── L0-15: امتداد ترحيب محراب (الجولة + أوامر الإعداد الأوّل) ─────────────
 @check("امتداد ترحيب محراب: JSON صالح، أوامر ↔ JS متطابقة، خطوات الجولة تشير لوسائط موجودة")
 def _welcome_ext():
@@ -1697,14 +2486,84 @@ def _welcome_ext():
     assert _wcmds, "لا أوامر معلَنة في امتداد الترحيب"
     # التسجيلُ قد يُنقَل إلى وحدةٍ مستقلّة (نمطُ نِبراس «التسجيل الموزّع»)، فنمسح كلَّ ملفّات
     # JS لا نقطةَ الدخول وحدَها — وإلّا يُسقِط أوّلُ نقلٍ الفحصَ أحمرَ كاذبًا.
+    #       والثوابتُ تُجمَع **عبر ملفّات الامتداد كلِّها** لا لكلّ ملفٍّ وحدَه، ويُحَلّ معها
+    #       نمطُ الإسناد من وحدةٍ أخرى (`const A = mod.B;`): المستودعُ يضع معرّفَ الأمر في
+    #       الوحدة التي تنفّذه ويسنده في نقطة الدخول (مصدرُ حقيقةٍ واحد)، فحصرُ الحلّ في
+    #       الحرفيّة داخل الملفّ كان سيُجبِر على تكرار السلسلة — وهو ما يمنعه المستودعُ نفسُه.
+    #       والثوابتُ **مفهرَسةٌ بالملفّ** لا مسطَّحةٌ عبره: التسطيحُ يجعل آخرَ ملفٍّ يفوز
+    #       صامتًا، وفي الشجرة الحاليّة `STATE_KEY` مُعرَّفٌ بقيمتين مختلفتين في ملفّين.
+    #       لا يضرّ اليومَ (ليس وسيطَ `registerCommand`)، لكنّ أوّلَ اسمٍ يتصادم ويكون وسيطًا
+    #       يجعل الحارسَ يصادق على خريطةٍ خاطئة. الحلُّ: ابدأ من ملفّ الاستدعاء ثمّ اسقط.
     _wreg = set()
-    for _jf in sorted(f for f in os.listdir(ext) if f.endswith(".js")):
+    _wfiles = sorted(f for f in os.listdir(ext) if f.endswith(".js"))
+    _wconst = {}   # (ملفّ، اسم) ⇒ حرفيّة
+    _walias = {}   # (ملفّ، اسم) ⇒ اسمٌ في وحدةٍ أخرى
+    _wmods = {}    # (ملفّ، اسمُ الوحدة المستوردة) ⇒ ملفُّها
+    for _jf in _wfiles:
         _js = _read(os.path.join(ext, _jf))
-        _wconst = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', _js))
+        for _n, _v in _re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', _js):
+            _wconst[(_jf, _n)] = _v
+        # إسنادٌ من وحدةٍ أخرى بصيغتَيه الشائعتين: `const A = mod.B;` و`const { B: A } = require(…)`.
+        # الثانيةُ اصطلاحُ JS الغالبُ لإعادة التسمية عند التفكيك، وإغفالُها كان يجعل الحارسَ
+        # يحمرّ كاذبًا على كودٍ سليم — وحارسٌ يكذب أحمرَ يُعلَّم تجاهُلُه كما يُعلَّم الأخضرُ الكاذب.
+        # كلُّ إسنادٍ يحمل **ملفَّ مصدره** حين يُعرَف: بلا ذلك يُحَلّ `OPEN_CMD` من أوّل ملفٍّ
+        # أبجديًّا لا من الوحدة المستورَدة — وفي هذه الشجرة يوجد `OPEN_CMD` بقيمتين مختلفتين
+        # فعلًا (‏`vscode.open` في نقطة الدخول، و`mihrab.openHelp` في لوحة المساعدة).
+        # ‏**ووحدةُ المصدر تُحَلّ من الـrequire لا تُترَك مجهولة**: كان هذا الفرعُ يسجّل
+        # ‏`None` مصدرًا، فيسقط الحلُّ إلى «أوّلُ ملفٍّ فيه اسمٌ مطابق». ولمّا صار
+        # ‏`SHOW_AGAIN_CMD` مُصدَّرًا من وحدتَي إشعارٍ (الطرفيّة والمقارنة) حَلّ الاسمُ
+        # الواحدُ إلى قيمة الأخرى فاحمرّ الحارسُ على **الأمر القديم السليم** — والعطبُ
+        # نفسُه الموصوف أعلاه لصيغة التفكيك، بصيغةٍ لم تُغطَّ.
+        _wmod = dict(_re.findall(
+            r'const\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*["\']\./([^"\']+)["\']\s*\)', _js))
+        for _n, _obj, _p in _re.findall(
+                r'const\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*;', _js):
+            _walias[(_jf, _n)] = (_p, _wmod.get(_obj))
+        # ‏`const { B: A } = require("./mod.js")` — اصطلاحُ JS الغالبُ لإعادة التسمية عند
+        # التفكيك. وإغفالُه كان يجعل الحارسَ يحمرّ كاذبًا على كودٍ سليم، وحارسٌ يكذب أحمرَ
+        # يُعلَّم تجاهُلُه كما يُعلَّم الأخضرُ الكاذب.
+        for _inner, _src in _re.findall(
+                r'const\s*\{([^}]*)\}\s*=\s*require\(\s*["\']\./([^"\']+)["\']\s*\)', _js):
+            for _p, _n in _re.findall(r'([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)', _inner):
+                _walias[(_jf, _n)] = (_p, _src)
+
+    def _resolve_const(name, home):
+        """حرفيّةُ ثابتٍ: من ملفّه أوّلًا، ثمّ عبر الإسناد (بملفّ مصدره)، ثمّ من بقيّة الملفّات."""
+        if (home, name) in _wconst:
+            return _wconst[(home, name)]
+        # ‏`registerCommand(mod.PROP, …)` — تعبيرُ عضوٍ **في موضع الوسيط مباشرةً** بلا ثابتٍ
+        # وسيطٍ مسمًّى. كان الحارسُ يعمى عنه فيحمرّ على كودٍ سليم؛ وحارسٌ يكذب أحمرَ يُعلَّم
+        # تجاهُلُه كما يُعلَّم الأخضرُ الكاذب. يُحَلّ **بملفّ الوحدة المستوردة أوّلًا**، لأنّ
+        # السقوطَ إلى «أوّل اسمٍ مطابق» هو العطبُ الموصوفُ أعلاه بعينه.
+        if "." in name:
+            _obj, _, _prop = name.partition(".")
+            _src = _wmods.get((home, _obj))
+            if _src and (_src, _prop) in _wconst:
+                return _wconst[(_src, _prop)]
+            for (_f3, _n3), _v3 in _wconst.items():
+                if _n3 == _prop:
+                    return _v3
+        alias = _walias.get((home, name))
+        if alias:
+            prop, src = alias
+            # **ملفُّ المصدر أوّلًا** حين يُعرَف — وإلّا فُضّ الاشتباكُ بأوّل ملفٍّ أبجديًّا،
+            # وهو خطأٌ صامتٌ حين يتصادم اسمُ ثابتٍ بين وحدتين (وقد تصادم فعلًا).
+            if src and (src, prop) in _wconst:
+                return _wconst[(src, prop)]
+            for (_f, _n), _v in _wconst.items():
+                if _n == prop and (not src or _f != home):
+                    return _v
+        for (_f, _n), _v in _wconst.items():
+            if _n == name:
+                return _v
+        return None
+
+    for _jf in _wfiles:
+        _js = _read(os.path.join(ext, _jf))
         for _arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", _js):
             _arg = _arg.strip()
             _lit = _re.fullmatch(r"""["']([^"']+)["']""", _arg)
-            _wreg.add(_lit.group(1) if _lit else _wconst.get(_arg, _arg))
+            _wreg.add(_lit.group(1) if _lit else (_resolve_const(_arg, _jf) or _arg))
     assert not (_wcmds - _wreg), (
         f"أوامرُ معلَنةٌ في مانيفست الترحيب بلا registerCommand: {sorted(_wcmds - _wreg)}")
     for _c in pkg.get("contributes", {}).get("commands", []):
@@ -1746,6 +2605,202 @@ def _welcome_ext():
     assert "findWorkspaceSadFile" in js and "resolveSadDoc" in js, \
         "runSadFile لا يحوي رجوعًا لملفّ مساحة العمل (findWorkspaceSadFile/resolveSadDoc) — زرّ التشغيل في الجولة سيفشل"
 
+    # (١هـ) [BS-01] كاشفُ قلب الاتّجاه موصولٌ فعلًا: الوحدةُ مستهلَكة، والحارسُ **مُنشَأ** (لا
+    #       مستورَدًا فقط — استيرادٌ بلا إنشاءٍ يمرّ `node --check` ولا يشخّص شيئًا: نجاحٌ كاذب)،
+    #       ومزوّدُ الإجراءات مسجَّل كي يكون للتشخيص مخرَجُ إصلاحٍ لا مجرّدُ لومٍ أحمر.
+    assert "bidi-guard" in js and _re.search(r"new\s+(?:[A-Za-z_$][\w$]*\.)?BidiGuard\(", js), \
+        "كاشفُ قلب الاتّجاه غيرُ مُنشَأ في نقطة الدخول (new BidiGuard) — لا تشخيصَ لهجمات قلب الاتّجاه [BS-01]"
+    assert "registerCodeActionsProvider" in js and "BidiCodeActionProvider" in js, \
+        "لا مزوّدَ إجراءاتٍ لتشخيص الاتّجاه — تشخيصٌ بلا إصلاحٍ لومٌ بلا مخرَج [BS-01]"
+    # ومُحدِّدُ المزوّد **مشتقٌّ من مخطّطات الحارس** لا مكتوبٌ بيده: `{scheme:"file"}` وحدَه
+    # كان يترك ملفًّا غيرَ محفوظ (أوّلُ ما يُلصَق فيه من الشابكة) مُشخَّصًا بلا مصباحِ إصلاح.
+    assert "SCANNED_SCHEMES" in js, (
+        "مُحدِّدُ مزوّد الإجراءات لا يُشتَقّ من SCANNED_SCHEMES — تشخيصٌ في مخطّطٍ بلا إصلاحٍ فيه [BS-01]")
+
+    # (١و) [DR-03] شارةُ الطرفيّة موصولة، ورسالتُها **تُسمّي القيدَ منبعيًّا**. الثانية ليست
+    #      تدقيقَ صياغة: بدونها يستنتج المستخدمُ أنّ **لغةَ ص** لا تُخرِج العربيّةَ صحيحة،
+    #      والعطبُ في مكتبة طرفيّةٍ منبعيّةٍ لا في اللغة ولا في برنامجه.
+    assert "activateTerminalNotice" in js, \
+        "شارةُ الطرفيّة غيرُ موصولة (activateTerminalNotice) — الحدُّ المنبعيُّ يبقى صامتًا [DR-03]"
+    _tn = _read(os.path.join(ext, "terminal-notice.js"))
+    assert "xterm" in _tn and "لا في لغة ص" in _tn, \
+        "رسالةُ الطرفيّة لا تُسمّي القيدَ منبعيًّا (xterm) ولا تُبرِّئ لغةَ ص — تُحمَّل ص وزرَ غيرها [DR-03]"
+
+    # (١ز) [BS-01] الكاشفُ **يميّز** ولا يبرز فقط. وهذا **فحصٌ سلوكيٌّ لا نصّيّ**: توكيدٌ
+    #      نصّيٌّ على وجود `MARKS` كان يمرّ أخضرَ لو صارت `new Set()` وشُخِّصت كلُّ علامةٍ
+    #      مفردة — أي على الانحدار الذي وُجد الحارسُ لمنعه بعينه. فنُشغِّل الوحدةَ ونسألها.
+    #      (علاماتُ الاتّجاه المفردة شرعيّةٌ في نصٍّ عربيّ — ٣١٢ منها في نواة نهلة — وتشخيصُها
+    #      ضجيجٌ يُدرِّب على العمى، فيصير التحذيرُ غطاءً للهجوم لا حاجزًا دونه.)
+    if node:
+        _probe = (
+            'const s=require(process.argv[1]);'
+            'const c=n=>String.fromCharCode(n);'
+            'const A=[["RLM",s.scanBidi("x"+c(0x200F)+"y","sad").length,0],'
+            '["FSI..PDI",s.scanBidi(c(0x2068)+"a"+c(0x2069),"sad").length,0],'
+            '["PDF-يتيم",s.scanBidi("x"+c(0x202C),"sad").length,0],'
+            '["RLO-معلَّق",s.scanBidi("#"+c(0x202E)+"م","sad").length,1],'
+            '["تسرُّب",s.scanBidi("/* "+c(0x202E)+" */ x"+c(0x202C)+";","javascript").length,1]];'
+            'const bad=A.filter(([,g,w])=>g!==w);'
+            'if(bad.length){console.error(JSON.stringify(bad));process.exit(1)}'
+        )
+        _r = subprocess.run([node, "-e", _probe, os.path.join(ext, "bidi-scan.js")],
+                            capture_output=True, text=True)
+        assert _r.returncode == 0, (
+            "كاشفُ الاتّجاه لا يميّز الشرعيَّ من المتسرّب — [اسم، ما ردّ، المتوقَّع]: "
+            f"{_r.stderr.strip() or _r.stdout.strip()} [BS-01]")
+    _bs = _read(os.path.join(ext, "bidi-scan.js"))
+    assert "MARKS" in _bs and "OPENERS" in _bs and "CLOSERS" in _bs, \
+        "كاشفُ الاتّجاه لا يفصل العلاماتِ عن القوالب (MARKS/OPENERS/CLOSERS) [BS-01]"
+    # ولا محرفَ خفيًّا **داخل تعبيرٍ نمطيّ** في الوحدتين: صنفٌ نمطيٌّ فيه محرفٌ لا يُرى لا
+    # يراه المراجعُ ولا يمسكه `diff` — وهو أوّلُ ما يجب أن يُرى في كاشفِ الخفيّ نفسِه.
+    _INVISIBLE = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A)) | {
+        0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x061C}
+    for _mod in ("bidi-scan.js", "arabic-normalize.js"):
+        for _m in _re.finditer(r"/\[[^\]\n]*\]/[gimsuy]*", _read(os.path.join(ext, _mod))):
+            _bad = sorted({hex(ord(c)) for c in _m.group(0) if ord(c) in _INVISIBLE})
+            assert not _bad, (
+                f"{_mod}: محرفٌ خفيٌّ حرفيٌّ داخل تعبيرٍ نمطيّ ({_bad}) — استعمل ترميز \\u صريحًا")
+
+    # (١ط) [TY-03] كشفُ أحاديّة العرض حيًّا: القياسُ في اللوحة (حيث DOM)، والحكمُ في وحدةٍ
+    #      نقيّة. والوصلُ بينهما **يُفحَص**: قياسٌ بلا مستقبِلٍ يُرمى في الفراغ، وحكمٌ بلا
+    #      قياسٍ لا يُستدعى أبدًا — وكلاهما يمرّ `node --check` أخضرَ.
+    _fp = os.path.join(ext, "font-probe.js")
+    assert os.path.isfile(_fp), "وحدةُ كشف أحاديّة العرض مفقودة (font-probe.js) [TY-03]"
+    _panel = _read(os.path.join(ext, "output-panel.js"))
+    assert "font-probe" in _panel and "measureText" in _panel, \
+        "لوحةُ المخرجات لا تقيس عرضَ المحارف — لا كشفَ لسقوطِ الخطّ إلى وجهٍ متناسب [TY-03]"
+    assert "onFontProbe" in js and "maybeWarnProportional" in js, \
+        "قياسُ الخطّ لا يصل إلى الحكم (onFontProbe/maybeWarnProportional) — قياسٌ يُرمى في الفراغ [TY-03]"
+    # وعيّنةُ القياس **مصدرُ حقيقةٍ واحد**: لو كُتبت في اللوحة يدويًّا لانجرفت عن التي يحكم
+    # عليها المقيِّم، فيُقاس محرفٌ ويُحكَم على آخر.
+    assert _re.search(r'require\(["\']\./font-probe\.js["\']\)\.SAMPLES', _panel), \
+        "عيّنةُ قياس الخطّ مكتوبةٌ في اللوحة لا مستورَدةٌ من font-probe — خطرُ انجرافٍ صامت [TY-03]"
+    # **ولا يُقاس خطُّ اللوحة نفسِها**: مكدَّسُ `#log` يبدأ بالوجه المحزوم و`@font-face` مُضمَّنٌ
+    # في وثيقتها، فقياسُه يعطي «أحاديّ» دائمًا — أي يعمى الكاشفُ عن الحالة التي وُجد لها.
+    assert "--vscode-editor-font-family" in _panel, (
+        "قياسُ الخطّ يقع على مكدَّس اللوحة لا على خطّ المحرّر — يعطي «أحاديًّا» دائمًا "
+        "فيعمى عن سقوط خطّ المستخدم [TY-03]")
+    # والقياسُ **بعد تحميل الوجوه**: قبلها يقع على الاحتياطيّ المتناسب ⇒ إنذارٌ كاذبٌ أوّلَ فتحة.
+    assert "fonts.ready" in _panel, \
+        "قياسُ الخطّ لا ينتظر تحميلَ الوجوه (document.fonts.ready) — إنذارٌ كاذبٌ في أوّل فتحة [TY-03]"
+    # ولا يُعلَن نجاحٌ بلا إعادة قياس: الكتابةُ تُقبَل وقد لا تُغيّر شيئًا (وجهٌ غيرُ مثبَّت،
+    # أو نطاقٌ أضيقُ يغلب) — وهو درسُ «تمّ والإعدادُ في مكانه» المدفوعُ ثمنُه مرّتين.
+    _fpsrc = _read(_fp)
+    assert "remeasure" in _fpsrc and "fixedButUnverified" in _fpsrc, (
+        "إصلاحُ الخطّ يُعلن نجاحًا بلا إعادة قياس — رسالةُ نجاحٍ بلا أثرٍ تُنهي بحثَ المستخدم [TY-03]")
+    assert "requestRemeasure" in _panel and "requestRemeasure" in js, \
+        "لا مسارَ لإعادة القياس بين اللوحة والامتداد (requestRemeasure) [TY-03]"
+
+    # (١ي) [TY-04] الأشكالُ السياقيّةُ مثبَّتةٌ صراحةً لا موروثة: إطفاءُ «الروابط» نصيحةٌ
+    #      لاتينيّةٌ شائعةٌ **تفكّك الكلمةَ العربيّة** إلى حروفٍ منفصلة.
+    _sh = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    if os.path.isfile(_sh):
+        _d = json.load(open(_sh, encoding="utf-8")).get("contributes", {}).get(
+            "configurationDefaults", {})
+        assert _d.get("editor.fontLigatures") is True, (
+            "‏`editor.fontLigatures` غيرُ مضبوطٍ صراحةً — الأشكالُ السياقيّةُ في العربيّة "
+            "شرطُ قراءةٍ لا زخرفة، وإطفاؤها يفكّك الكلمة [TY-04]")
+
+    # (١ك) [BS-02] تسميةُ محارف الاتّجاه: موصولةٌ و**مطفأةٌ افتراضيًّا**. الإظهارُ الدائمُ
+    #      يملأ نصَّ العربيّة السويَّ برقاقاتٍ على علاماتٍ مشروعة — عودةُ الضجيج بابٍ آخر.
+    _bd = os.path.join(ext, "bidi-decorate.js")
+    assert os.path.isfile(_bd), "وحدةُ تسمية محارف الاتّجاه مفقودة (bidi-decorate.js) [BS-02]"
+    assert "BidiMarkerDecorator" in js and "TOGGLE_CMD" in _read(_bd), \
+        "مبدِّلُ أسماء محارف الاتّجاه غيرُ موصول [BS-02]"
+    assert _re.search(r"this\.enabled\s*=\s*false", _read(_bd)), \
+        "تسميةُ محارف الاتّجاه ليست مطفأةً افتراضيًّا — ضجيجٌ يوميٌّ على علاماتٍ مشروعة [BS-02]"
+
+    # (١ل) [BS-03] حارسُ الأسماء معمَّمٌ على الإنشاء وإعادة التسمية، ومنطقُه في **وحدةٍ
+    #      نقيّةٍ مشتركة** لا مكرَّرًا: تكرارُه يعني تباعدَ حارسَين يحرسان الشيءَ نفسَه.
+    _vn = os.path.join(ext, "validate-name.js")
+    assert os.path.isfile(_vn), "وحدةُ تحقّق الأسماء المشتركة مفقودة (validate-name.js) [BS-03]"
+    _ng = _read(os.path.join(ext, "name-guard.js"))
+    assert "onDidCreateFiles" in _ng and "onDidRenameFiles" in _ng, \
+        "حارسُ الأسماء لا يراقب الإنشاءَ وإعادةَ التسمية — محروسٌ في بابٍ ومفتوحٌ في أوسع [BS-03]"
+    assert "activateNameGuard" in js, "حارسُ الأسماء غيرُ موصولٍ في نقطة الدخول [BS-03]"
+
+    # (١م) [ON-03] المساعدةُ داخل المحرّر: البياناتُ المحزومةُ **مطابقةٌ بايتًا ببايت**
+    #      لـ`site/data/` — وإلّا افترق ما يقرؤه المستخدمُ في المحرّر عمّا يقرؤه في الموقع.
+    _hp = os.path.join(ext, "help-panel.js")
+    assert os.path.isfile(_hp), "لوحةُ المساعدة مفقودة (help-panel.js) [ON-03]"
+    assert "openHelp" in js or "OPEN_HELP_CMD" in js, \
+        "أمرُ المساعدة غيرُ موصولٍ في نقطة الدخول [ON-03]"
+    import hashlib as _hl2
+    for _df in ("glossary.json", "keybindings.json"):
+        _a = os.path.join(ROOT, "site", "data", _df)
+        _b = os.path.join(ext, "data", _df)
+        assert os.path.isfile(_b), f"بياناتُ المساعدة المحزومة مفقودة: data/{_df} [ON-03]"
+        if os.path.isfile(_a):
+            assert (_hl2.sha256(open(_a, "rb").read()).hexdigest()
+                    == _hl2.sha256(open(_b, "rb").read()).hexdigest()), (
+                f"‏data/{_df} انجرف عن site/data/{_df} — المساعدةُ في المحرّر تخالف الموقعَ [ON-03]")
+        # ولوحةُ المساعدة **تُرشِّح بالتطبيع**: بلا ذلك يبحث المستخدمُ بما يكتبه فلا يجد.
+    assert "normalizeArabic" in _read(_hp), \
+        "لوحةُ المساعدة لا تستعمل تطبيعَ البحث العربيّ — «لوحه الاوامر» لن تجد «لوحة الأوامر» [ON-03·DX-01]"
+
+    # (١ن) [ON-04] إخبارُ الإصدارات: **بإذنٍ صريح** — محرابٌ لا يمسّ الشبكةَ بلا سؤال.
+    _rn = os.path.join(ext, "release-notice.js")
+    assert os.path.isfile(_rn), "وحدةُ إخبار الإصدارات مفقودة (release-notice.js) [ON-04]"
+    _rnsrc = _read(_rn)
+    assert "CONSENT_KEY" in _rnsrc and "askNo" in _rnsrc, \
+        "فحصُ الإصدارات بلا إذنٍ صريح — يناقض موقفَ محرابٍ من التتبّع [ON-04]"
+    assert "checkForUpdate" in js, "فحصُ الإصدارات غيرُ موصولٍ في نقطة الدخول [ON-04]"
+
+    # (١س) [DX-03] اختصاراتٌ **محايدةٌ للتخطيط**: حرفٌ لاتينيٌّ في اختصارٍ لا يوجد على
+    #      لوحةٍ عربيّة — والاختصارُ الذي لا يُعثَر عليه اختصارٌ غيرُ موجود.
+    _kbs = pkg.get("contributes", {}).get("keybindings", [])
+    assert _kbs, "لا اختصاراتٍ لأوامر ص الأساسيّة — أوامرُ يوميّةٌ بلا مفاتيح [DX-03]"
+    _bound = {k.get("command") for k in _kbs}
+    for _need in ("mihrab.runSadFile", "mihrab.buildSadFile"):
+        assert _need in _bound, f"أمرٌ أساسيٌّ بلا اختصار: {_need} [DX-03]"
+    # **التمييزُ الدقيق، لا المنعُ الجملة.** المفتاحُ الحرفيُّ في تركيبةٍ (‏`Ctrl+Shift+B`)
+    # **يعمل** على التخطيط العربيّ — VS Code يسقط إلى تخطيطٍ لاتينيٍّ للإرسال حين لا تُنتِج
+    # لوحةُ المستخدم حرفًا لاتينيًّا. فالعطبُ فيه **اكتشافيٌّ لا وظيفيّ**: يُعرَض «B» ولوحتُه
+    #   تقول «لا». وعلاجُ الاكتشاف توثيقٌ لا تبديلُ مفتاح — ولذلك يوجب الحارسُ:
+    #   ‏(١) أن يكون **أمرُ التشغيل** بمفتاحٍ وظيفيٍّ محايدٍ تمامًا (أكثرُ الأوامر تكرارًا).
+    #   ‏(٢) ألّا يوجد مفتاحٌ حرفيٌّ **بلا مُعدِّل** (ذاك يُكتَب في الملفّ فيُبتلَع الحرف).
+    #   ‏(٣) أن تُسرَد الاختصاراتُ في خطوة الجولة، فيجدها من لا يقرأ لوحتَه.
+    _FUNCTION_KEY = _re.compile(r"^f\d{1,2}$")
+    _MODIFIERS = {"ctrl", "shift", "alt", "cmd", "meta", "win"}
+    _run_key = next((k.get("key", "") for k in _kbs if k.get("command") == "mihrab.runSadFile"), "")
+    assert _FUNCTION_KEY.match(_run_key.strip().lower()), (
+        f"اختصارُ التشغيل «{_run_key}» ليس مفتاحًا وظيفيًّا — وهو أكثرُ الأوامر تكرارًا، "
+        f"فيجب أن يكون محايدًا للتخطيط تمامًا [DX-03]")
+    for _k in _kbs:
+        for _field in ("key", "mac", "linux", "win"):
+            _combo = (_k.get(_field) or "").strip().lower()
+            if not _combo:
+                continue
+            for _chord in _combo.split():
+                _parts = [p for p in _chord.split("+") if p]
+                if not _parts:
+                    continue
+                assert (len(_parts) > 1 or _FUNCTION_KEY.match(_parts[-1])
+                        or _parts[-1] in _MODIFIERS), (
+                    f"اختصارُ «{_k.get('command')}» يستعمل مفتاحًا حرفيًّا بلا مُعدِّل "
+                    f"(«{_chord}») — يُبتلَع حرفًا في المحرّر بدل أن يُنفَّذ [DX-03]")
+    _steps_md = " ".join(
+        _read(os.path.join(ext, "media", m)) for m in os.listdir(os.path.join(ext, "media"))
+        if m.endswith(".md"))
+    assert _run_key.upper() in _steps_md.upper(), (
+        f"اختصارُ التشغيل «{_run_key}» غيرُ مسرودٍ في وسائط الجولة — الاختصارُ الذي لا "
+        f"يُعثَر عليه اختصارٌ غيرُ موجود [DX-03]")
+
+    # (١ح) [DX-01] تطبيعُ البحث العربيّ: نسخةُ `sad-lang` **مطابقةٌ بايتًا ببايت**. المستودعُ
+    #      يكرّر الوحداتِ بين الامتدادات عمدًا (استقلالُ الامتداد) — وثمنُ ذلك انجرافٌ صامت،
+    #      فتُطبَّع الهمزةُ في سطحٍ ولا تُطبَّع في آخر. البصمةُ تجعل الثمنَ صفرًا.
+    _sad_ext = os.path.join(ROOT, "extensions", "sad-lang")
+    if os.path.isdir(_sad_ext):
+        import hashlib as _hl
+        _digests = {}
+        for _base in (ext, _sad_ext):
+            _p = os.path.join(_base, "arabic-normalize.js")
+            assert os.path.isfile(_p), f"وحدةُ تطبيع البحث مفقودة: {_p} [DX-01]"
+            _digests[_base] = _hl.sha256(open(_p, "rb").read()).hexdigest()
+        assert len(set(_digests.values())) == 1, (
+            "نسختا arabic-normalize.js متباعدتان (بصمتان مختلفتان) — "
+            "سيُطبَّع البحثُ في سطحٍ ولا يُطبَّع في آخر [DX-01]")
+
     # (١د) طبقة الحزم المدمجة: البناء يحقن sad-run في bin/ داخل الامتداد، وgit يتجاهله، وثابت
     #      المجلّد في JS يطابق ما يحقنه البناء — وإلّا يمرّ L0 أخضر بينما التشغيل المدمج مكسور. [M6]
     # ثابت مجلّد الثنائيّات المدمجة صار في tool-resolve.js (مصدر واحد يتشاركه run/check/build). [تدقيق #2]
@@ -1767,22 +2822,13 @@ def _welcome_ext():
     assert "extensions/mihrab-welcome/bin/" in gitignore, \
         ".gitignore لا يتجاهل الثنائيّ المدمج extensions/mihrab-welcome/bin/ (خطر إيداعه)"
 
-    # (٢) كلّ أمر معلَن في المانيفست مُسجَّل فعلًا في JS (احتواء لا تطابق تامّ:
-    #     يجوز أن يسجّل JS أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ).
+    # (٢) كلّ أمر معلَن في المانيفست مُسجَّل فعلًا (احتواء لا تطابق تامّ: يجوز أن يسجّل JS
+    #     أمرًا داخليًّا غير معلَن، لكن كلّ معلَن يجب أن يُنفَّذ). يُعاد استعمال المسح الموزّع
+    #     أعلاه (`_wreg`) بدل مسحٍ ثانٍ مقصورٍ على نقطة الدخول: كان الثاني أضيق من الأوّل،
+    #     فيمرّ أمرٌ سجّلته وحدةٌ مستقلّةٌ في الأوّل ويسقط في الثاني — تناقضٌ في الحارس نفسِه.
     manifest_cmds = {c.get("command") for c in contrib.get("commands", [])}
     assert manifest_cmds, "لا أوامر معلَنة في امتداد الترحيب"
-    # الوسيط الأوّل لـregisterCommand قد يكون سلسلة حرفيّة أو ثابتًا مسمّى (منع السلاسل الخام)؛
-    # نحلّ الثابت من إعلانه `const NAME = "..";` كي لا ينكسر الحارس برفع المعرّف إلى ثابت.
-    _const_str = dict(_re.findall(r'const\s+([A-Za-z_$][\w$]*)\s*=\s*"([^"]+)"', js))
-    js_cmds = set()
-    for arg in _re.findall(r"registerCommand\(\s*([^,]+?)\s*,", js):
-        arg = arg.strip()
-        lit = _re.fullmatch(r"""["']([^"']+)["']""", arg)
-        if lit:
-            js_cmds.add(lit.group(1))
-        elif arg in _const_str:
-            js_cmds.add(_const_str[arg])
-    missing = manifest_cmds - js_cmds
+    missing = manifest_cmds - _wreg
     assert not missing, f"أوامر معلَنة في المانيفست بلا registerCommand في JS: {missing}"
     # كلّ أمر معلَن له عنوان غير فارغ (يظهر في لوحة الأوامر).
     for c in contrib.get("commands", []):
@@ -1809,8 +2855,12 @@ def _welcome_ext():
             mp = os.path.join(ext, *md.lstrip("./").split("/"))
             assert os.path.isfile(mp), f"وسيط جولة مفقود: {md} (للخطوة {sid})"
             # أيّ رابط command: في وصف الخطوة يجب أن يشير لأمر معلَن (لا رابط ميّت).
+            # وأوامرُ المنبع المستدعاةُ من الجولة تُسرَد **بالاسم** لا بقاعدةٍ عامّة
+            # (`workbench.*` مثلًا): قاعدةٌ عامّةٌ تُمرِّر خطأً مطبعيًّا في اسمٍ منبعيّ،
+            # والقائمةُ الصريحةُ تُفشِله. وكلُّ اسمٍ هنا متحقَّقٌ منه في المنبع المثبَّت.
             for cmd in _re.findall(r"command:([A-Za-z0-9_.]+)", st["description"]):
-                assert cmd in manifest_cmds, f"رابط أمر ميّت «{cmd}» في الخطوة {sid}"
+                assert cmd in manifest_cmds or cmd in UPSTREAM_CMDS_IN_WALKTHROUGH, (
+                    f"رابط أمر ميّت «{cmd}» في الخطوة {sid}")
 
 
 @check("هوية لغة ص متّسقة (SAD_LANG_ID/SAD_EXT ↔ contributes.languages في sad-lang)")

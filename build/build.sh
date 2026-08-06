@@ -266,6 +266,11 @@ for ext in "$ROOT"/extensions/*/; do
   # سكربتات مولِّدات السمات/الأيقونات (*.py) و__pycache__ ليست جزءًا من المنتج.
   find "$_dst" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
   find "$_dst" -type f -name '*.py' -delete 2>/dev/null || true
+  # [PF-01] وكذلك الاختبارات. كان هذا السطرُ غائبًا فشُحن **اثنان وعشرون** ملفَّ `*.test.js`
+  # داخل التوزيعة — صغيرةٌ حجمًا (‏0.23 م.ب) لكنّها سطحُ شيفرةٍ لا يخصّ المستخدم، ومؤشّرُ
+  # خللٍ في التجريد لا في حجمه. أمسكها حارسُ `tests/perf/size.mjs` (القائمةُ الممنوعة)،
+  # وهو الذي يمنعها من العودة مع أوّل امتدادٍ جديد: تجريدٌ بلا حارسٍ يرتدّ صامتًا.
+  find "$_dst" -type f \( -name '*.test.js' -o -name '*.test.mjs' -o -name '*.test.cjs' \) -delete 2>/dev/null || true
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 shopt -u nullglob
@@ -277,14 +282,28 @@ shopt -u nullglob
 #         والامتداد يسقط إلى PATH ويعرض تلميح التثبيت — لا نُفشِل البناء كلّه لأجله.
 #         الهدف المستقبليّ (الخيار ٣، موثَّق في docs/toolchain-delivery.md): أمر «ثبّت أدوات ص»
 #         يُنزّل أحدث إصدار عند الطلب فوق هذا المدمج. (راجع resolveSadRun في extension.js.)
-SAD_RUN_SRC="${MIHRAB_SAD_RUN:-$ROOT/../sad-engines-dev/sad-run$EXE_SUFFIX}"
+#
+# ── الأسبقيّة: بيئةٌ صريحة ⇐ **المجلوبُ الرسميّ** ⇐ المجاورُ التطويريّ ──
+# كان المجاورُ التطويريُّ يسبق المجلوبَ الرسميَّ، فالجالبُ لا يُثمِر إلّا لمن تذكّر أن
+# يُصدّر `.upstream/.sad-tools/env.sh`. وأثرُه مقيسٌ لا مفترَض: هذا البناءُ حزم ثنائيّات
+# `../sad-engines-dev` بينما المانيفستُ يشهد بجلبِ `v1.0.0` — فأمسكه حارسُ البصمة
+# («‏ما جُلب وصل الحزمةَ ببصمته») بحقّ. وضمانٌ رهنُ ذاكرةٍ ليس ضمانًا: الجالبُ إن عمل
+# فناتجُه هو المقصود، والمجاورُ التطويريُّ احتياطٌ لمن لا جالبَ عنده — لا العكس.
+SAD_FETCHED_BIN="$ROOT/.upstream/.sad-tools/bin"
+_sad_src() {  # $1 = اسمُ الأداة بلا لاحقة · $2 = التجاوزُ الصريح (قد يكون فارغًا)
+  if [[ -n "${2:-}" ]]; then printf '%s' "$2"; return; fi
+  local fetched="$SAD_FETCHED_BIN/$1$EXE_SUFFIX"
+  if [[ -f "$fetched" ]]; then printf '%s' "$fetched"; return; fi
+  printf '%s' "$ROOT/../sad-engines-dev/$1$EXE_SUFFIX"
+}
+SAD_RUN_SRC="$(_sad_src sad-run "${MIHRAB_SAD_RUN:-}")"
 # [SAD-02] مصدر أداة الفحص المدمجة (تشخيص عند الحفظ عبر sad-check --json). نفس اصطلاح sad-run.
-SAD_CHECK_SRC="${MIHRAB_SAD_CHECK:-$ROOT/../sad-engines-dev/sad-check$EXE_SUFFIX}"
+SAD_CHECK_SRC="$(_sad_src sad-check "${MIHRAB_SAD_CHECK:-}")"
 # [SAD-04] مصدر أداة البناء المدمجة (أمر «ابنِ» عبر sad-build). نفس اصطلاح sad-run/sad-check.
-SAD_BUILD_SRC="${MIHRAB_SAD_BUILD:-$ROOT/../sad-engines-dev/sad-build$EXE_SUFFIX}"
+SAD_BUILD_SRC="$(_sad_src sad-build "${MIHRAB_SAD_BUILD:-}")"
 # [SAD-01] مصدر خادم ص اللغويّ المدمج (LSP: تشخيص/إكمال/تحويم/تعريف). نفس اصطلاح الأدوات؛
 # يُحزَم في bin/ داخل نسخة sad-lang المُجهَّزة (لا mihrab-welcome — العميل يسكن في sad-lang).
-SAD_LSP_SRC="${MIHRAB_SAD_LSP:-$ROOT/../sad-engines-dev/sad-lsp$EXE_SUFFIX}"
+SAD_LSP_SRC="$(_sad_src sad-lsp "${MIHRAB_SAD_LSP:-}")"
 # [AR-02] مصدر خطّ ص العربيّ المحزوم (Kawkab Mono، OFL). يُستهلَك مرّتين: (١) media/ لوحة الترحيب
 # (AR-01 تُضمّنه data:URI)، (٢) @font-face وثيقة الـworkbench (تجهيز أدناه). MIHRAB_ARABIC_FONT أو الافتراضيّ.
 ARABIC_FONT_SRC="${MIHRAB_ARABIC_FONT:-$ROOT/patches/fonts/kawkab-mono.woff2}"
@@ -366,8 +385,17 @@ fi
 [[ -f "$ROOT/build/patch_sash_rtl.py" ]] && cp -f "$ROOT/build/patch_sash_rtl.py" "$UP/.mihrab-patch-sash-rtl.py"
 [[ -f "$ROOT/build/patch_tabsdrop_rtl.py" ]] && cp -f "$ROOT/build/patch_tabsdrop_rtl.py" "$UP/.mihrab-patch-tabsdrop-rtl.py"
 [[ -f "$ROOT/build/patch_gridview_marker.py" ]] && cp -f "$ROOT/build/patch_gridview_marker.py" "$UP/.mihrab-patch-gridview-marker.py"
-[[ -f "$ROOT/build/patch_editor_rtl.py" ]] && cp -f "$ROOT/build/patch_editor_rtl.py" "$UP/.mihrab-patch-editor-rtl.py"
+# محرّر Monaco RTL: لم تعد رُقعةً خاصّة بمحراب بل **تعديلٌ منبعيٌّ كامل** (خيار
+# `editor.textDirection`) مُصاغٌ للرفع إلى microsoft/vscode ومحفوظٌ هنا ملفَّ diff واحدًا.
+# يُطبَّق بـ`git apply --3way` داخل شجرة vscode بعد reset (يتسامح مع انجراف المنبع).
+# يسقط كلّه يوم يُدمَج المقترح م-٢ — لا تُحدَّث مراسيه يدويًّا: يُعاد توليده من الشوكة.
+[[ -f "$ROOT/patches/core/010-editor-text-direction.patch" ]] && cp -f "$ROOT/patches/core/010-editor-text-direction.patch" "$UP/.mihrab-editor-text-direction.patch"
+# بدايةُ الكلمة بعد أداة التعريف [م-١٥/ب]: تعديلٌ منبعيٌّ آخرُ لا رُقعةَ هويّة — المطابقةُ
+# الضبابيّةُ تعرف حدَّ الكلمة اللاتينيَّ (حرفٌ كبير) ولا تعرف نظيرَه العربيَّ (أداةُ التعريف)،
+# فتسقط «فضة» عن `نصاب_الفضة` إسقاطًا لا إضعافَ رتبة. يسقط كلُّه يوم يُدمَج المقترح.
+[[ -f "$ROOT/patches/core/020-nonlatin-word-start.patch" ]] && cp -f "$ROOT/patches/core/020-nonlatin-word-start.patch" "$UP/.mihrab-nonlatin-word-start.patch"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
+[[ -f "$ROOT/build/patch_walkthrough_dir.py" ]] && cp -f "$ROOT/build/patch_walkthrough_dir.py" "$UP/.mihrab-patch-walkthrough-dir.py"
 [[ -f "$ROOT/build/patch_walkthroughs_drop.py" ]] && cp -f "$ROOT/build/patch_walkthroughs_drop.py" "$UP/.mihrab-patch-walkthroughs-drop.py"
 [[ -f "$ROOT/build/patch_html_lang.py" ]] && cp -f "$ROOT/build/patch_html_lang.py" "$UP/.mihrab-patch-html-lang.py"
 [[ -f "$ROOT/build/patch_dialog_style.py" ]] && cp -f "$ROOT/build/patch_dialog_style.py" "$UP/.mihrab-patch-dialog-style.py"
@@ -378,7 +406,20 @@ fi
 # TS واحدة عبر .mihrab-core أدناه.
 [[ -f "$ROOT/build/patch_settings_labels.py" ]] && cp -f "$ROOT/build/patch_settings_labels.py" "$UP/.mihrab-patch-settings-labels.py"
 [[ -d "$ROOT/patches/core" ]] && { rm -rf "$UP/.mihrab-core"; cp -rf "$ROOT/patches/core" "$UP/.mihrab-core"; }
-[[ -f "$ROOT/patches/mihrab-rtl.css" ]] && cp -f "$ROOT/patches/mihrab-rtl.css" "$UP/.mihrab-rtl.css"
+# ورقتا الأنماط [VA-05]: الاتّجاه والهويّة. **كلتاهما إلزاميّةٌ وغيابُها يُفشِل هنا**.
+#
+# ولماذا `if` صريحةٌ لا `[[ -f X ]] && cp` كالسطور المجاورة: تحت `set -euo pipefail` تكون
+# قائمةُ `&&` التي يفشل طرفُها الأوّل **فشلًا للسكربت كلِّه** — أي أنّ النمطَ المجاور
+# يُسقِط البناءَ بلا رسالةٍ واحدة (فخٌّ موثَّقٌ في هذا الملفّ نفسِه أدناه). فالصياغةُ هنا
+# تقول ما نقص **بالعربيّة وفي ثانيةِ التهيئة الأولى**، قبل جلبِ شجرة المنبع ودقائقِ البناء.
+for _sheet in mihrab-rtl mihrab-identity; do
+  if [[ -f "$ROOT/patches/${_sheet}.css" ]]; then
+    cp -f "$ROOT/patches/${_sheet}.css" "$UP/.${_sheet}.css"
+  else
+    echo "محراب: ورقة الأنماط patches/${_sheet}.css مفقودة — والاستيرادُ محقونٌ في workbench.ts" >&2
+    exit 1
+  fi
+done
 # [AR-02] جهّز خطّ ص العربيّ المحزوم لوثيقة الـworkbench: patch_bundle يشتقّ منه base64 ويحقن
 # @font-face بمصدر data: URI في نسخة media من mihrab-rtl.css (لا url() نسبيّ: يكسر بناء esbuild —
 # لا loader لـ.woff2). المصدر ARABIC_FONT_SRC معرَّف أعلى الملفّ. سقوط رشيق: غيابه ⇒ لا حقن.
@@ -533,10 +574,32 @@ fi
 if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
   # بايتا 0xD8/0xD9 بادئتا العربيّة في UTF-8. لا `grep -P` ولا محرفٌ عربيٌّ حرفيّ:
   # الأوّلُ غائبٌ عن grep في macOS، والثاني رهنُ محارف السكربت ولغةِ البيئة معًا.
-  LC_ALL=C grep -q $'\xd8\|\xd9' "$APP_DIR/out/nls.messages.json" \
-    || { echo "❌ nls.messages.json بلا عربيّة — الخبزُ لم يصل إلى المخرَج." >&2; exit 1; }
+  # ‏`-e` مرّتين لا `\|`: الأخير امتدادُ GNU يقرؤه grep البِسْديّ (macOS) حرفيًّا،
+  # فيفشل على بناءٍ سليمٍ ويتّهمه — وهو الفخُّ نفسُه الذي تفاداه التعليقُ أعلاه في PCRE.
+  LC_ALL=C grep -q -e $'\xd8' -e $'\xd9' "$APP_DIR/out/nls.messages.json" \
+    || { echo "❌ nls.messages.json بلا عربيّةٍ إطلاقًا — الخبزُ لم يصل إلى المخرَج." >&2; exit 1; }
   log "التعريبُ مخبوزٌ في nls.messages.json"
 fi
+
+# ── (ي-2) بوّابةُ بيانات الامتدادات: تعريبٌ في **الملفّ الذي يُقرأ**، وبلا اسم المنبع ──
+# بوّابةٌ واحدةٌ لا `grep` هنا: النسبةُ ولائحةُ التسرّب تُحسَبان في
+# `patch_extension_nls.py --verify` قراءةً من المشحون. ولماذا لا grep:
+#   • `grep -q $'\xd8\|\xd9'` يشهد لبايتٍ عربيٍّ **واحد** — وتطبيعُ الهويّة وحدَه
+#     («within VS Code» ⇐ «within محراب») يُرضيه ولو كانت الواجهةُ إنجليزيّةً كلَّها.
+#   • و`\|` امتدادُ GNU: grep البِسْديّ (macOS) يقرؤه حرفيًّا فيفشل على بناءٍ سليم.
+#   • ونسبةٌ مجمَّعةٌ تُخفي سقوطَ امتدادٍ كاملٍ ⇒ للبوّابة حدٌّ لكلّ امتدادٍ ذي وزن.
+if [[ -d "$APP_DIR/extensions" ]]; then
+  python "$ROOT/build/patch_extension_nls.py" --verify "$APP_DIR" || {
+    echo "❌ بوّابةُ تعريب بيانات الامتدادات رفضت المخرَج — راجع أعلاه." >&2; exit 1; }
+fi
+# والنصُّ المخبوز (سلاسلُ القشرة): تسرّبُ اسمِ التوزيعة الأمّ فيه عطبٌ كذلك.
+# الفحصُ بايتيٌّ مباشرٌ لأنّ الملفَّ مصفوفةُ سلاسل بلا بنية — و«VSCodium» ASCII بحت.
+if [[ -f "$APP_DIR/out/nls.messages.json" ]] \
+   && LC_ALL=C grep -qi "vscodium" "$APP_DIR/out/nls.messages.json"; then
+  echo "❌ تسرّبُ هويّة: اسمُ التوزيعة الأمّ في nls.messages.json المخبوز — لا يُشحَن." >&2
+  exit 1
+fi
+log "الهويّةُ نظيفةٌ في النصّ المُصيَّر (المخبوز + بيانات الامتدادات)"
 
 # ‏--version لا يعمل بلا شاشة على لينكس (Electron يحتاج X/Wayland)، ولا يُشغَّل من
 # داخل حزمة .app بهذه الصورة على macOS. فيُترك لويندوز، والتحقّقُ أعلاه يغني عنه.

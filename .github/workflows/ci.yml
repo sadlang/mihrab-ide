@@ -91,7 +91,14 @@ jobs:
         working-directory: extensions/mihrab-nebras
         run: node --test
 
-      # اختبارات وحدة الترحيب (تحقّق اسم المشروع — منطق نقيّ بلا vscode).
+      # اختبارات وحدة الترحيب (تحقّق اسم المشروع، تطبيع البحث، كاشف قلب الاتّجاه، شارة
+      # الطرفيّة — وحداتٌ نقيّةٌ وأغلفةٌ ببديل vscode).
       - name: اختبارات وحدة الترحيب
         working-directory: extensions/mihrab-welcome
+        run: node --test
+
+      # اختبارات وحدة لغة ص (نقل LSP، محوّلات النتائج، وترشيح الإكمال المطبَّع [DX-01]).
+      # كانت `tests/run.sh` وحدَها تغطّيها، فبقي وصلُ التطبيع الجديد **بلا بوّابةٍ في CI**.
+      - name: اختبارات وحدة لغة ص
+        working-directory: extensions/sad-lang
         run: node --test
