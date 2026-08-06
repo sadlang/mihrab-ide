@@ -394,6 +394,11 @@ fi
 # الضبابيّةُ تعرف حدَّ الكلمة اللاتينيَّ (حرفٌ كبير) ولا تعرف نظيرَه العربيَّ (أداةُ التعريف)،
 # فتسقط «فضة» عن `نصاب_الفضة` إسقاطًا لا إضعافَ رتبة. يسقط كلُّه يوم يُدمَج المقترح.
 [[ -f "$ROOT/patches/core/020-nonlatin-word-start.patch" ]] && cp -f "$ROOT/patches/core/020-nonlatin-word-start.patch" "$UP/.mihrab-nonlatin-word-start.patch"
+# صناديقُ الإدخال البسيطة [SC-01 + م-١٧]: `getSimpleEditorOptions` يقرأ ستّةَ مفاتيحَ من
+# الإعدادات ولا يقرأ `textDirection` ولا `fontLigatures`. فرسالةُ الالتزام — وهي **أطولُ
+# نصٍّ عربيٍّ متّصلٍ يكتبه المستخدم في المحرِّر** — فقرةٌ LTR بأحرفٍ مفكَّكة، وكذلك حقلُ وحدة
+# التصحيح وشرطُ نقطة التوقّف. تعديلٌ منبعيٌّ لا رقعةُ هويّة: يسقط يومَ يُدمَج.
+[[ -f "$ROOT/patches/core/030-simple-editor-rtl-input.patch" ]] && cp -f "$ROOT/patches/core/030-simple-editor-rtl-input.patch" "$UP/.mihrab-simple-editor-rtl-input.patch"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
 [[ -f "$ROOT/build/patch_walkthrough_dir.py" ]] && cp -f "$ROOT/build/patch_walkthrough_dir.py" "$UP/.mihrab-patch-walkthrough-dir.py"
 [[ -f "$ROOT/build/patch_walkthroughs_drop.py" ]] && cp -f "$ROOT/build/patch_walkthroughs_drop.py" "$UP/.mihrab-patch-walkthroughs-drop.py"

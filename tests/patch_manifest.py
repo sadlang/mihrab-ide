@@ -76,6 +76,11 @@ BUILD_PATCHERS = [
 CORE_DIFFS = [
     "patches/core/010-editor-text-direction.patch",
     "patches/core/020-nonlatin-word-start.patch",
+    # صناديقُ الإدخال البسيطة (رسالةُ الالتزام · وحدةُ التصحيح · شرطُ نقطة التوقّف · الدردشة):
+    # `getSimpleEditorOptions` يقرأ ستّةَ مفاتيحَ من الإعدادات ولا يقرأ `textDirection` ولا
+    # `fontLigatures` — فكلُّ صندوقِ كتابةٍ في المنضدة فقرةٌ LTR بأحرفٍ مفكَّكة. وموضعُ الإصلاح
+    # اختير هنا لا في `scmInput.ts` وحدَه: أحدَ عشرَ مستهلكًا يعبرون منه دفعةً واحدة.
+    "patches/core/030-simple-editor-rtl-input.patch",
 ]
 
 # طبقة الأنماط (تُفحَص في L0/L2 لا L1):

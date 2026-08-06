@@ -1,0 +1,64 @@
+diff --git a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
+index 88d469a..4c776d9 100644
+--- a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
++++ b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
+@@ -46,6 +46,26 @@ export function getSimpleEditorOptions(configurationService: IConfigurationServi
+ 			indentation: false
+ 		},
+ 		wordSegmenterLocales: configurationService.getValue<string | string[]>('editor.wordSegmenterLocales'),
++		// Simple editors are text entry surfaces — commit messages, debug console input,
++		// breakpoint conditions, chat input. They are not code viewers, and users type prose
++		// in them in whatever script they write in.
++		//
++		// Two editor settings therefore have to reach them, and neither did:
++		//
++		// `editor.textDirection` — without it every simple editor is a left-to-right
++		// paragraph. Someone writing a commit message in Arabic, Hebrew, Persian or Urdu
++		// gets the caret on the wrong side, the text flush against the wrong edge, and
++		// trailing punctuation and digits resolved to the wrong end of the line. The main
++		// editor honours this setting; these boxes sit in the same window and do not.
++		//
++		// `editor.fontLigatures` — this maps to `font-feature-settings`, and turning it off
++		// disables `calt` (contextual alternates) along with `liga`. In Latin text that only
++		// costs a typographic nicety. In Arabic, Syriac and N'Ko, `calt` is how a font
++		// selects initial/medial/final letter forms: with it off the script stops joining and
++		// renders as disconnected letters. The setting is opt-in, so a user who enables it
++		// for the editor is silently denied it exactly where they type the most prose.
++		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection'),
++		fontLigatures: configurationService.getValue<boolean | string>('editor.fontLigatures'),
+ 		accessibilitySupport: configurationService.getValue<'auto' | 'off' | 'on'>('editor.accessibilitySupport'),
+ 		cursorBlinking: configurationService.getValue<'blink' | 'smooth' | 'phase' | 'expand' | 'solid'>('editor.cursorBlinking'),
+ 		editContext: configurationService.getValue<boolean>('editor.editContext'),
+diff --git a/src/vs/workbench/contrib/scm/browser/scmInput.ts b/src/vs/workbench/contrib/scm/browser/scmInput.ts
+index 38a6d42..126baa3 100644
+--- a/src/vs/workbench/contrib/scm/browser/scmInput.ts
++++ b/src/vs/workbench/contrib/scm/browser/scmInput.ts
+@@ -54,6 +54,7 @@ import { InlineCompletionsController } from '../../../../editor/contrib/inlineCo
+ import { CodeActionController } from '../../../../editor/contrib/codeAction/browser/codeActionController.js';
+ import { FormatOnType } from '../../../../editor/contrib/format/browser/formatActions.js';
+ import { EditorOption, EditorOptions, IEditorOptions } from '../../../../editor/common/config/editorOptions.js';
++import { MINIMUM_LINE_HEIGHT } from '../../../../editor/common/config/fontInfo.js';
+ import { EditOperation } from '../../../../editor/common/core/editOperation.js';
+ import { HiddenItemStrategy, IMenuWorkbenchToolBarOptions, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
+ import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
+@@ -341,6 +342,20 @@ class SCMInputWidgetEditorOptions {
+ 	}
+ 
+ 	private _getEditorLineHeight(fontSize: number): number {
++		// `editor.lineHeight` is honoured here, with the same convention the main editor uses:
++		// `0` means "derive from the font size", a value below `MINIMUM_LINE_HEIGHT` is a
++		// multiplier, and anything larger is a pixel amount.
++		//
++		// The fixed `1.5` ratio below is a Latin assumption. Scripts that stack marks above
++		// and below the baseline need more: fully vocalised Arabic reaches roughly `1.9em` of
++		// ink, so at the shipped default the top of a fatha and the tail of a kasra are
++		// clipped. Users can already raise `editor.lineHeight` for the editor; this box was
++		// the one place that ignored them, and it is where they write the most prose.
++		const lineHeight = this.configurationService.getValue<number>('editor.lineHeight');
++		if (typeof lineHeight === 'number' && lineHeight > 0) {
++			return Math.round(lineHeight < MINIMUM_LINE_HEIGHT ? fontSize * lineHeight : lineHeight);
++		}
++
+ 		return Math.round(fontSize * 1.5);
+ 	}
+ 
