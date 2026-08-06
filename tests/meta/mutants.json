@@ -1,0 +1,78 @@
+{
+  "_description": "[PF-03] عطبٌ مزروعٌ لكلّ حارس. الأصلُ أنّ العطبَ يُزرَع في **الشيءِ المحروس** لا في الحارس: زرعُه في الحارس يُثبِت أنّ الشيفرةَ تُنفَّذ، وزرعُه في المحروس يُثبِت أنّ الحارسَ يرى. والثاني هو المطلوب.",
+  "_contract": "لكلّ مُصاب: `old` **فريدٌ في الملفّ** (وسمٌ متكرّرٌ يُصيب موضعًا لم يُقصَد فيحمرّ الحارسُ لسببٍ آخر)، والحارسُ يجب أن يكون **أخضرَ قبله**، وأن يحمرّ بعده **وخرجُه يذكر `expect`**.",
+  "mutants": [
+    {
+      "id": "size-missing-budget-line",
+      "guardFile": "tests/perf/size.mjs",
+      "guard": "node tests/perf/size.mjs",
+      "file": "tests/perf/budget.json",
+      "old": "\"ext_mihrab_icons\"",
+      "new": "\"ext_mihrab_icons_ZZZ\"",
+      "expect": "لا سطرَ ميزانيّة",
+      "why": "مكوّنٌ بلا حدَّين. أمسك هذا المُصابُ عطبًا حقيقيًّا في أوّل تشغيلةٍ له: كان الحارسُ **يُنبِّه ويمضي**، فإضافةُ مكوّنٍ بلا `--establish` تتركه بلا سقفٍ ولا أرضيّةٍ والخرجُ يقول «✅ الحجمُ داخل الميزانيّة»."
+    },
+    {
+      "id": "size-total-floor",
+      "guardFile": "tests/perf/size.mjs",
+      "guard": "node tests/perf/size.mjs",
+      "file": "tests/perf/budget.json",
+      "old": "\"min_total_bytes\": ",
+      "new": "\"min_total_bytes\": 9999999999999, \"_floor_mutant_original\": ",
+      "expect": "أرضيّة",
+      "why": "أرضيّةُ المجموع هي ما يمسك البناءَ الناقص. بسقفٍ وحدَه تكون أخفُّ نسخةٍ أنجحَها. (‏الوسمُ **مفتاحٌ لا قيمة**: أوّلُ صياغةٍ ثبّتت الرقمَ فبطلت عند أوّل إعادة تأسيس — ورفضها حارسُ الحرّاس بحقّ: «الوسمُ ورد 0 مرّةً».)"
+    },
+    {
+      "id": "richness-poor-sample",
+      "guardFile": "tests/meta/richness.mjs",
+      "guard": "node tests/meta/richness.mjs",
+      "file": "extensions/mihrab-welcome/diff-notice.test.js",
+      "old": "  assert.ok(isSadDiff(sadLatinDiff.input), \"الامتدادُ اللاتينيُّ .sad مسنودٌ في الشيفرة فيُختبَر\");\n",
+      "new": "",
+      "expect": "طُبِّقت ولم تُطابِق",
+      "why": "نزعُ العيّنة التي تُشغِّل `\\.sad$` — وهو **الشكلُ الحرفيُّ** الذي نجا منه عطبُ `escapeSrc`: تأكيدٌ صحيحٌ فوق عيّنةٍ فقيرة."
+    },
+    {
+      "id": "anchors-drifted-snapshot",
+      "guardFile": "tests/apply/check_anchors.py",
+      "guard": "python tests/apply/check_anchors.py",
+      "file": "tests/apply/snapshot/SNAPSHOT_TAG.txt",
+      "old": "1.121",
+      "new": "9.999",
+      "expect": "وسم",
+      "why": "لقطةٌ من وسمٍ غيرِ الوسم المثبَّت تجعل كلَّ مرساةٍ تُقاس على شجرةٍ أخرى — وهو عين ما وُجدت اللقطةُ لمنعه."
+    },
+    {
+      "id": "patchers-undocumented-core-diff",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/README.md",
+      "old": "| `030-simple-editor-rtl-input.patch` |",
+      "new": "| `030-simple-editor-rtl-input-XX.patch` |",
+      "expect": "بلا مبرَّرٍ مكتوب",
+      "why": "رقعةُ نواةٍ تُشحَن بلا سطرٍ يبرّرها هي دَينُ دمجٍ خفيّ — والحارسُ أمسك هذا فعلًا عند إضافة الرقعة ‎030‎."
+    }
+  ],
+  "uncovered": [
+    {
+      "guardFile": "tests/bundle/check_injected.py",
+      "why": "الشيءُ المحروسُ هو **الحزمةُ المبنيّة** لا ملفٌّ في الشجرة: زرعُ عطبٍ فيه يستلزم بناءً كاملًا (‏≈40 دقيقة) لكلّ مُصاب. ومُصابٌ لا يُشغَّل ليس تغطية. الشرطُ لرفع هذا الإعلان: وظيفةُ CI تبني مرّةً ثمّ تزرع في المخرَج مباشرةً."
+    },
+    {
+      "guardFile": "tests/brand/check_brand.py",
+      "why": "كسابقه — يقرأ الحزمةَ المشحونة."
+    },
+    {
+      "guardFile": "tests/lexicon/check_lexicon.mjs",
+      "why": "يشترط `tsc` من شجرة المنبع، وهو مشروطٌ في `run.sh` نفسِه بوجودها. مُصابٌ يتخطّى نفسَه على أكثر الأجهزة ليس تغطية."
+    },
+    {
+      "guardFile": "tests/dx/completion_rank.mjs",
+      "why": "كسابقه — يشترط شجرةَ المنبع لتصريف المُطابِق الضبابيّ."
+    },
+    {
+      "guardFile": "extensions/mihrab-nebras/contract/gen_contract.py",
+      "why": "‏**غيرُ مؤجَّلٍ لسببٍ تقنيّ بل لأنّ له حارسًا مكافئًا**: المولِّدُ يُقارَن بمخرَجه المتتبَّع في git، فأيُّ انجرافٍ يظهر في `git diff` قبل الالتزام. يُغطّى حين يُضاف مُصابٌ يزرع في `protocol-contract.yaml`."
+    }
+  ]
+}

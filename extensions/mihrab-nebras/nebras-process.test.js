@@ -39,6 +39,15 @@ test("اختلاف الأكبر ⇒ غير متوافق", () => {
   assert.equal(isCompatible("0.1.0", "1.1.0"), false);
 });
 
+test("لاحقةُ ما قبل الإصدار والبناء تُقتطَع قبل المقارنة", () => {
+  // الشيفرةُ تقتطع بـ`split(/[-+]/)` — ولم تصل العيّنةُ نسخةً فيها لاحقةٌ قطّ، فالفرعُ
+  // لم يُنفَّذ ولا مرّة. والخادمُ يُصدِر نسخًا كهذه في البناءات التجريبيّة [PF-02].
+  assert.equal(isCompatible("1.2.0", "1.5.0-rc.1"), true);
+  assert.equal(isCompatible("1.2.0-alpha", "1.5.0"), true);
+  assert.equal(isCompatible("1.2.0+build.7", "1.5.0"), true);
+  assert.equal(isCompatible("1.0.0-rc.1", "2.0.0"), false, "اللاحقةُ تُقتطَع ولا تُخفي اختلافَ الأكبر");
+});
+
 test("تُتجاهَل لاحقة ما قبل الإصدار/البناء (-/+)", () => {
   assert.equal(isCompatible("0.1.0-beta", "0.1.0"), true);
   assert.equal(isCompatible("1.2.0", "1.9.0+build.7"), true);

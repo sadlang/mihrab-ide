@@ -150,11 +150,14 @@ test("بياناتٌ مفقودةٌ تُقرأ `null` ولا ترمي (سقوط�
 });
 
 test("‏HTML اللوحة: بلا مورد خارجيّ، وبـCSP صارم، ونصٌّ مهروب", () => {
-  const html = H.buildHtml([{ ar: "<script>", en: "x" }], []);
+  // عيّنةٌ فيها **المحارفُ الخمسةُ الخطِرةُ كلُّها** لا `<` وحدَه: بيانُ اللوحة يُحقَن
+  // JSON لا HTML، وهذا هو ما يُختبَر — أن يبقى الحقنُ مُغلَقًا مهما كان النصّ [PF-02].
+  const nasty = `<script>alert(1)</script>&"'>`;
+  const html = H.buildHtml([{ ar: nasty, en: "x" }], []);
   assert.ok(html.includes("default-src 'none'"), "CSP صارم");
   assert.ok(!/https?:\/\//.test(html), "لا مورد خارجيّ إطلاقًا");
   assert.ok(html.includes('dir="rtl"') && html.includes('lang="ar"'));
-  assert.ok(!html.includes("<script>x"), "النصُّ مهروبٌ لا مُدرَجٌ HTML");
+  assert.ok(!/<script>alert/.test(html), "النصُّ مهروبٌ لا مُدرَجٌ HTML");
 });
 
 // ───────────────────── [ON-04] إخبارُ الإصدارات ─────────────────────

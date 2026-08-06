@@ -30,11 +30,15 @@ function fakeVscode({ tabs = [], pick } = {}) {
 }
 
 const sadDiff = { input: { original: { path: "/م/قديم.ص" }, modified: { path: "/م/جديد.ص" } } };
+// الامتدادُ اللاتينيُّ `.sad` **مسنودٌ في الشيفرة** ولم يكن في أيّ عيّنة، فالفرعُ لم
+// يُنفَّذ قطّ وتأكيدُ «ليس فرقَ ص» كان يمرّ لخلوّ النطاق [PF-02].
+const sadLatinDiff = { input: { original: { path: "/م/old.sad" }, modified: { path: "/م/new.sad" } } };
 const jsonDiff = { input: { original: { path: "/م/a.json" }, modified: { path: "/م/b.json" } } };
 const plainTab = { input: { uri: { path: "/م/مثال.ص" } } };
 
 test("[DR-04] فرقُ ص يُتعرَّف عليه، وغيرُه لا", () => {
   assert.ok(isSadDiff(sadDiff.input));
+  assert.ok(isSadDiff(sadLatinDiff.input), "الامتدادُ اللاتينيُّ .sad مسنودٌ في الشيفرة فيُختبَر");
   assert.ok(!isSadDiff(jsonDiff.input));
   assert.ok(!isSadDiff(plainTab.input), "تبويبٌ عاديٌّ ليس فرقًا وإن كان ملفَّ ص");
   assert.ok(!isSadDiff(null));
