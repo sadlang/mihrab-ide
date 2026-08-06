@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
 MARK = "محراب: حقن الإضافات المدمجة"  # كاشف عامّ: أيّ حقن محراب سابق (مستقلّ عن الإصدار)
 # وسم الإصدار الحاليّ للرُقَع؛ يجب أن يطابق حرفيًّا الوسم في build.sh والتعليق داخل INJECT أدناه.
 # بدّله عند توسيع كتلة INJECT (وبدّل نظيرَيه) كي يُعاد الترقيع لا أن يُبقى حقنٌ بائت.
-CORE_PATCH_VERSION = "v23"
+CORE_PATCH_VERSION = "v26"
 VERSION_MARK = f"محراب: رُقَع النواة {CORE_PATCH_VERSION}"
 
 ANCHOR = '  cd vscode || { echo "\'vscode\' dir not found"; exit 1; }'
@@ -38,7 +38,7 @@ INJECT = """
       echo "محراب: حُقِنت إضافة مدمجة ${_mname}"
     fi
   done
-  # محراب: رُقَع النواة v23 (+رأس التطبيق + خلفية المحرّر + أصول sessions + زخرفة نجميّة الترحيب + تصريح <html lang>) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
+  # محراب: رُقَع النواة v26 (+اتّجاه لوح شرح الجولة +ورقة الهويّة [VA-05] +رأس التطبيق + خلفية المحرّر + أصول sessions + زخرفة نجميّة الترحيب + تصريح <html lang>) على مصدر vscode (الطبقة 3) من ملفّات مُجهَّزة تنجو من reset.
   # أيقونة التطبيق وبلاطتا ويندوز: استبدل resources/win32/ (electron.ts:winIcon=resources/win32/code.ico
   # ⇒ أيقونة الـexe؛ code.iss:SetupIconFile ⇒ المُثبِّت؛ code_*x*.png ⇒ بلاطات ابدأ؛ default.ico
   # ⇒ أيقونة المستند). فشل قاتل (لا تخطٍّ صامت) إن غاب أصلٌ متوقَّع كي لا تُشحَن هوية VSCodium
@@ -85,8 +85,19 @@ INJECT = """
     python ../.mihrab-patch-main-locale.py src/main.ts || { echo "محراب: فشلت رُقعة اللغة الافتراضيّة" >&2; exit 1; }
   fi
   # رُقعة الاتّجاه RTL-0: انسخ ورقة الأنماط إلى media/ ثمّ رقّع workbench.ts ليستوردها ويضبط dir=rtl.
-  if [ -f ../.mihrab-patch-workbench-rtl.py ] && [ -f ../.mihrab-rtl.css ]; then
-    cp -f ../.mihrab-rtl.css src/vs/workbench/browser/media/mihrab-rtl.css
+  # **الشرطُ على المرقِّع وحدَه** [VA-05]: كانت الورقتان داخل شرطٍ يذكر `.mihrab-rtl.css`،
+  # فغيابُ ورقةِ الاتّجاه كان يُسقِط ورقةَ الهويّة والاستيرادَ معها بلا كلمة — أي أنّ
+  # «الفصل» يبقى صوريًّا ما دامت إحداهما رهينةَ الأخرى. وكلُّ ورقةٍ تفشل الآن بذاتها.
+  if [ -f ../.mihrab-patch-workbench-rtl.py ]; then
+    # ورقتان إلزاميّتان: الرُقعةُ تحقن استيرادَ كلتيهما بلا شرط، فغيابُ أيٍّ منهما يُسقِط
+    # esbuild بخطأ «Could not resolve» غامضٍ بعد دقائق. والفشلُ هنا يقولها بالعربيّة.
+    for _sheet in mihrab-rtl mihrab-identity; do
+      if [ ! -f "../.${_sheet}.css" ]; then
+        echo "محراب: ورقة الأنماط .${_sheet}.css مفقودة — واستيرادُها محقونٌ في workbench.ts" >&2
+        exit 1
+      fi
+      cp -f "../.${_sheet}.css" "src/vs/workbench/browser/media/${_sheet}.css"
+    done
     # [AR-02] خطّ ص العربيّ المحزوم (Kawkab Mono): يُحقَن كـ@font-face بمصدر **data: URI (base64)**
     # مُقدَّمًا إلى نسخة media من الورقة. **لا url() نسبيّ**: esbuild (optimize.ts) يحلّ url() في CSS
     # المحزوم زمن البناء و.woff2 بلا loader (ttf/svg/png/sh فقط) ⇒ يفشل البناء «No loader…»، وغيابُ
@@ -131,14 +142,29 @@ INJECT = """
   if [ -f ../.mihrab-patch-tabsdrop-rtl.py ]; then
     python ../.mihrab-patch-tabsdrop-rtl.py src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts || { echo "محراب: فشلت رُقعة إفلات التبويبات RTL" >&2; exit 1; }
   fi
-  # رُقعة محرّر Monaco RTL م1–م4: الحاوية LTR + اتّجاه السطر RTL + خريطة يسارًا · مزراب يمينًا + طيّ + تمرير أفقيّ RTL.
-  # تُرقّع 6 ملفّات (viewModelImpl/margin/editorScrollbar/minimap/mouseTarget/viewLayout) من جذر المصدر «.».
-  if [ -f ../.mihrab-patch-editor-rtl.py ]; then
-    python ../.mihrab-patch-editor-rtl.py . || { echo "محراب: فشلت رُقعة محرّر RTL" >&2; exit 1; }
+  # محرّر Monaco RTL: تعديلٌ **منبعيٌّ** كامل (خيار editor.textDirection: auto|ltr|rtl) مُصاغٌ
+  # للرفع إلى microsoft/vscode، لا رُقعةً خاصّة. يُطبَّق diff واحدًا بـgit apply --3way (يتسامح
+  # مع انجراف المنبع). فشلٌ قاتل لا تخطٍّ صامت: بلا هذه الرقعة يخرج محرّرٌ إنجليزيّ الاتّجاه.
+  if [ -f ../.mihrab-editor-text-direction.patch ]; then
+    git apply --3way ../.mihrab-editor-text-direction.patch || { echo "محراب: فشل تطبيق رُقعة اتّجاه المحرّر" >&2; exit 1; }
+    echo "محراب: طُبِّق اتّجاه نصّ المحرّر (editor.textDirection)"
   fi
-  # رُقعة صفحة الترحيب: شعار القوس + الجملة الاستعاريّة في ترويسة Get Started (شكل الشعار في mihrab-rtl.css).
+  # حدُّ الكلمة في المطابقة الضبابيّة [م-١٥/ب]: تعديلٌ **منبعيّ** أيضًا (لا هويّةَ فيه ولا
+  # عربيّةَ في شيفرته سوى المحرفين اللذين يعرّفهما). بلا هذه الرقعة تسقط الكتابةُ من وسط
+  # المعرّف العربيّ سقوطًا كاملًا — مقيسًا في tests/dx/completion_rank.mjs.
+  if [ -f ../.mihrab-nonlatin-word-start.patch ]; then
+    git apply --3way ../.mihrab-nonlatin-word-start.patch || { echo "محراب: فشل تطبيق رُقعة حدّ الكلمة غير اللاتينيّ" >&2; exit 1; }
+    echo "محراب: طُبِّق حدُّ الكلمة بعد أداة التعريف (المطابقة الضبابيّة)"
+  fi
+  # رُقعة صفحة الترحيب: شعار القوس + الجملة الاستعاريّة في ترويسة Get Started (شكل الشعار في mihrab-identity.css — ورقةُ الهويّة [VA-05]).
   if [ -f ../.mihrab-patch-welcome-rtl.py ]; then
     python ../.mihrab-patch-welcome-rtl.py src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts || { echo "محراب: فشلت رُقعة صفحة الترحيب" >&2; exit 1; }
+  fi
+  # رُقعة صفحة الترحيب (ب-١): اتّجاهُ لوح شرح الجولة. اللوحُ إطارُ webview بمستندٍ مستقلّ
+  # يخرج بـ<html> عارية، فيرتدّ إلى ltr مهما كانت القشرة (قِسناه حيًّا). ولا مخرجَ من طبقةٍ
+  # أدنى: مطهِّرُ الـmarkdown ينزع dir من محتوانا، وورقتُنا لا تعبر حدَّ الـwebview.
+  if [ -f ../.mihrab-patch-walkthrough-dir.py ]; then
+    python ../.mihrab-patch-walkthrough-dir.py src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedDetailsRenderer.ts || { echo "محراب: فشلت رُقعة اتّجاه لوح الجولة" >&2; exit 1; }
   fi
   # رُقعة صفحة الترحيب (ب): إسقاط جولات المنبع التعريفيّة (Setup/SetupWeb/Beginner) كي تتصدّر
   # جولة محراب «ابدأ في ٩٠ ثانية». SetupAccessibility وnotebooks تبقيان عمدًا (انظر المرقِّع).

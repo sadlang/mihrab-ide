@@ -28,7 +28,12 @@ MARK = "mihrab-rtl"
 
 # مرساة الاستيراد: سطر استيراد قائم ومستقرّ قرب رأس الملفّ.
 IMPORT_ANCHOR = "import { runWhenWindowIdle } from '../../base/browser/dom.js';"
-IMPORT_INJECT = "\nimport './media/mihrab-rtl.css'; /* mihrab-rtl */"
+# ورقتان لا واحدة [VA-05]: الاتّجاه ثمّ الهويّة. **الترتيبُ مقصود** — ورقةُ الهويّة تأتي
+# ثانيةً كي تفوز عند تساوي الخصوصيّة، وهي الحالةُ الوحيدة التي قد تتلاقيان فيها.
+# الوسمُ `mihrab-rtl` يغطّي السطرين، فالتحقّقُ من الحقن يبقى فحصًا واحدًا لا اثنين.
+RTL_IMPORT = "\nimport './media/mihrab-rtl.css'; /* mihrab-rtl */"
+IDENTITY_IMPORT = "\nimport './media/mihrab-identity.css'; /* mihrab-rtl */"
+IMPORT_INJECT = RTL_IMPORT + IDENTITY_IMPORT
 
 # مرساة ضبط الاتّجاه: بعد إضافة أصناف القشرة مباشرةً، قبل بناء الأجزاء.
 DIR_ANCHOR = "\t\tthis.mainContainer.classList.add(...workbenchClasses);"
@@ -39,6 +44,23 @@ DIR_INJECT = (
     "\n\t\tthis.mainContainer.setAttribute('dir', 'rtl'); /* mihrab-rtl */"
     "\n\t\tthis.mainContainer.ownerDocument.documentElement.setAttribute('dir', 'rtl'); /* mihrab-rtl */"
 )
+
+
+def _write(path: str, text: str) -> bool:
+    """كتابةٌ ذرّيّة (‏tmp ثمّ `os.replace`) — تُستعمل في مسارَي الترقيع كليهما."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        os.replace(tmp, path)
+        return True
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        print(f"⚠️ تعذّر كتابة {path}: {e}", file=sys.stderr)
+        return False
 
 
 def main() -> int:
@@ -54,7 +76,20 @@ def main() -> int:
         return 1
 
     if MARK in text:
-        print("مُرقَّع مسبقًا — تخطٍّ.")
+        # **الـidempotency لا تُقاس بوسمٍ واحدٍ حين تنمو الرُقعة.** شجرةٌ رُقِّعت بنسخةٍ
+        # أقدم (‏قبل [VA-05]) تحمل الوسمَ وتنقصها ورقةُ الهويّة، فالتخطّي بالوسم وحدَه
+        # كان يترك الشعارَ غائبًا **بلا خطأ بناءٍ واحد** — وهو صنفُ العطب الذي يمرّ.
+        if IDENTITY_IMPORT in text:
+            print("مُرقَّع مسبقًا — تخطٍّ.")
+            return 0
+        if RTL_IMPORT not in text:
+            print("⚠️ الوسمُ موجودٌ ولا استيرادَ لورقة الاتّجاه — شجرةٌ مُرقَّعةٌ بصورةٍ غيرِ "
+                  "متوقَّعة؛ أعِد ضبطَ المصدر (git reset) قبل الترقيع.", file=sys.stderr)
+            return 1
+        text = text.replace(RTL_IMPORT, RTL_IMPORT + IDENTITY_IMPORT, 1)
+        if not _write(path, text):
+            return 1
+        print("✅ أُكمِلت الرُقعة: أُضيف استيرادُ ورقة الهويّة [VA-05].")
         return 0
 
     for anchor, label in ((IMPORT_ANCHOR, "الاستيراد"), (DIR_ANCHOR, "ضبط الاتّجاه")):
@@ -65,20 +100,10 @@ def main() -> int:
     text = text.replace(IMPORT_ANCHOR, IMPORT_ANCHOR + IMPORT_INJECT, 1)
     text = text.replace(DIR_ANCHOR, DIR_ANCHOR + DIR_INJECT, 1)
 
-    tmp = path + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8", newline="") as f:
-            f.write(text)
-        os.replace(tmp, path)
-    except OSError as e:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        print(f"⚠️ تعذّر كتابة {path}: {e}", file=sys.stderr)
+    if not _write(path, text):
         return 1
 
-    print("✅ رُقِّع workbench.ts (اتّجاه القشرة RTL + استيراد mihrab-rtl.css).")
+    print("✅ رُقِّع workbench.ts (اتّجاه القشرة RTL + استيرادُ ورقتَي الأنماط).")
     return 0
 
 

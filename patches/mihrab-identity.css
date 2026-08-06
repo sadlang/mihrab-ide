@@ -1,0 +1,104 @@
+/*---------------------------------------------------------------------------------------------
+ *  ورقةُ هويّة محراب البصريّة — **لا اتّجاه فيها** ‏[VA-05]
+ *
+ *  ## لماذا ورقةٌ ثانية
+ *  كانت هذه القواعدُ الثلاثُ تسكن `mihrab-rtl.css` بين قواعد الاتّجاه، وهي ليست منها في
+ *  شيء: لا تقلب محاذاةً ولا تضبط `direction`، بل ترسم شعارًا وزخرفةً وتُنسّق شطرَ جملة.
+ *  وخلطُها هناك كان يُفسِد **قياسًا** لا ذوقًا: مؤشّرُ صحّة المشروع يقرأ ورقةَ الاتّجاه
+ *  كدَينِ اتّجاهٍ كلَّها، فيَعُدّ الهويّةَ دَينًا — ويبالغ في رقمٍ يُتّخَذ به قرار.
+ *
+ *  ## وحدُّ هذه الورقة صريح
+ *  كلُّ محدّدٍ هنا **يستهدف صنفًا نملكه** (‏`.mihrab-welcome-*` تحقنه `patch_welcome_rtl.py`)
+ *  فلا تسرُّبَ إلى عنصرٍ منبعيٍّ عامّ. و**لا خاصّيّةَ اتّجاهيّةً** فيها البتّة — لا
+ *  ‏`direction` ولا `text-align` ولا `float` ولا `left/right` ولا حشوةً أو هامشًا فيزيائيًّا
+ *  جانبيًّا. حارسُ L0 `_identity_css_lint` يفرض الحدَّين معًا، فلا تنزلق قاعدةُ اتّجاهٍ إلى
+ *  هنا هربًا من قصرِ `[dir="rtl"]` الذي تفرضه الورقةُ الأخرى على كلّ قاعدةٍ بلا استثناء.
+ *
+ *  ## ولماذا **بلا** `[dir="rtl"]`
+ *  الشعارُ والزخرفةُ والجملةُ غيرُ اتّجاهيّة، ويجب أن تظهر في الاتّجاهين. وقصرُها على RTL
+ *  كان يُخفيها في وضع اللغة الإنجليزيّة (‏`dir=ltr`) بينما يبقى ما حولها — أي هويّةٌ نصفُها
+ *  حاضرٌ ونصفُها غائب.
+ *
+ *  ترتيبُ الحقن: تُستورَد **بعد** `mihrab-rtl.css` في `workbench.ts` (‏`patch_workbench_rtl.py`).
+ *  والأرقامُ محفوظةٌ كما كانت في الورقة الأمّ (‏17 · 19 · 33) كي تبقى الإحالاتُ في الوثائق
+ *  ورسائلِ الالتزام صالحةً بعد النقل.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ── 17) شعار محراب في ترويسة صفحة الترحيب (Get Started). رُقعة النواة patch_welcome_rtl
+   تحقن عنصرًا `.mihrab-welcome-mark` قبل عنوان المنتج؛ هنا نمنحه شكل «القوس الخالص» كخلفيّة
+   SVG مضمّنة. الألوان (فيروزيّ #31A796 + شفافيّة القوس الداخليّ 0.42 + مؤشّر ذهبيّ #E3BE68)
+   = نبرات نسخة الخلفيّة الداكنة حرفيًّا، إذ السمة الافتراضيّة «محراب الداكنة»؛ فالـbase64 أدناه
+   تشفيرٌ مطابق بالبكسل لـassets/branding/mihrab-mark-dark.svg (الهندسة والألوان معًا).
+   العنوان يبقى nameLong=«محراب»، والعنوان الفرعيّ = الجملة الاستعاريّة (من الرُقعة). القوس
+   يتوسّط الترويسة المتمركزة (margin:0 auto).
+
+   **غير مقصور على [dir=rtl] عمدًا** (قاعدة هويّة لا تخطيط): الشعار غير اتّجاهيّ ويجب أن يظهر
+   في الاتّجاهين كالعنوان — وإلّا اختفى في وضع اللغة الإنجليزيّة (dir=ltr) بينما تبقى الجملة.
+   يستهدف صنفًا نملكه (mihrab-welcome-mark) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES. ── */
+.monaco-workbench .gettingStartedCategoriesContainer .header .mihrab-welcome-mark {
+	display: block;
+	width: 68px;
+	height: 78px;
+	margin: 0 auto 16px;
+	background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTI4Jz48cGF0aCBkPSdNMjIgMTE2IEwyMiA1OCBBNTYgNTYgMCAwIDEgNTAgOCBBNTYgNTYgMCAwIDEgNzggNTggTDc4IDExNicgZmlsbD0nbm9uZScgc3Ryb2tlPScjMzFBNzk2JyBzdHJva2Utd2lkdGg9JzYuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+PHBhdGggZD0nTTM1IDExNiBMMzUgNzQgQTI4IDI4IDAgMCAxIDUwIDUwIEEyOCAyOCAwIDAgMSA2NSA3NCBMNjUgMTE2JyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nNCcgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJyBvcGFjaXR5PScwLjQyJy8+PHJlY3QgeD0nNDcnIHk9JzgyJyB3aWR0aD0nNicgaGVpZ2h0PSczMCcgcng9JzMnIGZpbGw9JyNFM0JFNjgnLz48L3N2Zz4=");
+}
+
+/* ── 19) زخرفة نجميّة إسلاميّة محيطيّة خلف ترويسة صفحة الترحيب. رُقعة النواة patch_welcome_rtl
+   تحقن `.mihrab-welcome-pattern` كأوّل ابن للترويسة؛ هنا نجعله شريطًا خافتًا (بلاطة نجمة
+   ثمانيّة متكرّرة، فيروزيّ #31A796) بشفافيّة 0.06 — نبرةُ زخرفةٍ تُحَسّ ولا تُقرأ.
+
+   **بلا تموضّع مطلق**: شريط في التدفّق العاديّ بارتفاع ثابت + هامش سفليّ سالب مساوٍ ⇒ يسحب
+   الشعار/العنوان فوقه فيصير خلفيّة لا يزيح التخطيط، دون الاعتماد على تموضّع أيّ سلف من
+   VS Code (‏`.header` لا يضبط `position` في المنبع، ولا نملك حقّ ضبطه علينا). الأشقّة اللاحقة
+   (mark/h1/subtitle) ترسم فوقه بترتيب DOM.
+
+   **التلاشي السفليّ (`mask-image`) ليس تجميلًا بل حدٌّ وظيفيّ:** ارتفاع الترويسة الفعليّ
+   ‏(شعار 78px + 16px + عنوان + جملة) ≈ 160–180px < 260px، والهامش السالب يُخرِج الشريط عن
+   صندوق الترويسة فيَنزّ فوق أوّل صفّ من بطاقات الفئات بحافّة أفقيّة حادّة. القناع يُذيب آخر
+   ‏45% من الشريط إلى الشفافيّة ⇒ لا حافّة ولا نزّ مرئيّ، ويبقى الكثيف منها خلف الترويسة
+   وحدها. (البديل — `position:relative` على `.header` + `inset:0` — يقيّد الشريط بدقّة لكنّه
+   يفرض سياق تموضّع على عنصر منبعيّ لا نملكه؛ رفضناه التزامًا بمبدأ «لا نلمس تموضّع المنبع».)
+   ‏`-webkit-mask-image` مُكرَّرة للسلامة؛ وغياب دعم القناع يسقط رشيقًا إلى الشريط الحادّ السابق.
+
+   **غير مقصور على [dir=rtl] عمدًا** (زخرفة هويّة لا تخطيط، كالشعار): تظهر في الاتّجاهين.
+   يستهدف صنفًا نملكه (mihrab-welcome-pattern) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES. ── */
+.monaco-workbench .gettingStartedCategoriesContainer .header .mihrab-welcome-pattern {
+	display: block;
+	height: 260px;
+	margin-bottom: -260px;
+	pointer-events: none;
+	opacity: 0.06;
+	background: repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgdmlld0JveD0nMCAwIDQ4IDQ4Jz48ZyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nMSc+PHBhdGggZD0nTTI0IDQgTDI5IDE5IEw0NCAyNCBMMjkgMjkgTDI0IDQ0IEwxOSAyOSBMNCAyNCBMMTkgMTkgWicvPjxyZWN0IHg9JzExJyB5PScxMScgd2lkdGg9JzI2JyBoZWlnaHQ9JzI2JyB0cmFuc2Zvcm09J3JvdGF0ZSg0NSAyNCAyNCknLz48L2c+PC9zdmc+");
+	background-size: 48px 48px;
+	-webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+	mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+/* ── 33. الشطر الثاني من جملة الترحيب: صوتٌ ثانٍ لا نِدّ ──
+   رُقعة النواة patch_welcome_rtl تُصيّر الجملة شطرين داخل `p.subtitle` نفسها:
+   نصٌّ حرّ («للمِحرابِ اتّجاه، ولكودِك وِجهة.») ثمّ `span.mihrab-welcome-lede`
+   («مكانٌ صافٍ تكتب فيه…»). هنا نمنح الثاني سطرَه وحجمَه ولونَه فيصير تابعًا يشرح
+   لا مزاحمًا يقاسم الصدارة.
+
+   **لا لونَ هويّةٍ مُقحَم هنا (فرقٌ مقصود عن نموذج التصميم):** القاعدتان 17 و19 تُثبِّتان
+   ألوان محراب لأنّهما **رسمٌ** فوق أيّ خلفيّة. أمّا هذا **نصٌّ**، وتباينُه شرطُ قراءته؛
+   وذهبيُّ محراب ‎#E3BE68‎ على أرضيّة سمةٍ فاتحةٍ من طرفٍ ثالث يسقط تحت AA. فنشتقّ اللون
+   من `--vscode-descriptionForeground` (رمزٌ تعرّفه كلُّ سمة، ومعناه حرفيًّا «نصٌّ ثانويّ»)
+   ⇒ التدرّج يصمد تحت كلّ سمة، والشطر الأوّل يبقى بلون المنبع بلا مساس.
+
+   الحجم بـ`em` لا `px`: `.subtitle` منبعيًّا `2em`، فـ`0.58em` يُبقي النسبة بينهما ثابتة
+   لو غيّر المستخدم `zoomLevel` أو حجم خطّ القشرة.
+
+   **غير مقصور على [dir=rtl] عمدًا** (قاعدة هويّة كـ17/19): الجملة تُصيَّر عربيّةً ثابتة
+   في الاتّجاهين، فلو قصرناها على RTL لظهر الشطر الثاني بحجم ‎2em‎ في وضع اللغة الإنجليزيّة.
+   تستهدف صنفًا نملكه (mihrab-welcome-lede) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES.
+
+   الخصوصيّة: محدِّد المنبع لـ`.subtitle` هو (0,5,0)؛ ومحدِّدنا يزيد `.gettingStartedCategoriesContainer`
+   و`.header` ⇒ (0,7,0) فيسبق يقينًا لا بترتيب المصدر. ── */
+.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedCategoriesContainer .header .subtitle .mihrab-welcome-lede {
+	display: block;
+	margin-top: 10px;
+	font-size: 0.58em;
+	line-height: 1.8;
+	color: var(--vscode-descriptionForeground);
+}

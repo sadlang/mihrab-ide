@@ -4,7 +4,7 @@
 
 تستبدل ترويسة صفحة الترحيب المولّدة في gettingStarted.ts: تُضيف طبقة زخرفة نجميّة محيطيّة
 (‏.mihrab-welcome-pattern، بلاطة نجمة ثمانيّة خافتة) + عنصر شعار القوس
-(‏.mihrab-welcome-mark، يُنسَّقان في mihrab-rtl.css كخلفيّة SVG)، وتبدّل العنوان الفرعيّ
+(‏.mihrab-welcome-mark، يُنسَّقان في mihrab-identity.css كخلفيّة SVG [VA-05])، وتبدّل العنوان الفرعيّ
 «Editing evolved» بالجملة الافتتاحيّة الاستعاريّة لمحراب. العنوان نفسه = productService.nameLong
 (= «محراب» من هوية product.json) فيبقى كما هو.
 

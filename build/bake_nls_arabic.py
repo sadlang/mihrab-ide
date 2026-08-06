@@ -31,6 +31,9 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mihrab_brand as brand  # noqa: E402
+
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8")
@@ -125,6 +128,7 @@ def main() -> int:
     exact = 0
     fallback = 0
     supp = 0
+    rebranded = 0
     for module_id, keys in nls_keys:
         mod = contents.get(module_id) or {}
         for key in keys:
@@ -140,11 +144,15 @@ def main() -> int:
                 if sup_ar:
                     ar = sup_ar
                     supp += 1
+            # تطبيعُ الهويّة **قبل** الكتابة وعلى الارتداد الإنجليزيّ أيضًا: حزمةُ اللغة
+            # المنبعيّة تُرجمت لـVSCodium، والإنجليزيّةُ الأصليّةُ تحمل الاسمَ كذلك. فلو
+            # طُبِّع المترجَمُ وحدَه بقي الاسمُ يظهر في كلّ سلسلةٍ لم تُترجَم — تسرّبٌ
+            # يزداد كلّما نقصت التغطية، وهو أسوأُ اتّجاهٍ ممكن.
+            out, nb = brand.rebrand(ar if ar else default_messages[idx])
+            rebranded += nb
+            result.append(out)
             if ar:
-                result.append(ar)
-                remapped.setdefault(module_id, {})[key] = ar
-            else:
-                result.append(default_messages[idx])
+                remapped.setdefault(module_id, {})[key] = out
             idx += 1
     translated = exact + fallback + supp
 
@@ -163,7 +171,7 @@ def main() -> int:
 
     # (2) كتابة main.i18n.json المعاد تخطيطها (مسار كاش حزمة اللغة — الفتحات التالية).
     new_pack = {k: orig[k] for k in orig if k != "contents"}
-    new_pack["contents"] = remapped
+    new_pack["contents"] = remapped  # مُطبَّعُ الهويّة سلفًا (طُبِّع كلُّ عنصرٍ عند بنائه)
     tmp2 = i18n_file + ".tmp"
     with open(tmp2, "w", encoding="utf-8", newline="") as f:
         json.dump(new_pack, f, ensure_ascii=False)
@@ -225,7 +233,7 @@ def main() -> int:
     pct = (translated * 100) // idx if idx else 0
     print(
         f"✅ عُرّبت الواجهة: {translated}/{idx} سلسلة ({pct}%) — حرفيّ={exact}، "
-        f"ارتداد-مفتاح={fallback}، تكميليّ-محراب={supp}. "
+        f"ارتداد-مفتاح={fallback}، تكميليّ-محراب={supp}، تطبيعُ هويّة={rebranded}. "
         f"(nls.messages.json مخبوز + main.i18n.json معاد تخطيطه)"
     )
     return 0

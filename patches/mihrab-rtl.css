@@ -21,19 +21,9 @@
    نسخة media من هذه الورقة، وفقط حين تُورَّد بايتات الخطّ. سقوط رشيق: لا خطّ ⇒ لا @font-face ⇒
    بناء نظيف والعرض يسقط لبقيّة المكدّس (Cascadia/Consolas/Segoe/Noto). ── */
 
-/* ── 1) محرّر الكود RTL (مشروع Monaco RTL م1 — إعادة تصميم صحيحة): **الحاوية تبقى LTR**.
-   درسٌ مثبَت بـCDP: بنية Monaco مبنيّة على إحداثيّات LTR فيزيائيّة؛ قلب `.monaco-editor` بـ
-   `dir=rtl` يرسي عناصرها المُطلَقة (`view-lines`، أبناء `.margin`) يمينًا خارج حاوياتها ⇒ النصّ
-   يطير خارج الشاشة. لذا نفرض LTR على الحاوية، ونحقّق RTL بطبقات أدقّ (رُقَع النواة):
-     • اتّجاه السطر: `_getTextDirection`⇒RTL (viewModelImpl) ⇒ Monaco يضبط `dir="rtl"` لكلّ سطر
-       (viewLine.ts:181) فيتدفّق النصّ العربيّ يمينًا، والمؤشّر/hit-test RTL مدمجان.
-     • المزراب يمينًا: `margin.ts` يزيح حاوية المزراب إلى `contentWidth`.
-     • المحتوى يسارًا: `editorScrollbar.ts` يضع المحتوى عند `left:0`.
-   راجع docs/rtl/monaco-rtl-map.md. القاعدة أدناه تحمي الحاوية؛ الأسطر تُقلَب فرديًّا عبر Monaco. ── */
-.monaco-workbench[dir="rtl"] .monaco-editor {
-	direction: ltr;
-}
-
+/* ── 1) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
+   (خيار `editor.textDirection`، المقترح م-٢). حاويةُ المحرّر تُثبَّت LTR من ورقة المنبع تحت الصنف `.monaco-editor.text-direction-rtl`.
+   الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
 /* ── 2) حماية الطرفيّة (xterm يفترض LTR صارمًا) ── */
 .monaco-workbench[dir="rtl"] .terminal,
 .monaco-workbench[dir="rtl"] .xterm,
@@ -42,7 +32,12 @@
 	direction: ltr;
 }
 
-/* ── 3) عرض الفرق (Diff): الجزآن جنبًا لجنب يبقيان بمنطق LTR داخليًّا لاصطفاف الأسطر ── */
+/* ── 3) عرض الفرق (Diff): الجزآن جنبًا لجنب يبقيان بمنطق LTR داخليًّا لاصطفاف الأسطر.
+   **و`.merge-editor` مستثناةٌ من هذا عمدًا [SC-02]** — القارئُ الطبيعيُّ لهذه القاعدة يرى
+   «لوحَي كودٍ جنبًا لجنب» فيقيس عليها محرّرَ الدمج، وهو قياسٌ خاطئ: القرارُ التاسع في
+   `docs/rtl/typography-decisions.md` قبِل انعكاسَ لوحاته **عن قياسٍ حيّ**، لأنّ كلَّ لوحةٍ
+   هناك تحمل اسمَها ظاهرًا فالموضعُ زائدٌ عن الاسم — بخلاف لوحَي الفرق بلا عنوانٍ يفصل.
+   ومن أضاف قاعدةً «تُصلِح» انعكاسَ الدمج فقد نقض القرار، ويردُّه حارسٌ ساكن. ── */
 .monaco-workbench[dir="rtl"] .monaco-diff-editor .editor.original,
 .monaco-workbench[dir="rtl"] .monaco-diff-editor .editor.modified {
 	direction: ltr;
@@ -71,11 +66,9 @@
 	margin-inline-start: auto;
 }
 
-/* ── 7) أرقام الأسطر: نصّها LTR (أرقام لاتينيّة) لكن المزراب يضعه dir=rtl منطقيًّا ── */
-.monaco-workbench[dir="rtl"] .monaco-editor .line-numbers {
-	direction: ltr;
-}
-
+/* ── 7) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
+   (خيار `editor.textDirection`، المقترح م-٢). أرقامُ الأسطر ترث LTR من جذر المحرّر المثبَّت — فلا حاجة إلى قاعدة.
+   الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
 /* ── 8) أسهم التنقّل السابق/التالي في شريط العنوان (البند #51). مؤكَّد بالمصدر:
    NavigateBackwards=arrow-left، NavigateForward=arrow-right (editorActions.ts) في مركز
    الأوامر بشريط العنوان. في RTL يجب أن يشير «السابق» يمينًا و«التالي» يسارًا ⇒ نقلب كليهما
@@ -113,47 +106,30 @@
 	right: 0;
 }
 
-/* ── 13) محرّر Monaco RTL م2 — مسطرة النظرة (decorationsOverviewRuler) إلى اليسار. هي ابنة
-   المنطقة القابلة للتمرير (`.monaco-scrollable-element`) بـ`right:0` (حافّتها اليمنى). مع نقل
-   الخريطة يسارًا والمزراب يمينًا (رُقعة editor م2) نريدها على الحافّة **اليسرى** للمحتوى ⇒
-   `right:auto; left:0`. الخريطة نفسها والمزراب والمحتوى تُوضَع من رُقَع النواة (JS) لا هنا.
-   نطاق دقيق: تحت `.monaco-editor` فقط (لا نلمس أشرطة تمرير القوائم/اللوحات الأخرى).
+/* ── 13) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
+   (خيار `editor.textDirection`، المقترح م-٢). مسطرةُ النظرة والشريطُ العموديُّ ينتقلان معًا من JS (عمودٌ ملاحيٌّ واحد).
 
-   ملاحظة (طلب المستخدم، م5): **شريط التمرير العموديّ يبقى يمينًا** (لا نُدرِجه هنا). المنطقة
-   القابلة للتمرير مُوضَعة عند `[minimapWidth, minimapWidth+contentWidth]` (رُقعة editorScrollbar)،
-   والشريط العموديّ ابنُها بـ`right:0` الافتراضيّ ⇒ حافّته اليمنى = الحافّة الداخليّة للمزراب =
-   **بجانب أرقام الأسطر** يمينًا. عكسناه سابقًا لليسار في م2 ثمّ أعدناه يمينًا بطلب المستخدم. ── */
-.monaco-workbench[dir="rtl"] .monaco-editor > .overflow-guard > .monaco-scrollable-element > .decorationsOverviewRuler {
-	right: auto;
-	left: 0;
-}
+   ⚠️ **وفي هذا الإسقاط نقضٌ لقرارٍ سابقٍ يجب أن يُقال:** كانت هذه القاعدةُ تحمل — بنصّها —
+   «‏شريطُ التمرير العموديّ يبقى يمينًا … عكسناه سابقًا لليسار في م2 ثمّ أعدناه يمينًا
+   **بطلب المستخدم**». والرقعةُ المنبعيّةُ تنقله يسارًا في RTL بلا استثناء:
+   ‏`verticalScrollbarSide: … === 'rtl' ? 'left' : 'right'`.
 
-/* ── 14) محرّر Monaco RTL م3 — التمرير اللاصق (sticky scroll) إلى اليمين. الودجة تُخطِّط
-   عبر **الطفو**: `.sticky-widget-line-numbers` بـ`float:left` (عرض=contentLeft) يدفع حاوية
-   السطور (`position:absolute; left:auto`) إلى موضعها الساكن `left≈contentLeft` (بعد المزراب).
-   بقلب الطفو إلى `right` ينزاح المزراب/الأرقام إلى اليمين وتنزاح حاوية السطور تلقائيًّا إلى
-   اليسار — مرآة كاملة تُطابق المحرّر (مزراب يمينًا، نصّ يسارًا). نصّ السطر RTL أصلًا (السطر
-   يُصيَّر بـtextDirection RTL من viewModel). أيقونة الطيّ تبقى `float:right` داخل رقم السطر.
-   **اتّجاه النصّ:** خلافًا لأسطر المحرّر (يضع viewLine.ts `dir="rtl"` على الحاوية)، التمرير
-   اللاصق يستعمل `renderViewLine` مباشرةً فلا تُوسَم حاوية `.sticky-line-content` باتّجاه ⇒
-   تبقى LTR (مثبَت CDP: dir=null). نفرض `direction:rtl` عليها فيتدفّق النصّ من اليمين كالمحرّر
-   (يغلب `direction:ltr` للحاوية بأعلى نوعيّة). مثبَت حيًّا: الأرقام يمينًا + النصّ من اليمين. ── */
-.monaco-workbench[dir="rtl"] .monaco-editor .sticky-widget .sticky-widget-line-numbers {
-	float: right;
-}
-.monaco-workbench[dir="rtl"] .monaco-editor .sticky-widget .sticky-line-content {
-	direction: rtl;
-}
+   فطلبٌ صريحٌ وُثِّق ونُفِّذ، أُلغِي **ضمنًا** حين حلّت الرقعةُ محلّ القاعدة. والحجّةُ
+   المكتوبةُ أعلاه («عمودٌ ملاحيٌّ واحد») حجّةٌ معقولةٌ — لكنّها **لم تُعرَض على صاحب الطلب**،
+   والفرقُ بين قرارٍ يُتَّخذ وقرارٍ يقع فرقٌ جوهريّ. وهذا **تغييرٌ يراه كلُّ من يفتح ملفَّ ص**،
+   لا تفصيلٌ داخليّ.
 
-/* ── 15) محرّر Monaco RTL م5 — ودجة الاقتراحات (IntelliSense/suggest) اتّجاه RTL. الحاوية ترث
-   LTR من قاعدة 1 (حماية المحرّر) فيظهر النصّ من اليسار وينقلب ترتيب الأعمدة. نفرض `direction:rtl`
-   على الودجة فتتدفّق تسميات الإكمال العربيّة من اليمين، وينعكس صفّ الـflex (`.main > .left` =
-   الأيقونة+التسمية إلى اليمين، `.right` = التفاصيل إلى اليسار) — مرآة RTL صحيحة. الموضع الأفقيّ
-   للودجة (محاذاتها بالمؤشّر) محسوب في JS (contentWidgets.ts) ويُعالَج برُقعة نواة منفصلة. ── */
-.monaco-workbench[dir="rtl"] .monaco-editor .suggest-widget {
-	direction: rtl;
-}
+   **الحال:** يُذكَر في ملاحظات الإصدار، ويُراجَع مع صاحب الطلب. وإن ثبت الاعتراضُ فالمخرجُ
+   موجودٌ بلا رقعةٍ جديدة: `verticalScrollbarSide` **خيارٌ** في الرقعة نفسِها، فيكفي تمريرُ
+   ‏`'right'` أو إضافةُ إعدادٍ يحكمه.
 
+   الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
+/* ── 14) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
+   (خيار `editor.textDirection`، المقترح م-٢). التمريرُ اللاصق يُقلَب من ورقة `stickyScroll.css` المنبعيّة.
+   الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
+/* ── 15) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
+   (خيار `editor.textDirection`، المقترح م-٢). ودجةُ الاقتراحات تُقلَب من ورقة `suggest.css` المنبعيّة.
+   الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
 /* ── 16) مرآة الودجات العائمة المُثبَّتة بـ`right` فيزيائيّ (لا منطقيّ) فلا يقلبها `dir=rtl`
    تلقائيًّا. الإشعارات (نخب + مركز) مرساها الافتراضيّ `right:3px/7px` أسفل-اليمين — نعكسها
    أسفل-اليسار (يطابق صنف VSCode الشحنيّ `.bottom-left{right:auto;left:Npx}`).
@@ -180,24 +156,8 @@
 	left: 20px;
 }
 
-/* ── 17) شعار محراب في ترويسة صفحة الترحيب (Get Started). رُقعة النواة patch_welcome_rtl
-   تحقن عنصرًا `.mihrab-welcome-mark` قبل عنوان المنتج؛ هنا نمنحه شكل «القوس الخالص» كخلفيّة
-   SVG مضمّنة. الألوان (فيروزيّ #31A796 + شفافيّة القوس الداخليّ 0.42 + مؤشّر ذهبيّ #E3BE68)
-   = نبرات نسخة الخلفيّة الداكنة حرفيًّا، إذ السمة الافتراضيّة «محراب الداكنة»؛ فالـbase64 أدناه
-   تشفيرٌ مطابق بالبكسل لـassets/branding/mihrab-mark-dark.svg (الهندسة والألوان معًا).
-   العنوان يبقى nameLong=«محراب»، والعنوان الفرعيّ = الجملة الاستعاريّة (من الرُقعة). القوس
-   يتوسّط الترويسة المتمركزة (margin:0 auto).
-
-   **غير مقصور على [dir=rtl] عمدًا** (قاعدة هويّة لا تخطيط): الشعار غير اتّجاهيّ ويجب أن يظهر
-   في الاتّجاهين كالعنوان — وإلّا اختفى في وضع اللغة الإنجليزيّة (dir=ltr) بينما تبقى الجملة.
-   يستهدف صنفًا نملكه (mihrab-welcome-mark) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES. ── */
-.monaco-workbench .gettingStartedCategoriesContainer .header .mihrab-welcome-mark {
-	display: block;
-	width: 68px;
-	height: 78px;
-	margin: 0 auto 16px;
-	background: center / contain no-repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTI4Jz48cGF0aCBkPSdNMjIgMTE2IEwyMiA1OCBBNTYgNTYgMCAwIDEgNTAgOCBBNTYgNTYgMCAwIDEgNzggNTggTDc4IDExNicgZmlsbD0nbm9uZScgc3Ryb2tlPScjMzFBNzk2JyBzdHJva2Utd2lkdGg9JzYuNScgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+PHBhdGggZD0nTTM1IDExNiBMMzUgNzQgQTI4IDI4IDAgMCAxIDUwIDUwIEEyOCAyOCAwIDAgMSA2NSA3NCBMNjUgMTE2JyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nNCcgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJyBvcGFjaXR5PScwLjQyJy8+PHJlY3QgeD0nNDcnIHk9JzgyJyB3aWR0aD0nNicgaGVpZ2h0PSczMCcgcng9JzMnIGZpbGw9JyNFM0JFNjgnLz48L3N2Zz4=");
-}
+/* ── 17) نُقِلَت إلى `patches/mihrab-identity.css` [VA-05] — قاعدةُ **هويّةٍ** لا اتّجاهٍ،
+   ووجودُها هنا كان يجعل مؤشّرَ الصحّة يعُدُّها دَينَ اتّجاه. ── */
 
 /* ── 18) البند #18 (تكملة): تصحيح موضع مؤشّر إفلات التبويبات الملتفّة في RTL.
    الوضع المبوَّب (`.title.tabs`، الفعّال افتراضيًّا) يعلّم `last-in-row` بـ`offsetTop` المحايد ⇒
@@ -213,36 +173,8 @@
 	right: -1px;
 }
 
-/* ── 19) زخرفة نجميّة إسلاميّة محيطيّة خلف ترويسة صفحة الترحيب. رُقعة النواة patch_welcome_rtl
-   تحقن `.mihrab-welcome-pattern` كأوّل ابن للترويسة؛ هنا نجعله شريطًا خافتًا (بلاطة نجمة
-   ثمانيّة متكرّرة، فيروزيّ #31A796) بشفافيّة 0.06 — نبرةُ زخرفةٍ تُحَسّ ولا تُقرأ.
-
-   **بلا تموضّع مطلق**: شريط في التدفّق العاديّ بارتفاع ثابت + هامش سفليّ سالب مساوٍ ⇒ يسحب
-   الشعار/العنوان فوقه فيصير خلفيّة لا يزيح التخطيط، دون الاعتماد على تموضّع أيّ سلف من
-   VS Code (‏`.header` لا يضبط `position` في المنبع، ولا نملك حقّ ضبطه علينا). الأشقّة اللاحقة
-   (mark/h1/subtitle) ترسم فوقه بترتيب DOM.
-
-   **التلاشي السفليّ (`mask-image`) ليس تجميلًا بل حدٌّ وظيفيّ:** ارتفاع الترويسة الفعليّ
-   ‏(شعار 78px + 16px + عنوان + جملة) ≈ 160–180px < 260px، والهامش السالب يُخرِج الشريط عن
-   صندوق الترويسة فيَنزّ فوق أوّل صفّ من بطاقات الفئات بحافّة أفقيّة حادّة. القناع يُذيب آخر
-   ‏45% من الشريط إلى الشفافيّة ⇒ لا حافّة ولا نزّ مرئيّ، ويبقى الكثيف منها خلف الترويسة
-   وحدها. (البديل — `position:relative` على `.header` + `inset:0` — يقيّد الشريط بدقّة لكنّه
-   يفرض سياق تموضّع على عنصر منبعيّ لا نملكه؛ رفضناه التزامًا بمبدأ «لا نلمس تموضّع المنبع».)
-   ‏`-webkit-mask-image` مُكرَّرة للسلامة؛ وغياب دعم القناع يسقط رشيقًا إلى الشريط الحادّ السابق.
-
-   **غير مقصور على [dir=rtl] عمدًا** (زخرفة هويّة لا تخطيط، كالشعار): تظهر في الاتّجاهين.
-   يستهدف صنفًا نملكه (mihrab-welcome-pattern) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES. ── */
-.monaco-workbench .gettingStartedCategoriesContainer .header .mihrab-welcome-pattern {
-	display: block;
-	height: 260px;
-	margin-bottom: -260px;
-	pointer-events: none;
-	opacity: 0.06;
-	background: repeat url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0OCcgaGVpZ2h0PSc0OCcgdmlld0JveD0nMCAwIDQ4IDQ4Jz48ZyBmaWxsPSdub25lJyBzdHJva2U9JyMzMUE3OTYnIHN0cm9rZS13aWR0aD0nMSc+PHBhdGggZD0nTTI0IDQgTDI5IDE5IEw0NCAyNCBMMjkgMjkgTDI0IDQ0IEwxOSAyOSBMNCAyNCBMMTkgMTkgWicvPjxyZWN0IHg9JzExJyB5PScxMScgd2lkdGg9JzI2JyBoZWlnaHQ9JzI2JyB0cmFuc2Zvcm09J3JvdGF0ZSg0NSAyNCAyNCknLz48L2c+PC9zdmc+");
-	background-size: 48px 48px;
-	-webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
-	mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
-}
+/* ── 19) نُقِلَت إلى `patches/mihrab-identity.css` [VA-05] — قاعدةُ **هويّةٍ** لا اتّجاهٍ،
+   ووجودُها هنا كان يجعل مؤشّرَ الصحّة يعُدُّها دَينَ اتّجاه. ── */
 
 /* ── 20) [AR-03] طباعة القشرة العربيّة — مكدّس خطّ لِـ`:lang(ar)` على غرار مكدّسات المنبع.
    **الثغرة المرصودة في المنبع** (‏src/vs/workbench/browser/media/style.css:12-29): المنبع يعرّف
@@ -899,34 +831,8 @@
 	right: 4px;
 }
 
-/* ── 33. الشطر الثاني من جملة الترحيب: صوتٌ ثانٍ لا نِدّ ──
-   رُقعة النواة patch_welcome_rtl تُصيّر الجملة شطرين داخل `p.subtitle` نفسها:
-   نصٌّ حرّ («للمِحرابِ اتّجاه، ولكودِك وِجهة.») ثمّ `span.mihrab-welcome-lede`
-   («مكانٌ صافٍ تكتب فيه…»). هنا نمنح الثاني سطرَه وحجمَه ولونَه فيصير تابعًا يشرح
-   لا مزاحمًا يقاسم الصدارة.
-
-   **لا لونَ هويّةٍ مُقحَم هنا (فرقٌ مقصود عن نموذج التصميم):** القاعدتان 17 و19 تُثبِّتان
-   ألوان محراب لأنّهما **رسمٌ** فوق أيّ خلفيّة. أمّا هذا **نصٌّ**، وتباينُه شرطُ قراءته؛
-   وذهبيُّ محراب ‎#E3BE68‎ على أرضيّة سمةٍ فاتحةٍ من طرفٍ ثالث يسقط تحت AA. فنشتقّ اللون
-   من `--vscode-descriptionForeground` (رمزٌ تعرّفه كلُّ سمة، ومعناه حرفيًّا «نصٌّ ثانويّ»)
-   ⇒ التدرّج يصمد تحت كلّ سمة، والشطر الأوّل يبقى بلون المنبع بلا مساس.
-
-   الحجم بـ`em` لا `px`: `.subtitle` منبعيًّا `2em`، فـ`0.58em` يُبقي النسبة بينهما ثابتة
-   لو غيّر المستخدم `zoomLevel` أو حجم خطّ القشرة.
-
-   **غير مقصور على [dir=rtl] عمدًا** (قاعدة هويّة كـ17/19): الجملة تُصيَّر عربيّةً ثابتة
-   في الاتّجاهين، فلو قصرناها على RTL لظهر الشطر الثاني بحجم ‎2em‎ في وضع اللغة الإنجليزيّة.
-   تستهدف صنفًا نملكه (mihrab-welcome-lede) فلا تسرّب عالميّ. L0 يُعفيه عبر IDENTITY_CLASSES.
-
-   الخصوصيّة: محدِّد المنبع لـ`.subtitle` هو (0,5,0)؛ ومحدِّدنا يزيد `.gettingStartedCategoriesContainer`
-   و`.header` ⇒ (0,7,0) فيسبق يقينًا لا بترتيب المصدر. ── */
-.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedCategoriesContainer .header .subtitle .mihrab-welcome-lede {
-	display: block;
-	margin-top: 10px;
-	font-size: 0.58em;
-	line-height: 1.8;
-	color: var(--vscode-descriptionForeground);
-}
+/* ── 33) نُقِلَت إلى `patches/mihrab-identity.css` [VA-05] — قاعدةُ **هويّةٍ** لا اتّجاهٍ،
+   ووجودُها هنا كان يجعل مؤشّرَ الصحّة يعُدُّها دَينَ اتّجاه. ── */
 
 /* ── 35. عناوين لوحة الإعدادات: عزلٌ لا plaintext ────────────────────────────
    رقعةُ معجم العناوين تلفّ **كلَّ مقطعٍ** من التسمية والفئة بـFSI…PDI في النصّ نفسِه
@@ -948,4 +854,119 @@
 .monaco-workbench[dir="rtl"] .settings-editor .setting-item-category,
 .monaco-workbench[dir="rtl"] .settings-editor .setting-item-label {
 	unicode-bidi: isolate;
+}
+
+/* ── 36. عدساتُ الكود: عربيٌّ في حاوية LTR — سادسُ أفراد «القاعدة 30» [LN-01] ──
+   محرابٌ يصيّر عدستَي كودٍ **من صنعه** فوق دالّة البداية في كلّ ملفّ ص
+   (‏`SadMainCodeLensProvider`: «▶ شغّل» و«🔨 ابنِ»)، وامتدادُ `merge-conflict` المحزوم
+   يضيف عدساتِه العربيّة فوق كتلة التعارض. وهي العائلةُ نفسُها التي قِيست فوُجدت مكسورةً
+   في أربعة أسطحٍ متتالية — **ولم تُفتَح هذه ولا مرّة**: لم تكن في نطاق الماسح أصلًا، فلا
+   تُبلِّغ نظيفًا ولا تُبلِّغ شيئًا. وهي حالٌ أشدُّ من «نطاقٍ بلا محتوًى».
+
+   **القياسُ الحيّ** (‏CDP على الحزمة المشحونة، العيّنةُ مفتوحةٌ ومنشَّطة، فرضُ `plaintext`
+   آنيًّا ومقارنةُ ترتيب المحارف — المعيارُ الموحَّد نفسُه):
+
+   | العدسة | ‏`normal` (الحاليّ) | ‏`plaintext` |
+   |---|---|---|
+   | `▶ شغّل` | `▶ لغّش` | `لغّش ▶` |
+   | `🔨 ابنِ` | `🔨 نِبا` | `نِبا 🔨` |
+
+   الأيقونةُ **مبتدأُ** التسمية، والقارئُ العربيُّ يبدأ من اليمين — فموضعُها الصحيح يمينَ
+   النصّ. وهي محرفٌ محايد (‏ON) لا حرفٌ قويّ، فتتبع اتّجاهَ الفقرة؛ وحاويةُ المحرّر LTR
+   **عمدًا لحماية الكود**، فتُرمى الأيقونةُ إلى اليسار ويُقرأ السطرُ من طرفه الخطأ.
+
+   و`plaintext` هي الأداةُ الصحيحة لا `isolate`: العدسةُ قد تكون لاتينيّةً بحتة (عدساتُ
+   المراجع في لغاتٍ أخرى) — و`plaintext` تشتقّ الاتّجاهَ من أوّل حرفٍ قويٍّ في كلّ عدسةٍ
+   على حدة، فتُبقي اللاتينيّةَ LTR وتصون العربيّةَ RTL بقاعدةٍ واحدة. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor .codelens-decoration a,
+.monaco-workbench[dir="rtl"] .monaco-editor .codelens-decoration span {
+	unicode-bidi: plaintext;
+}
+
+/* ── 37. صندوقُ رسالة الالتزام: الأشكالُ السياقيّة — وما لا تبلغه الورقةُ يُقال [SC-01] ──
+   الصندوقُ في جزء المصادر محرّرُ Monaco بـ`isSimpleWidget: true` (‏`scmInput.ts:613`)، و«الودجةُ
+   البسيطة» **لا تقرأ خدمةَ الإعدادات إطلاقًا** (‏`editorConfiguration.ts:73-88`)، فيقرأ
+   ‏`SCMInputWidget` ما يريده بيده في **قائمةِ سماحٍ مغلقة** (‏`scmInput.ts:310`).
+
+   **القياسُ الحيّ** (‏`tests/runtime/scm_input.live.mjs` على الحزمة المشحونة، مستودعٌ زائلٌ
+   بتعارضٍ حقيقيّ) — خمسةٌ قِيست، لا واحدٌ منها كان مضمونًا:
+
+   | المقيس | الصندوق | المحرّر |
+   |---|---|---|
+   | الاتّجاه | أوّلُ محرفٍ منطقيٍّ **يسارَ** آخرِه ⇒ فقرةٌ LTR («‏عرف» بدل «فرع») | RTL |
+   | `font-feature-settings` | `"calt" 0, "liga" 0` | `"calt", "liga"` |
+   | ارتفاعُ السطر | ‎20px‎ على ‎13px‎ = ‎1.538em‎ (أرضيّةُ الحبر ‎1.88em‎) | ‎1.95em‎ |
+   | الوجه | تفاوتُ عرضٍ ‎81.3٪‎ — خطُّ القشرة لا الوجهُ المحزوم | ‎0٪‎ |
+   | الحجم | ‎13px‎ | ‎15px‎ |
+
+   والوجهُ والحجمُ عولِجا في الطبقة الأولى (‏`scm.inputFontFamily: "editor"` و
+   `scm.inputFontSize: 15` في `mihrab-shell`) — وهما المفتاحان الوحيدان اللذان تقبلهما
+   القائمة. **وهذه القاعدةُ تشتري الثالث**: قِيس حيًّا أنّ حقن `font-feature-settings`
+   يغيّر القيمةَ المحسوبةَ على العنصر فعلًا (‏`"calt" 0, "liga" 0` ⇒ `"calt", "liga"`).
+
+   ‏**وما لا تبلغه الورقةُ يُقال ولا يُهرَّب — ولا تُكتَب له قاعدةٌ ميّتة:**
+   ‏(أ) **ارتفاعُ السطر**: قِيس أنّ حقن `line-height: 1.95em !important` **لا يكبّر صندوقَ
+   السطر** (‎20px‎ ⇒ ‎20px‎)، لأنّ Monaco يحسبه في JS ويكتبه سمةً مضمَّنة
+   (‏`style="top:2px;height:20px;line-height:20px;"`). فالقاعدةُ كانت ستجتاز L0 وL2 وهي
+   لا تفعل شيئًا — وهو بعينه ما وقع للقاعدة 20 قبلُ.
+   ‏(ب) **الاتّجاه**: قرارُ تخطيطٍ داخل Monaco لا خاصّيّةُ نمط.
+   والشقّان يُرفَعان مقترحًا منبعيًّا — **م-١٧**، وهو إصلاحُ عطبٍ يصيب كلَّ لغةٍ RTL. ── */
+.monaco-workbench[dir="rtl"] .scm-view .scm-editor-container .monaco-editor .view-line,
+.monaco-workbench[dir="rtl"] .scm-view .scm-editor-container .monaco-editor .view-line span {
+	font-feature-settings: "calt" 1, "liga" 1;
+}
+
+/* ── 38. لوحاتُ التنقيح: هوامشُ فيزيائيّةٌ تُقلَب منطقيّةً [DG-01] ──
+
+   ‏**سطحٌ لم تبلغه قاعدةٌ واحدةٌ من هذه الورقة قبل اليوم** — سبعٌ وثلاثون قاعدةً ولا
+   إصابةَ في التنقيح. لم تكن فجوةَ قياسٍ بل فجوةَ تغطية.
+
+   والأربعُ هنا **مقيسةٌ أثرًا لا مُرجَّحة**: ‏`tests/runtime/debug_panes.live.mjs` يحقن كلَّ
+   قاعدةٍ مرشّحةٍ حيًّا على الحزمة المشحونة ويقرأ الصندوقَ قبلُ وبعدُ ثمّ ينزعها. ولم يُكتَب
+   هنا إلّا ما **زحزح الحبر فعلًا**:
+
+   | القاعدة | قبل ⇐ بعد (إحداثيّ يسار) |
+   |---|---|
+   | فجوةُ اسم الملفّ عن رقم السطر | ‎1126 ⇐ 1136‎ |
+   | فجوةُ كتلة الملفّ عن اسم الدالّة | ‎1103 ⇐ 1093‎ |
+   | فجوةُ القيمة عن اسم المتغيّر | ‎1225 ⇐ 1219‎ |
+   | رابطُ المصدر في وحدة التصحيح | ‎449 ⇐ 308‎ |
+
+   والمنبعُ يكتبها فيزيائيّةً (‏`margin-left`/`margin-right`) — تصحُّ في LTR وتقع في الجهة
+   الخطأ في RTL: تلتصق القيمةُ باسمها وتفغر فجوةً حيث لا تُرى، ويُدفَع رابطُ المصدر إلى
+   **مبتدأ** القراءة بدل منتهاها لأنّ `margin-left: auto` يمتصّ الفراغَ من الجانب المعاكس.
+   والمحدِّداتُ **مطابقةٌ لسلاسل المنبع** (‏debug.contribution.css:104 · debugViewlet.css:301
+   · repl.css:79-82): مرشَّحٌ أقصرُ منها يُقرأ «لا جدوى» وهو في الحقيقة «خسِر في الأسبقيّة»،
+   وقد وقع ذلك في أوّل تشغيل.
+
+   ‏**وثلاثةٌ قِيست فلم تُشحَن — والقياسُ هو ما منعها:**
+   ‏(أ) **حجمُ خطّ اللوحات** (‏13px مقابل ‎15‎ المقيس في VA-04): الحقنُ يكبّر الحبرَ فعلًا
+       (‏‎15.2px ⇒ 17.6px‎)، لكنّ **ارتفاعَ صفّ القائمة يبقى ‎22px‎** لأنّ الشجرةَ المُفرِّغة
+       تحسبه في JS — فترفعُ الحجمِ وحدَه **يقصّ التشكيل** بدل أن يُظهره. تُرفَع مقترحًا.
+   ‏(ب) **عزلُ اسم المتغيّر** (‏`unicode-bidi: plaintext`): يقلب القيمةَ المحسوبةَ **ولا
+       يزحزح بكسلًا**. وقد قِيس أنّ «‎=‎» تقع **بين** الاسم والقيمة أصلًا في الصفّين
+       العربيّ واللاتينيّ معًا — أي أنّ العطبَ الهندسيَّ الذي كان يُتوقَّع **لا يقع**،
+       وأنّ م-١٨ عطبٌ في **سلسلة النصّ** (`name + ' ='` عقدةً واحدة) لا في العرض. ولا
+       مُحدِّدَ CSS يصل إلى جزءٍ من عقدة نصّ.
+   ‏(ج) **حشوةُ إطار كومة الاستدعاء**: الحقنُ يضيف الحشوةَ المنطقيّة ولا يُسقط الفيزيائيّة
+       (‏‎12px‎ على الطرفين) لسببٍ لم يُفهَم بعد. **ولا تُشحَن قاعدةٌ لم تثبت جدواها** ولو
+       بدت صحيحة. ── */
+.monaco-workbench[dir="rtl"] .debug-pane .debug-call-stack .stack-frame .file-name {
+	margin-right: 0;
+	margin-inline-end: .8em;
+}
+.monaco-workbench[dir="rtl"] .debug-pane .debug-call-stack .stack-frame > .file:not(:first-child) {
+	margin-left: 0;
+	margin-inline-start: .8em;
+}
+.monaco-workbench[dir="rtl"] .debug-pane .monaco-list-row .expression > .value {
+	margin-left: 0;
+	margin-inline-start: 6px;
+}
+.monaco-workbench[dir="rtl"] .repl .repl-tree .output.expression.value-and-source > .source,
+.monaco-workbench[dir="rtl"] .repl .repl-tree .group > .source {
+	margin-left: 0;
+	margin-right: 0;
+	margin-inline-start: auto;
+	margin-inline-end: 8px;
 }

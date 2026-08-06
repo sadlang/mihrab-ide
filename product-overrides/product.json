@@ -27,6 +27,19 @@
   "introductoryVideosUrl": null,
   "newsletterSignupUrl": null,
 
+  "_comment_gallery": "[MK-01] سوقُ الإضافات كان يصل الحزمةَ **بالميراث الصامت**: لا ذِكرَ لـextensionsGallery في هذا الملفّ ولا في build/ ولا في tests/، فتُدمَج قيمةُ VSCodium كما هي عبر دمج jq السطحيّ في build.sh. والقاعدةُ التي طبّقناها على updateUrl وtipsAndTricksUrl تسري هنا من بابٍ أولى: مفتاحٌ يُنزَّل منه **شيفرةٌ تُنفَّذ في جهاز المستخدم** أخطرُ من رابطِ توثيق، فلا يجوز أن يبقى رهنَ قرارِ فرعٍ لا نملكه. والقيمُ هنا هي القيمُ المشحونةُ نفسُها حرفًا — **لا تغييرَ سلوكيًّا واحدًا**، بل تحويلُ ميراثٍ صامتٍ إلى قرارٍ مكتوب.\n\nولماذا Open VSX ولا سوقَ لمحراب: سوقُ Visual Studio Marketplace مقصورٌ بشروط استعماله على منتجات Microsoft، فلا يحلّ لمحرابٍ ولا لـVSCodium. وOpen VSX سجلٌّ مفتوحٌ تديره مؤسّسة Eclipse — وهو خيارُ التوزيعة الأمّ، ونبقى عليه لأنّ بناءَ سوقٍ لمحراب يقتضي بنيةً وتدقيقًا وأمنَ توريدٍ لا نملكها اليوم، وادّعاؤه أخطرُ من غيابه.\n\nوcontrolUrl يُصان عمدًا: هو قائمةُ الإضافات المحظورة والمهجورة التي تنشرها مؤسّسة Eclipse — طلبُ شبكةٍ **يحمي** المستخدم، وإسقاطُه يُسكِت التحذيرَ لا الخطر. وهو الطلبُ الشبكيُّ الوحيدُ الذي نُقرّه في هذا الملفّ، ويُقال ولا يُهرَّب.",
+  "extensionsGallery": {
+    "serviceUrl": "https://open-vsx.org/vscode/gallery",
+    "itemUrl": "https://open-vsx.org/vscode/item",
+    "latestUrlTemplate": "https://open-vsx.org/vscode/gallery/{publisher}/{name}/latest",
+    "controlUrl": "https://raw.githubusercontent.com/EclipseFdn/publish-extensions/refs/heads/master/extension-control/extensions.json"
+  },
+  "_comment_gallery_unavailable_constraint": "[MK-01/ج] **قيدٌ بنيويٌّ يُعلَن ولا يُدَّعى سدُّه.** أردنا أن نقول للمستخدم ثلاثَ جملٍ لا واحدة حين يخفق السوق — لا شبكة · شبكةٌ تعمل والسوقُ لا يستجيب · الإضافةُ ليست في هذا السوق أصلًا (وهي الأكثرُ في Open VSX ولا علاقةَ لها بعطب) — لأنّ رسالةً واحدةً لثلاثة أسبابٍ تُعلِّم المستخدمَ تجاهُلَها. **وتعذّر.** العرضُ الوحيدُ الذي يقبل محتوى ترحيبٍ من إضافة (workbench.views.extensions.marketplaceAccess) مسجَّلٌ بشرطٍ يستثني حالةَ Unavailable صراحةً (extensionsViewlet.ts:143-148)، وهي القيمةُ الافتراضيّةُ لمفتاح السياق نفسِه (extensions.ts:260) — فلا عرضَ يُعلَّق عليه شيء. والنصُّ الذي يُعرَض فعلًا يُسنَد مباشرةً إلى textContent في extensionsViews.ts:1116-1119 بلا نقطةِ امتداد. فلا مخرجَ من الطبقة الأولى (لا عرضَ يُستهدَف) ولا من الثانية (النصُّ ليس مسألةَ نمط)، ورقعةُ نواةٍ تاسعةٌ لأجل ثلاث جملٍ ثمنٌ لا يُدفَع. المقترحُ المنبعيُّ م-٢٠ في docs/اقتراحات تعديلات المصدر/README.md.",
+  "_comment_link_protection": "[MK-01] نطاقُ السوق مُصرَّحٌ به في حمايةِ الروابط أيضًا: بدونه يُستجوَب المستخدمُ بحوارِ «أتثق بهذا الرابط؟» في كلّ نقرةٍ على صفحةِ إضافة — حوارٌ إنجليزيُّ المصدرِ في مسارٍ نمرّ به عمدًا. القيمةُ هي المشحونةُ نفسُها، وتُذكَر هنا كي تُقرأ مع مصدرها لا وحدَها.",
+  "linkProtectionTrustedDomains": [
+    "https://open-vsx.org"
+  ],
+
   "urlProtocol": "mihrab",
   "serverApplicationName": "mihrab-server",
   "serverDataFolderName": ".mihrab-server",
