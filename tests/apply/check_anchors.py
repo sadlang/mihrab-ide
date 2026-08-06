@@ -21,6 +21,7 @@ HEAD وشجرة العمل، لكنّ L1 الأخضر لا يبرهن صمود �
 
 الاستعمال: python tests/apply/check_anchors.py   (خرج 0 = نجاح/تخطٍّ، 1 = انجراف مرساة)
 """
+import json
 import os
 import shutil
 import subprocess
@@ -184,6 +185,27 @@ def main():
         return 0
     print(f"  المصدر: {'upstream (git HEAD)' if have_upstream else 'snapshot مُلتزَمة'}")
     failed = skipped = 0
+
+    # وسمُ اللقطة يُقارَن بالوسم المثبَّت. كان `SNAPSHOT_TAG.txt` **يُكتَب ولا يُقرأ**:
+    # لقطةٌ من وسمٍ آخر تجعل كلَّ مرساةٍ أدناه تُقاس على شجرةٍ ليست التي نبني عليها،
+    # فتخضرّ ‎18‎ مرساةً على منبعٍ لا وجودَ له. أمسك هذا **حارسُ الحرّاس** بعطبٍ مزروع.
+    tag_file = os.path.join(SNAPSHOT, "SNAPSHOT_TAG.txt")
+    if have_snapshot and os.path.isfile(tag_file):
+        with open(tag_file, encoding="utf-8") as f:
+            head = f.readline().strip()
+        recorded = head.split(":", 1)[1].strip() if ":" in head else head
+        try:
+            with open(os.path.join(ROOT, "upstream.json"), encoding="utf-8") as f:
+                pinned = json.load(f)["vscodium"]["tag"]
+        except (OSError, ValueError, KeyError):
+            pinned = None
+        if pinned and recorded != pinned:
+            failed += 1
+            print(f"  ❌ وسمُ اللقطة {recorded} ≠ الوسم المثبَّت {pinned} — "
+                  f"اللقطةُ من شجرةٍ أخرى، فكلُّ مرساةٍ بعدها تُقاس على غير ما يُبنى.")
+            print("       شغّل: python tests/apply/refresh_snapshot.py")
+        elif pinned:
+            print(f"  ✅ وسمُ اللقطة يطابق المثبَّت ({pinned})")
     for name, mode, _targets in M.PATCHERS:
         ok, msg = check_patcher(name, mode)
         if ok is None:

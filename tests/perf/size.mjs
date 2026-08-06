@@ -85,8 +85,8 @@ const COMPONENTS = {
   "ext_sad_lang":       { path: "resources/app/extensions/sad-lang", exclude: ["bin"] },
   "ext_mihrab_nebras":  { path: "resources/app/extensions/mihrab-nebras" },
   "ext_mihrab_shell":   { path: "resources/app/extensions/mihrab-shell" },
-  "ext_mihrab_themes":  { path: "resources/app/extensions/mihrab-themes" },
   "ext_mihrab_icons":   { path: "resources/app/extensions/mihrab-icons" },
+  "ext_mihrab_themes":  { path: "resources/app/extensions/mihrab-themes" },
   // **حزمةُ التعريب**: كانت خارجَ كلِّ دلوٍ وكلِّ شاهد — و`build.sh` ينسخها كما ينسخ
   // البقيّة. فسقوطُها يعني شحنَ نسخةٍ بلا تعريب، أي **بلا سببِ وجودِ المنتج**؛ وحجمُها
   // ‎0.2%‎ من المجموع فيمرّ داخلَ هامش الأرضيّة الكلّيّة بلا أن يهتزّ رقم.
@@ -188,12 +188,34 @@ const owners = Object.entries(COMPONENTS)
 let maps = { bytes: 0, files: 0 }, uncategorised = 0;
 const forbiddenHits = [];
 
+/**
+ * ما **نملكه** من الامتدادات — يُكتشَف من مخرَج البناء لا من قائمةٍ مكتوبة.
+ *
+ * حزمةُ التعريب أُضيف لها دلوٌ بعد أن قِيس أنّ سقوطَها يمرّ (‏0.4%‎ من المجموع، داخلَ هامش
+ * الأرضيّة الكلّيّة). لكنّ ذلك سدَّ **حالةً** لا قاعدة: امتدادٌ جديدٌ لنا يُشحَن بلا دلوٍ
+ * يمرّ صامتًا كما مرّت هي. فالقاعدةُ هنا: كلُّ ما تحت `extensions/` باسمٍ نملكه **يجب أن
+ * يقع في دلو**. والاسمُ يُكتشَف من الشجرة المشحونة، فلا قائمةَ تنجرف.
+ */
+const OWNED_EXT = /^(mihrab-|sad-lang$|language-pack-ar$)/;
+const EXT_PREFIX = join("resources", "app", "extensions") + sep;
+/** @type {Map<string, {bytes:number, files:number}>} */
+const orphanOwned = new Map();
+
 for (const [p, size] of all.list) {
   const rel = relative(DIST, p);
   if (/\.map$/i.test(p)) { maps.bytes += size; maps.files++; }
   const hit = owners.find(([, base]) => p === base || p.startsWith(base + sep));
   if (hit) { buckets[hit[0]].bytes += size; buckets[hit[0]].files++; }
-  else uncategorised += size;
+  else {
+    uncategorised += size;
+    if (rel.startsWith(EXT_PREFIX)) {
+      const name = rel.slice(EXT_PREFIX.length).split(sep)[0];
+      if (OWNED_EXT.test(name)) {
+        const e = orphanOwned.get(name) || { bytes: 0, files: 0 };
+        e.bytes += size; e.files++; orphanOwned.set(name, e);
+      }
+    }
+  }
   if (FORBIDDEN_SCOPE.some(s => rel.startsWith(s + sep))) {
     const f = FORBIDDEN.find(f => f.test(rel));
     if (f) forbiddenHits.push([f.label, rel]);
@@ -304,7 +326,10 @@ for (const [k, c] of Object.entries(COMPONENTS)) {
   const skip = c.optional && LEAN;
   const mark = got.files === 0 ? "∅" : "•";
   console.log(`  ${mark} ${k.padEnd(20)} ${MB(got.bytes).padStart(12)}  (${got.files} ملفًّا)`);
-  if (!b) { console.log(`      ⚠️ لا سطرَ ميزانيّةٍ لهذا المكوّن — أعِد التأسيس`); continue; }
+  // **مكوّنٌ بلا سطرِ ميزانيّةٍ يُفشِل** — كان تنبيهًا يُطبَع ويُمضى. وأثرُه أنّ إضافةَ
+  // مكوّنٍ بلا `--establish` تتركه **بلا حدَّين** والحارسُ أخضر: كلُّ ما وُضع الدلوُ لأجله
+  // ساقطٌ، والخرجُ يقول «✅ الحجمُ داخل الميزانيّة». أمسكه حارسُ الحرّاس بعطبٍ مزروع.
+  if (!b) { bad(`${k}: لا سطرَ ميزانيّةٍ لهذا المكوّن — أعِد التأسيس (‏--establish)`); continue; }
   if (skip) continue;
   // شاهدُ تفعيلٍ موجب: دلوٌ بلا ملفٍّ واحدٍ لم يُقَس، فلا يُحكَم عليه بـ«تحت السقف».
   if (got.files === 0) { bad(`${k}: لا ملفَّ واحدًا — المكوّنُ غائبٌ لا «صغير»`); continue; }
@@ -320,6 +345,14 @@ const bucketed = Object.values(buckets).reduce((s, v) => s + v.bytes, 0);
 console.log(`\nغيرُ مصنَّف: ${MB(uncategorised)} (منها نواةُ المنبع) · في الدِّلاء: ${MB(bucketed)}`);
 if (bucketed + uncategorised !== all.bytes)
   bad(`اتّساق: مجموعُ الدِّلاء وغيرِ المصنَّف (${bucketed + uncategorised}) ≠ المجموع (${all.bytes}) ⇒ دلوان متقاطعان`);
+
+// **وكلُّ ما نملكه يُوزَن.** فحصُ الاتّساق أعلاه يُثبت أنّ الدِّلاءَ لا تتقاطع؛ وهذا يُثبت
+// أنّها **تُغطّي**. بلا الشقّ الثاني يبقى الحدُّ الإجماليُّ يُخفي فقدانَ أيّ مكوّنٍ صغيرٍ
+// مهما عظُم شأنُه — وهو ما وقع فعلًا لحزمة التعريب قبل أن يُضاف دلوُها.
+for (const [name, got] of [...orphanOwned].sort()) {
+  bad(`شُحن ما لا دلوَ له: extensions/${name} (${got.files} ملفًّا · ${MB(got.bytes)}) — كلُّ ما نملكه يُوزَن`);
+  console.log(`      ⇐ أضِف مكوّنًا في COMPONENTS ثمّ أعِد التأسيس؛ أو احذفه من البناء إن لم يُقصَد شحنُه.`);
+}
 
 // (ج) الشواهد المفردة
 // `known_absent`: غيابٌ **مُعلَنٌ** بسببٍ مكتوب. الفرقُ عن الغياب الصامت هو كلُّ الفرق —
