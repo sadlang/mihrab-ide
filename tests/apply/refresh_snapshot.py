@@ -28,9 +28,12 @@ def all_target_files():
     files = set()
     for name, mode, targets in M.PATCHERS:
         if mode == "root":
-            files.update(M.editor_target_files(BUILD))
+            files.update(M.root_target_files(BUILD, name))
         else:
             files.update(targets)
+    # رُقَعُ المنبع (diff): ملفّاتها تُشتقّ من الـdiff نفسه لا تُسرَد.
+    for diff in getattr(M, "CORE_DIFFS", []):
+        files.update(M.core_diff_files(ROOT, diff, existing_only=True))
     # ملفّاتُ مرجعٍ لا ترقيع: تشتقّ منها فحوصٌ توقّعاتِها، فبلا نسخةٍ مُلتزَمةٍ تُعطَّل في CI.
     files.update(getattr(M, "REFERENCE_FILES", []))
     return sorted(files)

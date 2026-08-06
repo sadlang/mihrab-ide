@@ -1,0 +1,1222 @@
+diff --git a/src/vs/base/browser/ui/scrollbar/scrollableElement.ts b/src/vs/base/browser/ui/scrollbar/scrollableElement.ts
+index 12753112..dec362b1 100644
+--- a/src/vs/base/browser/ui/scrollbar/scrollableElement.ts
++++ b/src/vs/base/browser/ui/scrollbar/scrollableElement.ts
+@@ -755,6 +755,7 @@ function resolveOptions(opts: ScrollableElementCreationOptions): ScrollableEleme
+ 		verticalScrollbarSize: (typeof opts.verticalScrollbarSize !== 'undefined' ? opts.verticalScrollbarSize : 10),
+ 		verticalHasArrows: (typeof opts.verticalHasArrows !== 'undefined' ? opts.verticalHasArrows : false),
+ 		verticalSliderSize: (typeof opts.verticalSliderSize !== 'undefined' ? opts.verticalSliderSize : 0),
++		verticalScrollbarSide: (typeof opts.verticalScrollbarSide !== 'undefined' ? opts.verticalScrollbarSide : 'right'),
+ 
+ 		scrollByPage: (typeof opts.scrollByPage !== 'undefined' ? opts.scrollByPage : false)
+ 	};
+diff --git a/src/vs/base/browser/ui/scrollbar/scrollableElementOptions.ts b/src/vs/base/browser/ui/scrollbar/scrollableElementOptions.ts
+index 16f1fe3a..be6ed07c 100644
+--- a/src/vs/base/browser/ui/scrollbar/scrollableElementOptions.ts
++++ b/src/vs/base/browser/ui/scrollbar/scrollableElementOptions.ts
+@@ -123,6 +123,11 @@ export interface ScrollableElementCreationOptions {
+ 	 * Defaults to false.
+ 	 */
+ 	verticalHasArrows?: boolean;
++	/**
++	 * The side of the element the vertical scrollbar is rendered on.
++	 * Defaults to 'right'.
++	 */
++	verticalScrollbarSide?: 'left' | 'right';
+ 	/**
+ 	 * Scroll gutter clicks move by page vs. jump to position.
+ 	 * Defaults to false.
+@@ -139,6 +144,7 @@ export interface ScrollableElementChangeOptions {
+ 	horizontalScrollbarSize?: number;
+ 	vertical?: ScrollbarVisibility;
+ 	verticalScrollbarSize?: number;
++	verticalScrollbarSide?: 'left' | 'right';
+ 	scrollByPage?: boolean;
+ }
+ 
+@@ -166,5 +172,6 @@ export interface ScrollableElementResolvedOptions {
+ 	verticalScrollbarSize: number;
+ 	verticalSliderSize: number;
+ 	verticalHasArrows: boolean;
++	verticalScrollbarSide: 'left' | 'right';
+ 	scrollByPage: boolean;
+ }
+diff --git a/src/vs/base/browser/ui/scrollbar/verticalScrollbar.ts b/src/vs/base/browser/ui/scrollbar/verticalScrollbar.ts
+index 5617e169..3c90063c 100644
+--- a/src/vs/base/browser/ui/scrollbar/verticalScrollbar.ts
++++ b/src/vs/base/browser/ui/scrollbar/verticalScrollbar.ts
+@@ -15,6 +15,8 @@ import { INewScrollPosition, Scrollable, ScrollbarVisibility, ScrollEvent } from
+ 
+ export class VerticalScrollbar extends AbstractScrollbar {
+ 
++	private _side: 'left' | 'right';
++
+ 	constructor(scrollable: Scrollable, options: ScrollableElementResolvedOptions, host: ScrollbarHost) {
+ 		const scrollDimensions = scrollable.getScrollDimensions();
+ 		const scrollPosition = scrollable.getCurrentScrollPosition();
+@@ -36,6 +38,8 @@ export class VerticalScrollbar extends AbstractScrollbar {
+ 			scrollByPage: options.scrollByPage
+ 		});
+ 
++		this._side = options.verticalScrollbarSide;
++
+ 		if (options.verticalHasArrows) {
+ 			const arrowDelta = (options.arrowSize - ARROW_IMG_SIZE) / 2;
+ 			const scrollbarDelta = (options.verticalScrollbarSize - ARROW_IMG_SIZE) / 2;
+@@ -76,7 +80,13 @@ export class VerticalScrollbar extends AbstractScrollbar {
+ 	protected _renderDomNode(largeSize: number, smallSize: number): void {
+ 		this.domNode.setWidth(smallSize);
+ 		this.domNode.setHeight(largeSize);
+-		this.domNode.setRight(0);
++		if (this._side === 'left') {
++			this.domNode.setRight('');
++			this.domNode.setLeft(0);
++		} else {
++			this.domNode.setLeft('');
++			this.domNode.setRight(0);
++		}
+ 		this.domNode.setTop(0);
+ 	}
+ 
+@@ -108,6 +118,7 @@ export class VerticalScrollbar extends AbstractScrollbar {
+ 	}
+ 
+ 	public updateOptions(options: ScrollableElementResolvedOptions): void {
++		this._side = options.verticalScrollbarSide;
+ 		this.updateScrollbarSize(options.vertical === ScrollbarVisibility.Hidden ? 0 : options.verticalScrollbarSize);
+ 		// give priority to vertical scroll bar over horizontal and let it scroll all the way to the bottom
+ 		this._scrollbarState.setOppositeScrollbarSize(0);
+diff --git a/src/vs/editor/browser/controller/mouseTarget.ts b/src/vs/editor/browser/controller/mouseTarget.ts
+index 8256f6b4..093eabe7 100644
+--- a/src/vs/editor/browser/controller/mouseTarget.ts
++++ b/src/vs/editor/browser/controller/mouseTarget.ts
+@@ -244,6 +244,16 @@ export class HitTestContext {
+ 	public readonly stickyTabStops: boolean;
+ 	public readonly typicalHalfwidthCharacterWidth: number;
+ 	public readonly lastRenderData: PointerHandlerLastRenderData;
++	/**
++	 * The physical left offset of the margin strip: `0` in a left-to-right layout, and the right-hand
++	 * strip `[width - contentLeft, width]` when `textDirection` is `'rtl'`.
++	 */
++	public readonly marginLeft: number;
++	/**
++	 * The physical left offset of the content area. Equal to `layoutInfo.contentLeft` in a
++	 * left-to-right layout; in a right-to-left layout the content is preceded by the minimap only.
++	 */
++	public readonly contentPhysicalLeft: number;
+ 
+ 	private readonly _context: ViewContext;
+ 	private readonly _viewHelper: IPointerHandlerHelper;
+@@ -258,6 +268,13 @@ export class HitTestContext {
+ 		this.stickyTabStops = options.get(EditorOption.stickyTabStops);
+ 		this.typicalHalfwidthCharacterWidth = options.get(EditorOption.fontInfo).typicalHalfwidthCharacterWidth;
+ 		this.lastRenderData = lastRenderData;
++		if (options.get(EditorOption.effectiveTextDirection) === 'rtl') {
++			this.marginLeft = this.layoutInfo.width - this.layoutInfo.contentLeft;
++			this.contentPhysicalLeft = this.layoutInfo.minimap.minimapWidth;
++		} else {
++			this.marginLeft = 0;
++			this.contentPhysicalLeft = this.layoutInfo.contentLeft;
++		}
+ 		this._context = context;
+ 		this._viewHelper = viewHelper;
+ 	}
+@@ -407,8 +424,8 @@ abstract class BareHitTestRequest {
+ 		this.relativePos = relativePos;
+ 
+ 		this.mouseVerticalOffset = Math.max(0, ctx.getCurrentScrollTop() + this.relativePos.y);
+-		this.mouseContentHorizontalOffset = ctx.getCurrentScrollLeft() + this.relativePos.x - ctx.layoutInfo.contentLeft;
+-		this.isInMarginArea = (this.relativePos.x < ctx.layoutInfo.contentLeft && this.relativePos.x >= ctx.layoutInfo.glyphMarginLeft);
++		this.mouseContentHorizontalOffset = ctx.getCurrentScrollLeft() + this.relativePos.x - ctx.contentPhysicalLeft;
++		this.isInMarginArea = (this.relativePos.x >= ctx.marginLeft + ctx.layoutInfo.glyphMarginLeft && this.relativePos.x < ctx.marginLeft + ctx.layoutInfo.contentLeft);
+ 		this.isInContentArea = !this.isInMarginArea;
+ 		this.mouseColumn = Math.max(0, MouseTargetFactory._getMouseColumn(this.mouseContentHorizontalOffset, ctx.typicalHalfwidthCharacterWidth));
+ 	}
+@@ -697,7 +714,9 @@ export class MouseTargetFactory {
+ 		if (request.isInMarginArea) {
+ 			const res = ctx.getFullLineRangeAtCoord(request.mouseVerticalOffset);
+ 			const pos = res.range.getStartPosition();
+-			let offset = Math.abs(request.relativePos.x);
++			// Offsets inside the margin are relative to the margin strip, which is not flush with the
++			// left edge of the editor in a right-to-left layout.
++			let offset = Math.abs(request.relativePos.x) - ctx.marginLeft;
+ 			const detail: Mutable<IMouseTargetMarginData> = {
+ 				isAfterLines: res.isAfterLines,
+ 				glyphMarginLeft: ctx.layoutInfo.glyphMarginLeft,
+diff --git a/src/vs/editor/browser/gpu/viewGpuContext.ts b/src/vs/editor/browser/gpu/viewGpuContext.ts
+index 9d520abd..72d8909d 100644
+--- a/src/vs/editor/browser/gpu/viewGpuContext.ts
++++ b/src/vs/editor/browser/gpu/viewGpuContext.ts
+@@ -78,6 +78,8 @@ export class ViewGpuContext extends Disposable {
+ 	readonly devicePixelRatio: IObservable<number>;
+ 	readonly contentLeft: IObservable<number>;
+ 
++	private readonly _viewContext: ViewContext;
++
+ 	constructor(
+ 		context: ViewContext,
+ 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
+@@ -87,6 +89,8 @@ export class ViewGpuContext extends Disposable {
+ 	) {
+ 		super();
+ 
++		this._viewContext = context;
++
+ 		this.canvas = createFastDomNode(document.createElement('canvas'));
+ 		this.canvas.setClassName('editorCanvas');
+ 
+@@ -164,6 +168,7 @@ export class ViewGpuContext extends Disposable {
+ 		// Check if the line has simple attributes that aren't supported
+ 		if (
+ 			data.containsRTL ||
++			this._isRtlLayout() ||
+ 			data.maxColumn > this.maxGpuCols
+ 		) {
+ 			return false;
+@@ -200,6 +205,15 @@ export class ViewGpuContext extends Disposable {
+ 		return true;
+ 	}
+ 
++	/**
++	 * The GPU renderer draws lines with a physically left-to-right layout only: it has no notion of
++	 * the mirrored layout and would render a line that happens to contain no right-to-left character
++	 * left-to-right, next to lines that the DOM renderer lays out from the right.
++	 */
++	private _isRtlLayout(): boolean {
++		return this._viewContext.configuration.options.get(EditorOption.effectiveTextDirection) === 'rtl';
++	}
++
+ 	/**
+ 	 * Like {@link canRender} but returns detailed information about why the line cannot be rendered.
+ 	 */
+@@ -209,6 +223,9 @@ export class ViewGpuContext extends Disposable {
+ 		if (data.containsRTL) {
+ 			reasons.push('containsRTL');
+ 		}
++		if (this._isRtlLayout()) {
++			reasons.push('textDirection is rtl');
++		}
+ 		if (data.maxColumn > this.maxGpuCols) {
+ 			reasons.push('maxColumn > maxGpuCols');
+ 		}
+diff --git a/src/vs/editor/browser/viewParts/contentWidgets/contentWidgets.ts b/src/vs/editor/browser/viewParts/contentWidgets/contentWidgets.ts
+index 1f43f783..d4b6078f 100644
+--- a/src/vs/editor/browser/viewParts/contentWidgets/contentWidgets.ts
++++ b/src/vs/editor/browser/viewParts/contentWidgets/contentWidgets.ts
+@@ -199,7 +199,12 @@ class Widget {
+ 
+ 	private readonly _fixedOverflowWidgets: boolean;
+ 	private _contentWidth: number;
++	/**
++	 * The physical left offset of the content area inside the editor. In a right-to-left layout the
++	 * content is preceded by the minimap only, the margin having moved to the right edge.
++	 */
+ 	private _contentLeft: number;
++	private _isRtl: boolean;
+ 
+ 	private _primaryAnchor: PositionPair = new PositionPair(null, null);
+ 	private _secondaryAnchor: PositionPair = new PositionPair(null, null);
+@@ -229,8 +234,9 @@ class Widget {
+ 		this.useDisplayNone = this._actual.useDisplayNone || false;
+ 
+ 		this._fixedOverflowWidgets = options.get(EditorOption.fixedOverflowWidgets);
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		this._contentWidth = layoutInfo.contentWidth;
+-		this._contentLeft = layoutInfo.contentLeft;
++		this._contentLeft = this._isRtl ? layoutInfo.minimap.minimapWidth : layoutInfo.contentLeft;
+ 
+ 		this._affinity = null;
+ 		this._preference = [];
+@@ -249,9 +255,10 @@ class Widget {
+ 
+ 	public onConfigurationChanged(e: viewEvents.ViewConfigurationChangedEvent): void {
+ 		const options = this._context.configuration.options;
+-		if (e.hasChanged(EditorOption.layoutInfo)) {
++		if (e.hasChanged(EditorOption.layoutInfo) || e.hasChanged(EditorOption.effectiveTextDirection)) {
+ 			const layoutInfo = options.get(EditorOption.layoutInfo);
+-			this._contentLeft = layoutInfo.contentLeft;
++			this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
++			this._contentLeft = this._isRtl ? layoutInfo.minimap.minimapWidth : layoutInfo.contentLeft;
+ 			this._contentWidth = layoutInfo.contentWidth;
+ 			this._maxWidth = this._getMaxWidth();
+ 		}
+@@ -322,8 +329,9 @@ class Widget {
+ 		const belowTop = underLineTop;
+ 		const fitsBelow = (heightAvailableUnderLine >= height);
+ 
+-		// And its left
+-		let left = anchor.left;
++		// And its left. In a right-to-left layout the widget grows from the anchor towards the left,
++		// i.e. its right edge is the one aligned with the anchor.
++		let left = this._isRtl ? anchor.left - width : anchor.left;
+ 		if (left + width > ctx.scrollLeft + ctx.viewportWidth) {
+ 			left = ctx.scrollLeft + ctx.viewportWidth - width;
+ 		}
+@@ -373,7 +381,9 @@ class Widget {
+ 		const absoluteBelowTop = domNodePosition.top + belowTop - (elWindow?.scrollY ?? 0);
+ 
+ 		const windowSize = dom.getClientArea(elDocument.body);
+-		const [left, absoluteAboveLeft] = this._layoutHorizontalSegmentInPage(windowSize, domNodePosition, anchor.left - ctx.scrollLeft + this._contentLeft, width);
++		// In a right-to-left layout the right edge of the widget is aligned with the anchor.
++		const anchorLeft = anchor.left - ctx.scrollLeft + this._contentLeft;
++		const [left, absoluteAboveLeft] = this._layoutHorizontalSegmentInPage(windowSize, domNodePosition, this._isRtl ? anchorLeft - width : anchorLeft, width);
+ 
+ 		// Leave some clearance to the top/bottom
+ 		const TOP_PADDING = 22;
+diff --git a/src/vs/editor/browser/viewParts/editorScrollbar/editorScrollbar.ts b/src/vs/editor/browser/viewParts/editorScrollbar/editorScrollbar.ts
+index 816dc313..7f0a4c67 100644
+--- a/src/vs/editor/browser/viewParts/editorScrollbar/editorScrollbar.ts
++++ b/src/vs/editor/browser/viewParts/editorScrollbar/editorScrollbar.ts
+@@ -52,6 +52,9 @@ export class EditorScrollbar extends ViewPart {
+ 			verticalHasArrows: scrollbar.verticalHasArrows,
+ 			horizontalHasArrows: scrollbar.horizontalHasArrows,
+ 			verticalScrollbarSize: scrollbar.verticalScrollbarSize,
++			// The vertical scrollbar and the overview ruler form one navigation column, placed on the
++			// trailing side of the content: the right in a left-to-right layout, the left otherwise.
++			verticalScrollbarSide: options.get(EditorOption.effectiveTextDirection) === 'rtl' ? 'left' : 'right',
+ 			verticalSliderSize: scrollbar.verticalSliderSize,
+ 			horizontalScrollbarSize: scrollbar.horizontalScrollbarSize,
+ 			horizontalSliderSize: scrollbar.horizontalSliderSize,
+@@ -110,6 +113,15 @@ export class EditorScrollbar extends ViewPart {
+ 		const options = this._context.configuration.options;
+ 		const layoutInfo = options.get(EditorOption.layoutInfo);
+ 
++		if (options.get(EditorOption.effectiveTextDirection) === 'rtl') {
++			// Mirrored layout: minimap [0, minimapWidth], content [minimapWidth, minimapWidth + contentWidth],
++			// margin [minimapWidth + contentWidth, width].
++			this.scrollbarDomNode.setLeft(layoutInfo.minimap.minimapWidth);
++			this.scrollbarDomNode.setWidth(layoutInfo.contentWidth);
++			this.scrollbarDomNode.setHeight(layoutInfo.height);
++			return;
++		}
++
+ 		this.scrollbarDomNode.setLeft(layoutInfo.contentLeft);
+ 
+ 		const minimap = options.get(EditorOption.minimap);
+@@ -145,6 +157,7 @@ export class EditorScrollbar extends ViewPart {
+ 			e.hasChanged(EditorOption.scrollbar)
+ 			|| e.hasChanged(EditorOption.mouseWheelScrollSensitivity)
+ 			|| e.hasChanged(EditorOption.fastScrollSensitivity)
++			|| e.hasChanged(EditorOption.effectiveTextDirection)
+ 		) {
+ 			const options = this._context.configuration.options;
+ 			const scrollbar = options.get(EditorOption.scrollbar);
+@@ -155,6 +168,7 @@ export class EditorScrollbar extends ViewPart {
+ 				vertical: scrollbar.vertical,
+ 				horizontal: scrollbar.horizontal,
+ 				verticalScrollbarSize: scrollbar.verticalScrollbarSize,
++				verticalScrollbarSide: options.get(EditorOption.effectiveTextDirection) === 'rtl' ? 'left' : 'right',
+ 				horizontalScrollbarSize: scrollbar.horizontalScrollbarSize,
+ 				scrollByPage: scrollbar.scrollByPage,
+ 				handleMouseWheel: scrollbar.handleMouseWheel,
+@@ -164,7 +178,7 @@ export class EditorScrollbar extends ViewPart {
+ 			};
+ 			this.scrollbar.updateOptions(newOpts);
+ 		}
+-		if (e.hasChanged(EditorOption.layoutInfo)) {
++		if (e.hasChanged(EditorOption.layoutInfo) || e.hasChanged(EditorOption.effectiveTextDirection)) {
+ 			this._setLayout();
+ 		}
+ 		return true;
+diff --git a/src/vs/editor/browser/viewParts/indentGuides/indentGuides.ts b/src/vs/editor/browser/viewParts/indentGuides/indentGuides.ts
+index a140386e..4d664c65 100644
+--- a/src/vs/editor/browser/viewParts/indentGuides/indentGuides.ts
++++ b/src/vs/editor/browser/viewParts/indentGuides/indentGuides.ts
+@@ -27,6 +27,7 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
+ 	private readonly _context: ViewContext;
+ 	private _primaryPosition: Position | null;
+ 	private _spaceWidth: number;
++	private _isRtl: boolean;
+ 	private _renderResult: string[] | null;
+ 	private _maxIndentLeft: number;
+ 	private _bracketPairGuideOptions: InternalGuidesOptions;
+@@ -41,6 +42,7 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
+ 		const fontInfo = options.get(EditorOption.fontInfo);
+ 
+ 		this._spaceWidth = fontInfo.spaceWidth;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		this._maxIndentLeft = wrappingInfo.wrappingColumn === -1 ? -1 : (wrappingInfo.wrappingColumn * fontInfo.typicalHalfwidthCharacterWidth);
+ 		this._bracketPairGuideOptions = options.get(EditorOption.guides);
+ 
+@@ -63,6 +65,7 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
+ 		const fontInfo = options.get(EditorOption.fontInfo);
+ 
+ 		this._spaceWidth = fontInfo.spaceWidth;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		this._maxIndentLeft = wrappingInfo.wrappingColumn === -1 ? -1 : (wrappingInfo.wrappingColumn * fontInfo.typicalHalfwidthCharacterWidth);
+ 		this._bracketPairGuideOptions = options.get(EditorOption.guides);
+ 
+@@ -129,28 +132,39 @@ export class IndentGuidesOverlay extends DynamicViewOverlay {
+ 			const lineIndex = lineNumber - visibleStartLineNumber;
+ 			const indent = indents[lineIndex];
+ 			let result = '';
+-			const leftOffset = ctx.visibleRangeForPosition(new Position(lineNumber, 1))?.left ?? 0;
++			// The start of the line: its left edge in a left-to-right layout, its right edge otherwise.
++			const lineStart = ctx.visibleRangeForPosition(new Position(lineNumber, 1))?.left ?? 0;
+ 			for (const guide of indent) {
+-				const left =
+-					guide.column === -1
+-						? leftOffset + (guide.visibleColumn - 1) * this._spaceWidth
++				// Indentation grows away from the start of the line, so in a right-to-left layout the
++				// guides step towards the left and each one is drawn a cell before its measured position.
++				const left = this._isRtl
++					? (guide.column === -1
++						? lineStart - guide.visibleColumn * this._spaceWidth
+ 						: ctx.visibleRangeForPosition(
+ 							new Position(lineNumber, guide.column)
+-						)!.left;
++						)!.left - this._spaceWidth)
++					: (guide.column === -1
++						? lineStart + (guide.visibleColumn - 1) * this._spaceWidth
++						: ctx.visibleRangeForPosition(
++							new Position(lineNumber, guide.column)
++						)!.left);
+ 
+-				if (left > scrollWidth || (this._maxIndentLeft > 0 && left > this._maxIndentLeft)) {
++				const indentWidth = this._isRtl ? lineStart - left : left;
++				if (indentWidth > scrollWidth || (this._maxIndentLeft > 0 && indentWidth > this._maxIndentLeft)) {
+ 					break;
+ 				}
+ 
+ 				const className = guide.horizontalLine ? (guide.horizontalLine.top ? 'horizontal-top' : 'horizontal-bottom') : 'vertical';
+ 
+-				const width = guide.horizontalLine
++				const horizontalEnd = guide.horizontalLine
+ 					? (ctx.visibleRangeForPosition(
+ 						new Position(lineNumber, guide.horizontalLine.endColumn)
+-					)?.left ?? (left + this._spaceWidth)) - left
+-					: this._spaceWidth;
++					)?.left ?? (this._isRtl ? left - this._spaceWidth : left + this._spaceWidth))
++					: undefined;
++				const width = horizontalEnd === undefined ? this._spaceWidth : Math.abs(horizontalEnd - left);
++				const drawLeft = horizontalEnd === undefined ? left : Math.min(left, horizontalEnd);
+ 
+-				result += `<div class="core-guide ${guide.className} ${className}" style="left:${left}px;width:${width}px"></div>`;
++				result += `<div class="core-guide ${guide.className} ${className}" style="left:${drawLeft}px;width:${width}px"></div>`;
+ 			}
+ 			output[lineIndex] = result;
+ 		}
+diff --git a/src/vs/editor/browser/viewParts/margin/margin.ts b/src/vs/editor/browser/viewParts/margin/margin.ts
+index 2edbe484..0f8730d5 100644
+--- a/src/vs/editor/browser/viewParts/margin/margin.ts
++++ b/src/vs/editor/browser/viewParts/margin/margin.ts
+@@ -12,7 +12,8 @@ import * as viewEvents from '../../../common/viewEvents.js';
+ import { EditorOption } from '../../../common/config/editorOptions.js';
+ 
+ /**
+- * Margin is a vertical strip located on the left of the editor's content area.
++ * Margin is a vertical strip located on the left of the editor's content area
++ * (on the right when `textDirection` is `'rtl'`).
+  * It is used for various features such as line numbers, folding markers, and
+  * decorations that provide additional information about the lines of code.
+  */
+@@ -24,6 +25,11 @@ export class Margin extends ViewPart {
+ 	private readonly _domNode: FastDomNode<HTMLElement>;
+ 	private _canUseLayerHinting: boolean;
+ 	private _contentLeft: number;
++	/**
++	 * The left offset of the margin strip itself. `0` in a left-to-right layout;
++	 * in a right-to-left layout the strip is flush with the right edge of the editor.
++	 */
++	private _marginLeft: number;
+ 	private _glyphMarginLeft: number;
+ 	private _glyphMarginWidth: number;
+ 	private _glyphMarginBackgroundDomNode: FastDomNode<HTMLElement>;
+@@ -35,6 +41,10 @@ export class Margin extends ViewPart {
+ 
+ 		this._canUseLayerHinting = !options.get(EditorOption.disableLayerHinting);
+ 		this._contentLeft = layoutInfo.contentLeft;
++		// In a right-to-left layout the margin sits at the right edge of the editor. `width - contentLeft`
++		// (rather than `contentWidth + minimapWidth`) keeps the strip ending exactly at the editor's
++		// right edge for either minimap side.
++		this._marginLeft = options.get(EditorOption.effectiveTextDirection) === 'rtl' ? layoutInfo.width - layoutInfo.contentLeft : 0;
+ 		this._glyphMarginLeft = layoutInfo.glyphMarginLeft;
+ 		this._glyphMarginWidth = layoutInfo.glyphMarginWidth;
+ 
+@@ -63,6 +73,10 @@ export class Margin extends ViewPart {
+ 
+ 		this._canUseLayerHinting = !options.get(EditorOption.disableLayerHinting);
+ 		this._contentLeft = layoutInfo.contentLeft;
++		// In a right-to-left layout the margin sits at the right edge of the editor. `width - contentLeft`
++		// (rather than `contentWidth + minimapWidth`) keeps the strip ending exactly at the editor's
++		// right edge for either minimap side.
++		this._marginLeft = options.get(EditorOption.effectiveTextDirection) === 'rtl' ? layoutInfo.width - layoutInfo.contentLeft : 0;
+ 		this._glyphMarginLeft = layoutInfo.glyphMarginLeft;
+ 		this._glyphMarginWidth = layoutInfo.glyphMarginWidth;
+ 
+@@ -87,6 +101,7 @@ export class Margin extends ViewPart {
+ 		const height = Math.min(ctx.scrollHeight, 1000000);
+ 		this._domNode.setHeight(height);
+ 		this._domNode.setWidth(this._contentLeft);
++		this._domNode.setLeft(this._marginLeft);
+ 
+ 		this._glyphMarginBackgroundDomNode.setLeft(this._glyphMarginLeft);
+ 		this._glyphMarginBackgroundDomNode.setWidth(this._glyphMarginWidth);
+diff --git a/src/vs/editor/browser/viewParts/minimap/minimap.ts b/src/vs/editor/browser/viewParts/minimap/minimap.ts
+index ad53e1e1..60405853 100644
+--- a/src/vs/editor/browser/viewParts/minimap/minimap.ts
++++ b/src/vs/editor/browser/viewParts/minimap/minimap.ts
+@@ -129,7 +129,9 @@ class MinimapOptions {
+ 		this.pixelRatio = pixelRatio;
+ 		this.typicalHalfwidthCharacterWidth = fontInfo.typicalHalfwidthCharacterWidth;
+ 		this.lineHeight = options.get(EditorOption.lineHeight);
+-		this.minimapLeft = minimapLayout.minimapLeft;
++		// In a right-to-left layout the minimap is rendered flush with the physical left edge, opposite
++		// the margin (`minimap.side` is not honored, the layout is computed as if the side were 'right').
++		this.minimapLeft = options.get(EditorOption.effectiveTextDirection) === 'rtl' ? 0 : minimapLayout.minimapLeft;
+ 		this.minimapWidth = minimapLayout.minimapWidth;
+ 		this.minimapHeight = layoutInfo.height;
+ 
+diff --git a/src/vs/editor/browser/viewParts/overlayWidgets/overlayWidgets.ts b/src/vs/editor/browser/viewParts/overlayWidgets/overlayWidgets.ts
+index d286e3b2..a741b8f0 100644
+--- a/src/vs/editor/browser/viewParts/overlayWidgets/overlayWidgets.ts
++++ b/src/vs/editor/browser/viewParts/overlayWidgets/overlayWidgets.ts
+@@ -42,6 +42,7 @@ export class ViewOverlayWidgets extends ViewPart {
+ 	private _horizontalScrollbarHeight: number;
+ 	private _editorHeight: number;
+ 	private _editorWidth: number;
++	private _isRtl: boolean;
+ 
+ 	constructor(context: ViewContext, viewDomNode: FastDomNode<HTMLElement>) {
+ 		super(context);
+@@ -56,6 +57,7 @@ export class ViewOverlayWidgets extends ViewPart {
+ 		this._horizontalScrollbarHeight = layoutInfo.horizontalScrollbarHeight;
+ 		this._editorHeight = layoutInfo.height;
+ 		this._editorWidth = layoutInfo.width;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		this._viewDomNodeRect = { top: 0, left: 0, width: 0, height: 0 };
+ 
+ 		this._domNode = createFastDomNode(document.createElement('div'));
+@@ -87,6 +89,7 @@ export class ViewOverlayWidgets extends ViewPart {
+ 		this._horizontalScrollbarHeight = layoutInfo.horizontalScrollbarHeight;
+ 		this._editorHeight = layoutInfo.height;
+ 		this._editorWidth = layoutInfo.width;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		return true;
+ 	}
+ 
+@@ -185,6 +188,12 @@ export class ViewOverlayWidgets extends ViewPart {
+ 			if (widgetData.stack !== undefined) {
+ 				domNode.setTop(stackCoordinates[widgetData.preference]);
+ 				stackCoordinates[widgetData.preference] += domNode.domNode.clientWidth;
++			} else if (this._isRtl) {
++				// The corner is mirrored: the widget is placed `maxRight` away from the left edge of the
++				// editor, which is the side the minimap occupies in a right-to-left layout. `setRight` is
++				// kept (instead of writing `left` directly) so the widget stays within the same
++				// positioning scheme as the left-to-right case.
++				domNode.setRight(this._editorWidth - maxRight - domNode.domNode.clientWidth);
+ 			} else {
+ 				domNode.setRight(maxRight);
+ 			}
+diff --git a/src/vs/editor/browser/viewParts/overviewRuler/decorationsOverviewRuler.ts b/src/vs/editor/browser/viewParts/overviewRuler/decorationsOverviewRuler.ts
+index c494f6e2..cbb3ea64 100644
+--- a/src/vs/editor/browser/viewParts/overviewRuler/decorationsOverviewRuler.ts
++++ b/src/vs/editor/browser/viewParts/overviewRuler/decorationsOverviewRuler.ts
+@@ -83,7 +83,11 @@ class Settings {
+ 		const layoutInfo = options.get(EditorOption.layoutInfo);
+ 		const position = layoutInfo.overviewRuler;
+ 		this.top = position.top;
+-		this.right = position.right;
++		// The overview ruler is a child of the scrollable element and is pinned to its trailing edge:
++		// the right one in a left-to-right layout, the left one when the layout is mirrored.
++		this.right = options.get(EditorOption.effectiveTextDirection) === 'rtl'
++			? layoutInfo.contentWidth - position.width - position.right
++			: position.right;
+ 		this.domWidth = position.width;
+ 		this.domHeight = position.height;
+ 		if (this.overviewRulerLanes === 0) {
+diff --git a/src/vs/editor/browser/viewParts/rulers/rulers.ts b/src/vs/editor/browser/viewParts/rulers/rulers.ts
+index cb67b702..3510ca6d 100644
+--- a/src/vs/editor/browser/viewParts/rulers/rulers.ts
++++ b/src/vs/editor/browser/viewParts/rulers/rulers.ts
+@@ -21,6 +21,7 @@ export class Rulers extends ViewPart {
+ 	private readonly _renderedRulers: FastDomNode<HTMLElement>[];
+ 	private _rulers: IRulerOption[];
+ 	private _typicalHalfwidthCharacterWidth: number;
++	private _isRtl: boolean;
+ 
+ 	constructor(context: ViewContext) {
+ 		super(context);
+@@ -32,6 +33,7 @@ export class Rulers extends ViewPart {
+ 		const options = this._context.configuration.options;
+ 		this._rulers = options.get(EditorOption.rulers);
+ 		this._typicalHalfwidthCharacterWidth = options.get(EditorOption.fontInfo).typicalHalfwidthCharacterWidth;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 	}
+ 
+ 
+@@ -41,10 +43,13 @@ export class Rulers extends ViewPart {
+ 		const options = this._context.configuration.options;
+ 		this._rulers = options.get(EditorOption.rulers);
+ 		this._typicalHalfwidthCharacterWidth = options.get(EditorOption.fontInfo).typicalHalfwidthCharacterWidth;
++		this._isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 		return true;
+ 	}
+ 	public override onScrollChanged(e: viewEvents.ViewScrollChangedEvent): boolean {
+-		return e.scrollHeightChanged;
++		// In a right-to-left layout the position of a ruler depends on the width of the content,
++		// so it must be re-rendered when the content grows wider.
++		return e.scrollHeightChanged || (this._isRtl && e.scrollWidthChanged);
+ 	}
+ 
+ 	// --- end event handlers
+@@ -93,7 +98,10 @@ export class Rulers extends ViewPart {
+ 
+ 			node.setBoxShadow(ruler.color ? `1px 0 0 0 ${ruler.color} inset` : ``);
+ 			node.setHeight(Math.min(ctx.scrollHeight, 1000000));
+-			node.setLeft(ruler.column * this._typicalHalfwidthCharacterWidth);
++			// Lines are laid out from the right edge of the content box in a right-to-left layout,
++			// so column N is measured from `scrollWidth` instead of from 0.
++			const rulerOffset = ruler.column * this._typicalHalfwidthCharacterWidth;
++			node.setLeft(this._isRtl ? ctx.scrollWidth - rulerOffset : rulerOffset);
+ 		}
+ 	}
+ }
+diff --git a/src/vs/editor/browser/widget/codeEditor/editor.css b/src/vs/editor/browser/widget/codeEditor/editor.css
+index 638055a0..e559a850 100644
+--- a/src/vs/editor/browser/widget/codeEditor/editor.css
++++ b/src/vs/editor/browser/widget/codeEditor/editor.css
+@@ -26,6 +26,18 @@
+ 	background-color: var(--vscode-editor-background);
+ 	overflow-wrap: initial;
+ }
++/*
++ * `textDirection: 'rtl'`. The internal coordinate system of the editor is physically left-to-right:
++ * absolutely positioned children (`.view-lines`, the children of `.margin`) are placed with explicit
++ * `left` offsets inside very wide containers, so flipping the root with `direction: rtl` would anchor
++ * them to the right of those containers and push the text off screen. The mirrored layout is produced
++ * by the view parts instead (margin, minimap, content area, rulers, widgets), and the text of each
++ * line flows right-to-left through the `dir="rtl"` that `ViewLine` sets per line. Hence the root is
++ * pinned to `ltr`, also when the editor is embedded in a right-to-left document.
++ */
++.monaco-editor.text-direction-rtl {
++	direction: ltr;
++}
+ .monaco-editor-background {
+ 	background-color: var(--vscode-editor-background);
+ }
+diff --git a/src/vs/editor/common/config/editorOptions.ts b/src/vs/editor/common/config/editorOptions.ts
+index 3dc95203..652599ec 100644
+--- a/src/vs/editor/common/config/editorOptions.ts
++++ b/src/vs/editor/common/config/editorOptions.ts
+@@ -84,6 +84,15 @@ export interface IEditorOptions {
+ 	 * The `tabindex` property of the editor's textarea
+ 	 */
+ 	tabIndex?: number;
++	/**
++	 * Controls the text direction of the editor contents.
++	 *  - `'auto'`: the direction of each line is derived from its decorations (current behavior).
++	 *  - `'ltr'`: every line is laid out left-to-right.
++	 *  - `'rtl'`: every line is laid out right-to-left and the editor mirrors its own layout
++	 *    (line numbers and glyph margin on the right, minimap on the left).
++	 * Defaults to 'auto'.
++	 */
++	textDirection?: 'auto' | 'ltr' | 'rtl';
+ 	/**
+ 	 * Render vertical lines at the specified columns.
+ 	 * Defaults to empty array.
+@@ -1685,6 +1694,12 @@ class EditorClassName extends ComputedEditorOption<EditorOption.editorClassName,
+ 			classNames.push('showDeprecated');
+ 		}
+ 
++		if (options.get(EditorOption.effectiveTextDirection) === 'rtl') {
++			// The internal coordinate system of the editor stays physically left-to-right;
++			// the mirrored layout is applied by the view parts and by the rules guarded by this class.
++			classNames.push('text-direction-rtl');
++		}
++
+ 		return classNames.join(' ');
+ 	}
+ }
+@@ -2047,6 +2062,40 @@ class EffectiveCursorStyle extends ComputedEditorOption<EditorOption.effectiveCu
+ 
+ //#endregion
+ 
++//#region effectiveTextDirection
++
++/**
++ * The primary subtags of the right-to-left written languages VS Code can be localized in. Used to
++ * resolve `textDirection: 'auto'`.
++ */
++const RTL_LANGUAGE_SUBTAGS = ['ar', 'ckb', 'dv', 'fa', 'he', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi'];
++
++/**
++ * @internal
++ */
++export function isRtlLanguage(language: string): boolean {
++	return RTL_LANGUAGE_SUBTAGS.includes(language.toLowerCase().split(/[-_]/)[0]);
++}
++
++class EffectiveTextDirection extends ComputedEditorOption<EditorOption.effectiveTextDirection, 'ltr' | 'rtl'> {
++
++	constructor() {
++		super(EditorOption.effectiveTextDirection, 'ltr');
++	}
++
++	public compute(env: IEnvironmentalOptions, options: IComputedEditorOptions, _: 'ltr' | 'rtl'): 'ltr' | 'rtl' {
++		const textDirection = options.get(EditorOption.textDirection);
++		if (textDirection !== 'auto') {
++			return textDirection;
++		}
++		// 'auto' follows the language the editor itself is displayed in: somebody reading the user
++		// interface right-to-left writes right-to-left.
++		return isRtlLanguage(platform.language) ? 'rtl' : 'ltr';
++	}
++}
++
++//#endregion
++
+ //#region effectiveExperimentalEditContext
+ 
+ class EffectiveEditContextEnabled extends ComputedEditorOption<EditorOption.effectiveEditContext, boolean> {
+@@ -2612,6 +2661,7 @@ export interface IMinimapLayoutInput {
+ 	readonly viewLineCount: number;
+ 	readonly remainingWidth: number;
+ 	readonly isViewportWrapping: boolean;
++	readonly isRtl: boolean;
+ }
+ 
+ /**
+@@ -2855,7 +2905,10 @@ export class EditorLayoutInfoComputer extends ComputedEditorOption<EditorOption.
+ 		minimapCanvasInnerWidth = Math.floor(minimapCanvasInnerWidth * minimapWidthMultiplier);
+ 
+ 		const renderMinimap = (minimapRenderCharacters ? RenderMinimap.Text : RenderMinimap.Blocks);
+-		const minimapLeft = (minimapSide === 'left' ? 0 : (outerWidth - minimapWidth - verticalScrollbarWidth));
++		// In a right-to-left layout the minimap is always rendered flush with the physical left edge
++		// (see `Minimap#render`) and `minimap.side` is not honored. The remaining offsets are therefore
++		// computed as if the minimap were on the trailing side, i.e. measured from the leading edge.
++		const minimapLeft = (!input.isRtl && minimapSide === 'left' ? 0 : (outerWidth - minimapWidth - verticalScrollbarWidth));
+ 
+ 		return {
+ 			renderMinimap,
+@@ -2895,6 +2948,7 @@ export class EditorLayoutInfoComputer extends ComputedEditorOption<EditorOption.
+ 		const scrollBeyondLastLine = options.get(EditorOption.scrollBeyondLastLine);
+ 		const padding = options.get(EditorOption.padding);
+ 		const minimap = options.get(EditorOption.minimap);
++		const isRtl = options.get(EditorOption.effectiveTextDirection) === 'rtl';
+ 
+ 		const scrollbar = options.get(EditorOption.scrollbar);
+ 		const verticalScrollbarWidth = scrollbar.verticalScrollbarSize;
+@@ -2956,9 +3010,10 @@ export class EditorLayoutInfoComputer extends ComputedEditorOption<EditorOption.
+ 			viewLineCount: viewLineCount,
+ 			remainingWidth: remainingWidth,
+ 			isViewportWrapping: isViewportWrapping,
++			isRtl: isRtl,
+ 		}, env.memory || new ComputeOptionsMemory());
+ 
+-		if (minimapLayout.renderMinimap !== RenderMinimap.None && minimapLayout.minimapLeft === 0) {
++		if (!isRtl && minimapLayout.renderMinimap !== RenderMinimap.None && minimapLayout.minimapLeft === 0) {
+ 			// the minimap is rendered to the left, so move everything to the right
+ 			glyphMarginLeft += minimapLayout.minimapWidth;
+ 			lineNumbersLeft += minimapLayout.minimapWidth;
+@@ -5912,6 +5967,7 @@ export const enum EditorOption {
+ 	suggestSelection,
+ 	tabCompletion,
+ 	tabIndex,
++	textDirection,
+ 	trimWhitespaceOnDelete,
+ 	unicodeHighlighting,
+ 	unusualLineTerminators,
+@@ -5934,6 +5990,7 @@ export const enum EditorOption {
+ 	wrapOnEscapedLineFeeds,
+ 	// Leave these at the end (because they have dependencies!)
+ 	effectiveCursorStyle,
++	effectiveTextDirection,
+ 	editorClassName,
+ 	pixelRatio,
+ 	tabFocusMode,
+@@ -6722,6 +6779,19 @@ export const EditorOptions = {
+ 		EditorOption.tabIndex, 'tabIndex',
+ 		0, -1, Constants.MAX_SAFE_SMALL_INTEGER
+ 	)),
++	textDirection: register(new EditorStringEnumOption(
++		EditorOption.textDirection, 'textDirection',
++		'auto' as 'auto' | 'ltr' | 'rtl',
++		['auto', 'ltr', 'rtl'] as const,
++		{
++			enumDescriptions: [
++				nls.localize('textDirection.auto', "Follow the language the user interface is displayed in, unless a line declares its own direction."),
++				nls.localize('textDirection.ltr', "Every line is laid out left-to-right."),
++				nls.localize('textDirection.rtl', "Every line is laid out right-to-left and the editor mirrors its layout: line numbers and glyph margin move to the right, the minimap to the left."),
++			],
++			description: nls.localize('textDirection', "Controls the text direction (RTL/LTR) of the editor contents. Set to 'rtl' when writing code in a right-to-left script such as Arabic, Hebrew, Persian or Urdu: the lines then flow from the right and the editor mirrors its layout. This affects the contents of the editor only, the layout of the window is unchanged.")
++		}
++	)),
+ 	trimWhitespaceOnDelete: register(new EditorBooleanOption(
+ 		EditorOption.trimWhitespaceOnDelete, 'trimWhitespaceOnDelete', false,
+ 		{ description: nls.localize('trimWhitespaceOnDelete', "Controls whether the editor will also delete the next line's indentation whitespace when deleting a newline.") }
+@@ -6835,6 +6905,7 @@ export const EditorOptions = {
+ 
+ 	// Leave these at the end (because they have dependencies!)
+ 	effectiveCursorStyle: register(new EffectiveCursorStyle()),
++	effectiveTextDirection: register(new EffectiveTextDirection()),
+ 	editorClassName: register(new EditorClassName()),
+ 	defaultColorDecorators: register(new EditorStringEnumOption(
+ 		EditorOption.defaultColorDecorators, 'defaultColorDecorators', 'auto' as 'auto' | 'always' | 'never',
+diff --git a/src/vs/editor/common/standalone/standaloneEnums.ts b/src/vs/editor/common/standalone/standaloneEnums.ts
+index cb0db8b2..723bf0fc 100644
+--- a/src/vs/editor/common/standalone/standaloneEnums.ts
++++ b/src/vs/editor/common/standalone/standaloneEnums.ts
+@@ -315,39 +315,41 @@ export enum EditorOption {
+ 	suggestSelection = 138,
+ 	tabCompletion = 139,
+ 	tabIndex = 140,
+-	trimWhitespaceOnDelete = 141,
+-	unicodeHighlighting = 142,
+-	unusualLineTerminators = 143,
+-	useShadowDOM = 144,
+-	useTabStops = 145,
+-	wordBreak = 146,
+-	wordSegmenterLocales = 147,
+-	wordSeparators = 148,
+-	wordWrap = 149,
+-	wordWrapBreakAfterCharacters = 150,
+-	wordWrapBreakBeforeCharacters = 151,
+-	wordWrapColumn = 152,
+-	wordWrapOverride1 = 153,
+-	wordWrapOverride2 = 154,
+-	wrappingIndent = 155,
+-	wrappingStrategy = 156,
+-	showDeprecated = 157,
+-	inertialScroll = 158,
+-	inlayHints = 159,
+-	wrapOnEscapedLineFeeds = 160,
+-	effectiveCursorStyle = 161,
+-	editorClassName = 162,
+-	pixelRatio = 163,
+-	tabFocusMode = 164,
+-	layoutInfo = 165,
+-	wrappingInfo = 166,
+-	defaultColorDecorators = 167,
+-	colorDecoratorsActivatedOn = 168,
+-	inlineCompletionsAccessibilityVerbose = 169,
+-	effectiveEditContext = 170,
+-	scrollOnMiddleClick = 171,
+-	effectiveAllowVariableFonts = 172,
+-	doubleClickSelectsBlock = 173
++	textDirection = 141,
++	trimWhitespaceOnDelete = 142,
++	unicodeHighlighting = 143,
++	unusualLineTerminators = 144,
++	useShadowDOM = 145,
++	useTabStops = 146,
++	wordBreak = 147,
++	wordSegmenterLocales = 148,
++	wordSeparators = 149,
++	wordWrap = 150,
++	wordWrapBreakAfterCharacters = 151,
++	wordWrapBreakBeforeCharacters = 152,
++	wordWrapColumn = 153,
++	wordWrapOverride1 = 154,
++	wordWrapOverride2 = 155,
++	wrappingIndent = 156,
++	wrappingStrategy = 157,
++	showDeprecated = 158,
++	inertialScroll = 159,
++	inlayHints = 160,
++	wrapOnEscapedLineFeeds = 161,
++	effectiveCursorStyle = 162,
++	effectiveTextDirection = 163,
++	editorClassName = 164,
++	pixelRatio = 165,
++	tabFocusMode = 166,
++	layoutInfo = 167,
++	wrappingInfo = 168,
++	defaultColorDecorators = 169,
++	colorDecoratorsActivatedOn = 170,
++	inlineCompletionsAccessibilityVerbose = 171,
++	effectiveEditContext = 172,
++	scrollOnMiddleClick = 173,
++	effectiveAllowVariableFonts = 174,
++	doubleClickSelectsBlock = 175
+ }
+ 
+ /**
+diff --git a/src/vs/editor/common/viewLayout/viewLayout.ts b/src/vs/editor/common/viewLayout/viewLayout.ts
+index e64482e1..bc9fe865 100644
+--- a/src/vs/editor/common/viewLayout/viewLayout.ts
++++ b/src/vs/editor/common/viewLayout/viewLayout.ts
+@@ -159,6 +159,11 @@ export class ViewLayout extends Disposable implements IViewLayout {
+ 	private readonly _linesLayout: LinesLayout;
+ 	private _maxLineWidth: number;
+ 	private _overlayWidgetsMinWidth: number;
++	/**
++	 * Whether the horizontal scroll position has been set explicitly (by the user, by a reveal or by
++	 * a restored view state). Until then, a right-to-left editor anchors it to the right by itself.
++	 */
++	private _horizontalPositionIsOwned: boolean;
+ 
+ 	private readonly _scrollable: EditorScrollable;
+ 	public readonly onDidScroll: Event<ScrollEvent>;
+@@ -175,6 +180,7 @@ export class ViewLayout extends Disposable implements IViewLayout {
+ 		this._linesLayout = new LinesLayout(lineCount, options.get(EditorOption.lineHeight), padding.top, padding.bottom, customLineHeightData);
+ 		this._maxLineWidth = 0;
+ 		this._overlayWidgetsMinWidth = 0;
++		this._horizontalPositionIsOwned = false;
+ 
+ 		this._scrollable = this._register(new EditorScrollable(0, scheduleAtNextAnimationFrame));
+ 		this._configureSmoothScrollDuration();
+@@ -352,6 +358,16 @@ export class ViewLayout extends Disposable implements IViewLayout {
+ 			scrollDimensions.contentHeight
+ 		));
+ 
++		if (!this._horizontalPositionIsOwned && this._configuration.options.get(EditorOption.effectiveTextDirection) === 'rtl') {
++			// Every line is as wide as the widest line and right-to-left lines are aligned with the right
++			// edge of that box. As long as nobody has taken ownership of the horizontal position, the
++			// viewport would show the left (empty) end of the short lines, so anchor it to the right.
++			const dimensions = this._scrollable.getScrollDimensions();
++			if (dimensions.contentWidth > dimensions.width) {
++				this._scrollable.setScrollPositionNow({ scrollLeft: dimensions.contentWidth - dimensions.width });
++			}
++		}
++
+ 		// The height might depend on the fact that there is a horizontal scrollbar or not
+ 		this._updateHeight();
+ 	}
+@@ -469,6 +485,11 @@ export class ViewLayout extends Disposable implements IViewLayout {
+ 	}
+ 
+ 	public setScrollPosition(position: INewScrollPosition, type: ScrollType): void {
++		if (typeof position.scrollLeft === 'number') {
++			// Somebody (the user, a reveal, a restored view state) owns the horizontal position now,
++			// so the editor must no longer anchor it by itself. See `_updateContentWidth`.
++			this._horizontalPositionIsOwned = true;
++		}
+ 		if (type === ScrollType.Immediate) {
+ 			this._scrollable.setScrollPositionNow(position);
+ 		} else {
+@@ -481,6 +502,9 @@ export class ViewLayout extends Disposable implements IViewLayout {
+ 	}
+ 
+ 	public deltaScrollNow(deltaScrollLeft: number, deltaScrollTop: number): void {
++		if (deltaScrollLeft !== 0) {
++			this._horizontalPositionIsOwned = true;
++		}
+ 		const currentScrollPosition = this._scrollable.getCurrentScrollPosition();
+ 		this._scrollable.setScrollPositionNow({
+ 			scrollLeft: currentScrollPosition.scrollLeft + deltaScrollLeft,
+diff --git a/src/vs/editor/common/viewModel/viewModelImpl.ts b/src/vs/editor/common/viewModel/viewModelImpl.ts
+index abbd44aa..c708d834 100644
+--- a/src/vs/editor/common/viewModel/viewModelImpl.ts
++++ b/src/vs/editor/common/viewModel/viewModelImpl.ts
+@@ -291,6 +291,11 @@ export class ViewModel extends Disposable implements IViewModel {
+ 			this._updateConfigurationViewLineCount.schedule();
+ 		}
+ 
++		if (e.hasChanged(EditorOption.effectiveTextDirection)) {
++			// The direction is baked into the rendered lines, so they must all be rendered again.
++			eventsCollector.emitViewEvent(new viewEvents.ViewFlushedEvent());
++		}
++
+ 		if (e.hasChanged(EditorOption.readOnly)) {
+ 			// Must read again all decorations due to readOnly filtering
+ 			this._decorations.reset();
+@@ -869,7 +874,11 @@ export class ViewModel extends Disposable implements IViewModel {
+ 			}
+ 		}
+ 
+-		return rtlCount > 0 ? TextDirection.RTL : TextDirection.LTR;
++		if (rtlCount !== 0) {
++			// A decoration declares the direction of this line explicitly.
++			return rtlCount > 0 ? TextDirection.RTL : TextDirection.LTR;
++		}
++		return this._configuration.options.get(EditorOption.effectiveTextDirection) === 'rtl' ? TextDirection.RTL : TextDirection.LTR;
+ 	}
+ 
+ 	public getTextDirection(lineNumber: number): TextDirection {
+diff --git a/src/vs/editor/contrib/stickyScroll/browser/stickyScroll.css b/src/vs/editor/contrib/stickyScroll/browser/stickyScroll.css
+index ecc59245..5abaede5 100644
+--- a/src/vs/editor/contrib/stickyScroll/browser/stickyScroll.css
++++ b/src/vs/editor/contrib/stickyScroll/browser/stickyScroll.css
+@@ -71,3 +71,18 @@
+ 	background-color: var(--vscode-editorStickyScrollHover-background);
+ 	cursor: pointer;
+ }
++
++/*
++ * `textDirection: 'rtl'`: the sticky widget lays itself out with floats, so mirroring it is a matter
++ * of floating the line numbers to the right - the line container (absolutely positioned with
++ * `left: auto`) then follows to the left. Unlike the lines of the editor, sticky lines are rendered
++ * through `renderViewLine` directly and carry no `dir` attribute of their own, so the direction of
++ * their text is set here.
++ */
++.monaco-editor.text-direction-rtl .sticky-widget .sticky-widget-line-numbers {
++	float: right;
++}
++
++.monaco-editor.text-direction-rtl .sticky-widget .sticky-line-content {
++	direction: rtl;
++}
+diff --git a/src/vs/editor/contrib/suggest/browser/media/suggest.css b/src/vs/editor/contrib/suggest/browser/media/suggest.css
+index 70f27a8f..d46438e9 100644
+--- a/src/vs/editor/contrib/suggest/browser/media/suggest.css
++++ b/src/vs/editor/contrib/suggest/browser/media/suggest.css
+@@ -466,3 +466,8 @@
+ .monaco-editor .suggest-details p code {
+ 	font-family: var(--monaco-monospace-font);
+ }
++
++/* `textDirection: 'rtl'`: mirror the suggest widget (icon and label lead, details trail). */
++.monaco-editor.text-direction-rtl .suggest-widget {
++	direction: rtl;
++}
+diff --git a/src/vs/editor/contrib/textDirection/browser/textDirection.ts b/src/vs/editor/contrib/textDirection/browser/textDirection.ts
+new file mode 100644
+index 00000000..0557d7ba
+--- /dev/null
++++ b/src/vs/editor/contrib/textDirection/browser/textDirection.ts
+@@ -0,0 +1,44 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { alert } from '../../../../base/browser/ui/aria/aria.js';
++import * as nls from '../../../../nls.js';
++import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
++import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
++import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
++
++/**
++ * Flips `editor.textDirection` between `'rtl'` and `'auto'`. Without a command, the setting is only
++ * reachable by somebody who already knows its name - which is the wrong way around for a setting
++ * whose whole purpose is to make the editor usable for people writing right-to-left.
++ */
++export class ToggleTextDirectionAction extends Action2 {
++
++	public static readonly ID = 'editor.action.toggleTextDirection';
++
++	constructor() {
++		super({
++			id: ToggleTextDirectionAction.ID,
++			title: nls.localize2('toggleTextDirection', "Toggle Editor Text Direction (Right-to-Left)"),
++			precondition: undefined,
++			metadata: {
++				description: nls.localize2('toggleTextDirectionDescription', "Switches `editor.textDirection` between 'rtl' and 'auto'. In 'rtl' the lines flow from the right and the editor mirrors its layout."),
++			},
++			f1: true
++		});
++	}
++
++	public async run(accessor: ServicesAccessor): Promise<void> {
++		const configurationService = accessor.get(IConfigurationService);
++		const current = configurationService.getValue<string>('editor.textDirection');
++		const next = current === 'rtl' ? 'auto' : 'rtl';
++		await configurationService.updateValue('editor.textDirection', next, ConfigurationTarget.USER);
++		alert(next === 'rtl'
++			? nls.localize('toggleTextDirection.rtl', "The editor now lays out its text right-to-left")
++			: nls.localize('toggleTextDirection.auto', "The editor now follows the direction of the display language"));
++	}
++}
++
++registerAction2(ToggleTextDirectionAction);
+diff --git a/src/vs/editor/editor.all.ts b/src/vs/editor/editor.all.ts
+index 4802aeb1..6e8e699b 100644
+--- a/src/vs/editor/editor.all.ts
++++ b/src/vs/editor/editor.all.ts
+@@ -56,6 +56,7 @@ import './contrib/stickyScroll/browser/stickyScrollContribution.js';
+ import './contrib/suggest/browser/suggestController.js';
+ import './contrib/suggest/browser/suggestInlineCompletions.js';
+ import './contrib/tokenization/browser/tokenization.js';
++import './contrib/textDirection/browser/textDirection.js';
+ import './contrib/toggleTabFocusMode/browser/toggleTabFocusMode.js';
+ import './contrib/unicodeHighlighter/browser/unicodeHighlighter.js';
+ import './contrib/unusualLineTerminators/browser/unusualLineTerminators.js';
+diff --git a/src/vs/editor/test/browser/config/editorLayoutProvider.test.ts b/src/vs/editor/test/browser/config/editorLayoutProvider.test.ts
+index 0d516e35..ede011c3 100644
+--- a/src/vs/editor/test/browser/config/editorLayoutProvider.test.ts
++++ b/src/vs/editor/test/browser/config/editorLayoutProvider.test.ts
+@@ -34,6 +34,7 @@ interface IEditorLayoutProviderOpts {
+ 	readonly minimapSide: 'left' | 'right';
+ 	readonly minimapRenderCharacters: boolean;
+ 	readonly minimapMaxColumn: number;
++	readonly textDirection?: 'auto' | 'ltr' | 'rtl';
+ 	minimapSize?: 'proportional' | 'fill' | 'fit';
+ 	readonly pixelRatio: number;
+ }
+@@ -43,6 +44,10 @@ suite('Editor ViewLayout - EditorLayoutProvider', () => {
+ 	ensureNoDisposablesAreLeakedInTestSuite();
+ 
+ 	function doTest(input: IEditorLayoutProviderOpts, expected: EditorLayoutInfo): void {
++		assert.deepStrictEqual(computeLayout(input), expected);
++	}
++
++	function computeLayout(input: IEditorLayoutProviderOpts): EditorLayoutInfo {
+ 		const options = new ComputedEditorOptions();
+ 		options._write(EditorOption.glyphMargin, input.showGlyphMargin);
+ 		options._write(EditorOption.lineNumbersMinChars, input.lineNumbersMinChars);
+@@ -93,6 +98,7 @@ suite('Editor ViewLayout - EditorLayoutProvider', () => {
+ 		options._write(EditorOption.wordWrapOverride1, 'inherit');
+ 		options._write(EditorOption.wordWrapOverride2, 'inherit');
+ 		options._write(EditorOption.accessibilitySupport, 'auto');
++		options._write(EditorOption.textDirection, input.textDirection ?? 'auto');
+ 
+ 		const actual = EditorLayoutInfoComputer.computeLayout(options, {
+ 			memory: null,
+@@ -107,7 +113,7 @@ suite('Editor ViewLayout - EditorLayoutProvider', () => {
+ 			pixelRatio: input.pixelRatio,
+ 			glyphMarginDecorationLaneCount: 1,
+ 		});
+-		assert.deepStrictEqual(actual, expected);
++		return actual;
+ 	}
+ 
+ 	test('EditorLayoutProvider 1', () => {
+@@ -1429,4 +1435,42 @@ suite('Editor ViewLayout - EditorLayoutProvider', () => {
+ 		});
+ 
+ 	});
++
++	test('textDirection rtl: the layout is computed from the leading edge and ignores minimap.side', () => {
++		const input: IEditorLayoutProviderOpts = {
++			outerWidth: 1000,
++			outerHeight: 800,
++			showGlyphMargin: true,
++			lineHeight: 16,
++			showLineNumbers: true,
++			lineNumbersMinChars: 5,
++			lineNumbersDigitCount: 5,
++			lineDecorationsWidth: 10,
++			typicalHalfwidthCharacterWidth: 10,
++			maxDigitWidth: 10,
++			verticalScrollbarWidth: 14,
++			horizontalScrollbarHeight: 10,
++			scrollbarArrowSize: 11,
++			verticalScrollbarHasArrows: false,
++			minimap: true,
++			minimapSide: 'right',
++			minimapRenderCharacters: true,
++			minimapMaxColumn: 150,
++			pixelRatio: 1,
++		};
++
++		// In a right-to-left layout the minimap is rendered on the physical left by the view part, but
++		// the offsets are computed as if it were on the trailing side, so that `contentLeft` keeps
++		// measuring the width of the margin strip only.
++		const ltr = computeLayout({ ...input, textDirection: 'ltr' });
++		const rtl = computeLayout({ ...input, textDirection: 'rtl' });
++		assert.deepStrictEqual(rtl, ltr);
++
++		// ... and `minimap.side` does not move anything around, unlike in a left-to-right layout.
++		const rtlMinimapLeft = computeLayout({ ...input, minimapSide: 'left', textDirection: 'rtl' });
++		const ltrMinimapLeft = computeLayout({ ...input, minimapSide: 'left', textDirection: 'ltr' });
++		assert.deepStrictEqual(rtlMinimapLeft, rtl);
++		assert.strictEqual(ltrMinimapLeft.minimap.minimapLeft, 0);
++		assert.strictEqual(ltrMinimapLeft.contentLeft, rtl.contentLeft + rtl.minimap.minimapWidth);
++	});
+ });
+diff --git a/src/vs/monaco.d.ts b/src/vs/monaco.d.ts
+index 5b0047e7..35b9deae 100644
+--- a/src/vs/monaco.d.ts
++++ b/src/vs/monaco.d.ts
+@@ -3239,6 +3239,15 @@ declare namespace monaco.editor {
+ 		 * The `tabindex` property of the editor's textarea
+ 		 */
+ 		tabIndex?: number;
++		/**
++		 * Controls the text direction of the editor contents.
++		 *  - `'auto'`: the direction of each line is derived from its decorations (current behavior).
++		 *  - `'ltr'`: every line is laid out left-to-right.
++		 *  - `'rtl'`: every line is laid out right-to-left and the editor mirrors its own layout
++		 *    (line numbers and glyph margin on the right, minimap on the left).
++		 * Defaults to 'auto'.
++		 */
++		textDirection?: 'auto' | 'ltr' | 'rtl';
+ 		/**
+ 		 * Render vertical lines at the specified columns.
+ 		 * Defaults to empty array.
+@@ -5225,39 +5234,41 @@ declare namespace monaco.editor {
+ 		suggestSelection = 138,
+ 		tabCompletion = 139,
+ 		tabIndex = 140,
+-		trimWhitespaceOnDelete = 141,
+-		unicodeHighlighting = 142,
+-		unusualLineTerminators = 143,
+-		useShadowDOM = 144,
+-		useTabStops = 145,
+-		wordBreak = 146,
+-		wordSegmenterLocales = 147,
+-		wordSeparators = 148,
+-		wordWrap = 149,
+-		wordWrapBreakAfterCharacters = 150,
+-		wordWrapBreakBeforeCharacters = 151,
+-		wordWrapColumn = 152,
+-		wordWrapOverride1 = 153,
+-		wordWrapOverride2 = 154,
+-		wrappingIndent = 155,
+-		wrappingStrategy = 156,
+-		showDeprecated = 157,
+-		inertialScroll = 158,
+-		inlayHints = 159,
+-		wrapOnEscapedLineFeeds = 160,
+-		effectiveCursorStyle = 161,
+-		editorClassName = 162,
+-		pixelRatio = 163,
+-		tabFocusMode = 164,
+-		layoutInfo = 165,
+-		wrappingInfo = 166,
+-		defaultColorDecorators = 167,
+-		colorDecoratorsActivatedOn = 168,
+-		inlineCompletionsAccessibilityVerbose = 169,
+-		effectiveEditContext = 170,
+-		scrollOnMiddleClick = 171,
+-		effectiveAllowVariableFonts = 172,
+-		doubleClickSelectsBlock = 173
++		textDirection = 141,
++		trimWhitespaceOnDelete = 142,
++		unicodeHighlighting = 143,
++		unusualLineTerminators = 144,
++		useShadowDOM = 145,
++		useTabStops = 146,
++		wordBreak = 147,
++		wordSegmenterLocales = 148,
++		wordSeparators = 149,
++		wordWrap = 150,
++		wordWrapBreakAfterCharacters = 151,
++		wordWrapBreakBeforeCharacters = 152,
++		wordWrapColumn = 153,
++		wordWrapOverride1 = 154,
++		wordWrapOverride2 = 155,
++		wrappingIndent = 156,
++		wrappingStrategy = 157,
++		showDeprecated = 158,
++		inertialScroll = 159,
++		inlayHints = 160,
++		wrapOnEscapedLineFeeds = 161,
++		effectiveCursorStyle = 162,
++		effectiveTextDirection = 163,
++		editorClassName = 164,
++		pixelRatio = 165,
++		tabFocusMode = 166,
++		layoutInfo = 167,
++		wrappingInfo = 168,
++		defaultColorDecorators = 169,
++		colorDecoratorsActivatedOn = 170,
++		inlineCompletionsAccessibilityVerbose = 171,
++		effectiveEditContext = 172,
++		scrollOnMiddleClick = 173,
++		effectiveAllowVariableFonts = 174,
++		doubleClickSelectsBlock = 175
+ 	}
+ 
+ 	export const EditorOptions: {
+@@ -5409,9 +5420,10 @@ declare namespace monaco.editor {
+ 		suggestSelection: IEditorOption<EditorOption.suggestSelection, 'first' | 'recentlyUsed' | 'recentlyUsedByPrefix'>;
+ 		tabCompletion: IEditorOption<EditorOption.tabCompletion, 'on' | 'off' | 'onlySnippets'>;
+ 		tabIndex: IEditorOption<EditorOption.tabIndex, number>;
++		textDirection: IEditorOption<EditorOption.textDirection, 'auto' | 'ltr' | 'rtl'>;
+ 		trimWhitespaceOnDelete: IEditorOption<EditorOption.trimWhitespaceOnDelete, boolean>;
+ 		unicodeHighlight: IEditorOption<EditorOption.unicodeHighlighting, Required<Readonly<IUnicodeHighlightOptions>>>;
+-		unusualLineTerminators: IEditorOption<EditorOption.unusualLineTerminators, 'off' | 'auto' | 'prompt'>;
++		unusualLineTerminators: IEditorOption<EditorOption.unusualLineTerminators, 'auto' | 'off' | 'prompt'>;
+ 		useShadowDOM: IEditorOption<EditorOption.useShadowDOM, boolean>;
+ 		useTabStops: IEditorOption<EditorOption.useTabStops, boolean>;
+ 		wordBreak: IEditorOption<EditorOption.wordBreak, 'normal' | 'keepAll'>;
+@@ -5425,6 +5437,7 @@ declare namespace monaco.editor {
+ 		wordWrapOverride2: IEditorOption<EditorOption.wordWrapOverride2, 'on' | 'off' | 'inherit'>;
+ 		wrapOnEscapedLineFeeds: IEditorOption<EditorOption.wrapOnEscapedLineFeeds, boolean>;
+ 		effectiveCursorStyle: IEditorOption<EditorOption.effectiveCursorStyle, TextEditorCursorStyle>;
++		effectiveTextDirection: IEditorOption<EditorOption.effectiveTextDirection, 'ltr' | 'rtl'>;
+ 		editorClassName: IEditorOption<EditorOption.editorClassName, string>;
+ 		defaultColorDecorators: IEditorOption<EditorOption.defaultColorDecorators, 'auto' | 'always' | 'never'>;
+ 		pixelRatio: IEditorOption<EditorOption.pixelRatio, number>;

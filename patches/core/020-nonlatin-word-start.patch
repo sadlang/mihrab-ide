@@ -1,0 +1,84 @@
+diff --git a/src/vs/base/common/filters.ts b/src/vs/base/common/filters.ts
+index d7f1680a..57284667 100644
+--- a/src/vs/base/common/filters.ts
++++ b/src/vs/base/common/filters.ts
+@@ -628,6 +628,33 @@ function isUpperCaseAtPos(pos: number, word: string, wordLow: string): boolean {
+ 	return word[pos] !== wordLow[pos];
+ }
+ 
++const enum ArabicCharCode {
++	Alef = 0x0627,
++	Lam = 0x0644,
++}
++
++/**
++ * Whether `index` starts a stem that follows the Arabic definite article (`ال`).
++ *
++ * Scripts without letter case have no `camelCase` boundary to mark where a word starts
++ * inside an identifier. Arabic instead attaches the definite article to the noun, so the
++ * article is exactly the marker that an upper-case letter is in `submitButton`: the stem
++ * of `نصاب_الفضة` starts at `فضة` the same way the second word of `SubmitButton` starts
++ * at `Button`, and users type the stem alone in both cases.
++ *
++ * The article only counts where it is itself at the start of a segment, so the trailing
++ * `ال` of a word such as `مالك` is not treated as one.
++ */
++function isAfterDefiniteArticleAtPos(value: string, index: number): boolean {
++	if (index < 2 || index >= value.length) {
++		return false;
++	}
++	if (value.charCodeAt(index - 2) !== ArabicCharCode.Alef || value.charCodeAt(index - 1) !== ArabicCharCode.Lam) {
++		return false;
++	}
++	return index === 2 || isSeparatorAtPos(value, index - 3) || isWhitespaceAtPos(value, index - 3);
++}
++
+ export function isPatternInWord(patternLow: string, patternPos: number, patternLen: number, wordLow: string, wordPos: number, wordLen: number, fillMinWordPosArr = false): boolean {
+ 	while (patternPos < patternLen && wordPos < wordLen) {
+ 		if (patternLow[patternPos] === wordLow[wordPos]) {
+@@ -877,6 +904,12 @@ function _doScore(
+ 		//                              ^^^
+ 		score = 5;
+ 		isGapLocation = true;
++
++	} else if (isAfterDefiniteArticleAtPos(wordLow, wordPos)) {
++		// post definite article: `فضة <-> نصاب_الفضة`
++		//                                       ^^^
++		score = 5;
++		isGapLocation = true;
+ 	}
+ 
+ 	if (score > 1 && patternPos === patternStart) {
+@@ -884,7 +917,7 @@ function _doScore(
+ 	}
+ 
+ 	if (!isGapLocation) {
+-		isGapLocation = isUpperCaseAtPos(wordPos, word, wordLow) || isSeparatorAtPos(wordLow, wordPos - 1) || isWhitespaceAtPos(wordLow, wordPos - 1);
++		isGapLocation = isUpperCaseAtPos(wordPos, word, wordLow) || isSeparatorAtPos(wordLow, wordPos - 1) || isWhitespaceAtPos(wordLow, wordPos - 1) || isAfterDefiniteArticleAtPos(wordLow, wordPos);
+ 	}
+ 
+ 	//
+diff --git a/src/vs/base/test/common/filters.test.ts b/src/vs/base/test/common/filters.test.ts
+index 26b63a5a..21534863 100644
+--- a/src/vs/base/test/common/filters.test.ts
++++ b/src/vs/base/test/common/filters.test.ts
+@@ -297,6 +297,19 @@ suite('Filters', () => {
+ 		assertMatches('WordCCla', 'WordCharacterClassifier', '^W^o^r^d^Character^C^l^assifier', fuzzyScore);
+ 	});
+ 
++	test('fuzzyScore, word start after the Arabic definite article', function () {
++		// A script without letter case marks the second word of an identifier with the
++		// definite article instead of a capital, and users type the stem without it -
++		// just like `Btn` is typed for `SubmitButton`.
++		assertMatches('فضة', 'نصاب_الفضة', 'نصاب_ال^ف^ض^ة', fuzzyScore);
++		assertMatches('زكاة', 'حساب_الزكاة', 'حساب_ال^ز^ك^ا^ة', fuzzyScore);
++		assertMatches('الفضة', 'نصاب_الفضة', 'نصاب_^ا^ل^ف^ض^ة', fuzzyScore);
++		// ...but only where the article itself starts a segment: the trailing `ال` of
++		// `مالك` is part of the stem, so `لك` remains a weak match.
++		assertMatches('لك', 'مالك', undefined, fuzzyScore);
++		assertMatches('حساب', 'حساب_الزكاة', '^ح^س^ا^ب_الزكاة', fuzzyScore);
++	});
++
+ 	test('fuzzyScore, #23332', function () {
+ 		assertMatches('dete', '"editor.quickSuggestionsDelay"', undefined, fuzzyScore);
+ 	});

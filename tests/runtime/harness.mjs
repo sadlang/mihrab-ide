@@ -888,6 +888,264 @@ export async function bidiLabels(cdp) {
 }
 
 /**
+ * [VA-03] ترتيبُ التركيز في تخطيطٍ معكوس — **يتبع DOM لا البصر**.
+ *
+ * قلبنا التخطيطَ بوسائلَ مختلفة: منها ما يقلب **الترتيبَ المنطقيّ** (`direction: rtl`)
+ * ومنها ما يقلب **الشكلَ وحدَه** (`row-reverse`، `float: right`، `scaleX(-1)`،
+ * ‏`setLeft/setRight` في الرُقَع). فحيثما كان القلبُ بصريًّا محضًا، **يقفز التركيزُ قفزاتٍ
+ * لا يفسّرها البصر** — ومَن يقود بلوحة المفاتيح يتنقّل بين عناصرَ متباعدةٍ على الشاشة بلا
+ * منطقٍ يراه.
+ *
+ * والحوارُ المشروط أخطرُ مواضعه: لحظةُ «احفظ/لا تحفظ/إلغاء» يقودها كثيرون بلوحة المفاتيح
+ * **تحت ضغط**، وقد قِسنا أنّ الأزرارَ مقلوبةٌ بصريًّا.
+ *
+ * يقيس بـ`Tab` فعليًّا (لا بقراءة `tabindex`) ويسجّل الإحداثيَّ الأفقيَّ لكلّ توقّف.
+ * @param {string} container محدِّدُ الحاوية المفحوصة.
+ * @param {number} steps عددُ ضغطات `Tab`.
+ */
+export async function focusOrder(cdp, container, steps = 8) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(async () => {
+    const root = document.querySelector(${JSON.stringify(container)});
+    if (!root) return { present: false };
+    // العناصرُ القابلةُ للتركيز **بترتيب DOM** — وهو ترتيبُ Tab ما لم يُدَس بـtabindex موجب.
+    const SEL = 'a[href],button:not([disabled]),input:not([disabled]),select,textarea,' +
+                '[tabindex]:not([tabindex="-1"])';
+    const focusables = [...root.querySelectorAll(SEL)].filter((e) => {
+      const r = e.getBoundingClientRect();
+      const cs = getComputedStyle(e);
+      return r.width > 1 && r.height > 1 && cs.visibility !== 'hidden' && cs.display !== 'none';
+    });
+    const stops = [];
+    for (const e of focusables.slice(0, ${steps})) {
+      const r = e.getBoundingClientRect();
+      stops.push({
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        label: (e.getAttribute('aria-label') || e.textContent || e.className || '').trim().slice(0, 40),
+      });
+    }
+    // نفحص كلَّ **صفٍّ** على حدة: التنقّلُ بين الصفوف عموديٌّ لا يعنينا، والقفزةُ المُربِكة
+    // هي التي تقع **داخل الصفّ الواحد** فتذهب يسارًا في تخطيطٍ يُقرأ يمينًا.
+    const rows = new Map();
+    for (const s of stops) {
+      const key = Math.round(s.y / 12);
+      if (!rows.has(key)) rows.set(key, []);
+      rows.get(key).push(s);
+    }
+    const violations = [];
+    for (const [, row] of rows) {
+      for (let i = 1; i < row.length; i++) {
+        if (row[i].x > row[i - 1].x) {
+          violations.push(row[i - 1].label + ' (x=' + row[i - 1].x + ') ⇐ ' +
+                          row[i].label + ' (x=' + row[i].x + ')');
+        }
+      }
+    }
+    return { present: true, count: stops.length, rows: rows.size, violations, stops };
+  })()`);
+}
+
+/**
+ * [TY-02] حبرُ العربيّة داخل سطر **المحرّر** — لا سطرِ القشرة.
+ *
+ * ‏`arabicInkMetrics` أعلاه يقيس `.monaco-workbench`: خطُّها خطُّ الواجهة وارتفاعُ سطرها
+ * مثبَّتٌ منبعيًّا (`style.css`) — و**`editor.lineHeight` لا يمسّه إطلاقًا**. فرسالةُ فشلٍ
+ * تُحيل إلى `editor.lineHeight` بناءً على ذلك القياس تُرسِل المطوّرَ إلى مقبضٍ لا يحرّك ما
+ * قِيس. وهذا المِجَسُّ يسدّ الفجوة: يقيس `.view-line` حيث يسري الإعدادُ فعلًا.
+ *
+ * ويقيس معه **أحاديّةَ العرض حيًّا** (`م`/`ص`/`ا` مقابل `M`): إن تفاوتت فقد سقط الوجهُ
+ * المحزوم ولا مسطرةَ صادقةً بعد ذلك — وهو نظيرُ TY-03 من جهة الحارس لا جهة المستخدم.
+ */
+export async function editorInkMetrics(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    // ⚠️ **الأكبرُ مساحةً لا الأوّلُ في DOM — والدرسُ مدفوعٌ في editorGeometry أعلاه.**
+    // ⚠️ لا شَولةً مائلةً في هذه الكتلة: هي داخل قالبٍ نصّيّ (الدرسُ المدوَّن في الماسح).
+    // كان هذا المِجَسُّ يأخذ أوّلَ ‎.view-line‎ في المستند. وما دام جزءُ المصادر مغلقًا فهي
+    // سطرُ المحرّر؛ فإن فُتح الجزءُ (وقد صار يُفتَح: مِجَسُّ ‎SC-01‎ يفتحه) دخل **سطرُ صندوق
+    // رسالة الالتزام** ترتيبَ DOM، وهو محرّرُ Monaco كامل بخطٍّ وارتفاعِ سطرٍ **مختلفَين**
+    // (‏قائمةُ سماحٍ مغلقة، scmInput.ts:310). فكان TY-02 وTY-03 يقيسان الصندوقَ ويظنّان
+    // أنّهما يقيسان المحرّر — انحدارٌ صامتٌ يُبلِّغ رقمًا صحيحًا عن السطح الخطأ.
+    // نستثني ‎.scm-view‎ صراحةً ثمّ نأخذ الأكبرَ مساحة.
+    let line = null, area = -1;
+    for (const ed of document.querySelectorAll('.monaco-editor')) {
+      if (ed.closest('.scm-view')) continue;
+      const r = ed.getBoundingClientRect();
+      const a = r.width * r.height;
+      if (a <= area) continue;
+      const l = ed.querySelector('.view-line');
+      if (!l) continue;
+      area = a; line = l;
+    }
+    if (!line) return { present: false };
+    const cs = getComputedStyle(line);
+    const size = parseFloat(cs.fontSize);
+    const lh = cs.lineHeight === 'normal' ? size * 1.35 : parseFloat(cs.lineHeight);
+    const ctx = document.createElement('canvas').getContext('2d');
+    ctx.font = size + 'px ' + cs.fontFamily;
+    const ink = (s) => {
+      const m = ctx.measureText(s);
+      return +(((m.actualBoundingBoxAscent || 0) + (m.actualBoundingBoxDescent || 0))).toFixed(2);
+    };
+    // الطرفان الموثَّقان في الاشتقاق: الألفُ بهمزةٍ فوق (أعلى حبرٍ عربيّ) وتنوينُ الكسر
+    // (أدناه). العيّنةُ السابقة لم تحوِ أيًّا منهما، فكانت تقيس حالةً أرخى من الحدّيّة.
+    const extremes = ink('أٌإٍآً');
+    const tashkeel = ink('نِبراس مُرقَّعٌ الافتتاحيّة لِلمِحرابِ');
+    const plain = ink('نبراس مرقع الافتتاحية للمحراب');
+    const latin = ink('Editing evolved Mihrab gjpqy');
+    const w = (s) => +ctx.measureText(s).width.toFixed(3);
+    const widths = { M: w('M'), ا: w('ا'), م: w('م'), ص: w('ص') };
+    const vals = Object.values(widths);
+    const spread = +((Math.max(...vals) - Math.min(...vals)) / Math.max(...vals)).toFixed(4);
+    return {
+      present: true, fontFamily: cs.fontFamily, fontSizePx: size,
+      lineHeightPx: +lh.toFixed(2), lineHeightEm: +(lh / size).toFixed(3),
+      extremes, tashkeel, plain, latin,
+      extremesRatio: +(extremes / lh).toFixed(3),
+      tashkeelRatio: +(tashkeel / lh).toFixed(3),
+      tashkeelExtraPx: +(tashkeel - plain).toFixed(2),
+      widths, monoSpread: spread,
+    };
+  })()`);
+}
+
+/**
+ * [TY-07] مسحُ مزجٍ **عامّ** بدل مطاردة الأسطح سطحًا سطحًا.
+ *
+ * القواعد ٢١ و٢٤–٣١ تعالج المزجَ ثنائيَّ الاتّجاه بنحوِ ثلاثين محدِّدًا مكتوبًا **يدويًّا**،
+ * وكلُّ سطحٍ جديدٍ في المنبع = قاعدةٌ جديدةٌ تُكتشَف بالعين. والجردُ سجّل أنّ هذه المطاردةَ
+ * **لا تنتهي**: تنتهي دورةٌ وتبدأ أخرى مع كلّ مزامنةِ منبع، والمستخدمُ هو من يكتشف الباقي
+ * (القاعدة ٣٢ وُلِدت من عطبٍ نجا من ثلاثين توكيدًا).
+ *
+ * فهذا يقلب العلاقةَ من «اكتشِف ثمّ عالِج» إلى «امنع الانحدارَ ابتداءً»: يمسح **كلَّ** عقدةٍ
+ * نصّيّةٍ مرئيّةٍ في القشرة، ويبلّغ عن كلّ نصٍّ **يبدأ بمحرفٍ لاتينيٍّ قويٍّ داخل حاويةٍ
+ * اتّجاهُها RTL ولا يحمل عزلًا فعّالًا**.
+ *
+ * **قياسٌ بالأثر لا بقراءة الأنماط:** جردُنا سجّل بنفسه أنّه «لا يُصدَّق `getComputedStyle`
+ * في هذا الباب» — فالفحصُ الحاسمُ هنا `Range.getBoundingClientRect()` على أوّل محرفٍ وآخره.
+ *
+ * **واتّجاهُ الحكم مشتقٌّ من UAX #9 لا من الحدس** (وقد انقلب مرّةً في أوّل صياغةٍ لهذا
+ * المِجَسّ، فكان يُرسِب السليمَ ويُنجِح المكسور — وهو أسوأُ ما يصيب حارسًا):
+ *   • النصُّ اللاتينيُّ **قويُّ الاتّجاه**، فيُعرَض من اليسار إلى اليمين مهما كانت الحاوية.
+ *     فالسليمُ أن يقع أوّلُ محرفٍ **يسارَ** آخره: `ra.left < rb.left`.
+ *   • أمّا حين تبتلع الفقرةُ RTL محايدَه الأخير — «‏`Foo)`» مثلًا — فمستوياتُ UAX #9
+ *     ‏`[2,2,2,1]` تُعيد الترتيبَ إلى «‏`)Foo`»، فيقع القوسُ يسارَ الحرف الأوّل ⇒ ينعكس
+ *     الشرط. وهو المثالُ العالميُّ نفسُه: «‏`Hello!`» في فقرةٍ عربيّةٍ يظهر «‏`!Hello`».
+ * ‏`unicode-bidi` يُقرأ للتشخيص لا للحكم.
+ */
+export async function bidiSweep(cdp, limit = 40, maxNodes = 20000) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const wb = document.querySelector('.monaco-workbench');
+    if (!wb) return { present: false };
+    // **حدٌّ معلَن:** createTreeWalker يمشي في شجرة الوثيقة الضوئيّة ولا ينزل إلى
+    // ‏Shadow DOM (تستعمله القوائمُ السياقيّة) ولا يعبر iframe/webview. فهذا مسحٌ عامٌّ
+    // للقشرة لا للتطبيق كلِّه — وقصورُه معروفٌ لا مُدَّعًى خلافُه.
+    // نستثني منطقةَ الشيفرة: اتّجاهُ المحرّر شأنٌ مستقلٌّ يحرسه AR/DR، ونصُّه محتوى المستخدم.
+    const SKIP = ['.monaco-editor', '.xterm', 'script', 'style', '.mihrab-welcome-pattern'];
+    // نصٌّ يبدأ بلاتينيٍّ قويّ **وينتهي بمحايدٍ أو رقم** — وهو تحديدًا ما تقفز أطرافُه.
+    const LATIN_START = /^[A-Za-z]/;
+    const NEUTRAL_END = /[)\\]}>.,:;!?%+\\-\\/\\\\|'"\`\\d]$/;
+    const walker = document.createTreeWalker(wb, NodeFilter.SHOW_TEXT);
+    const flagged = [], checked = [];
+    let scanned = 0, visited = 0, truncated = false;
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      // سقفٌ على **العقد المزارة** لا على المُبلَّغ عنها وحدَه: بلا هذا يمشي المسحُ على
+      // كلّ عقدةٍ في القشرة حين تكون النتيجةُ خضراء — وهو أشيعُ الحالات.
+      if (++visited > ${maxNodes}) { truncated = true; break; }
+      const raw = n.nodeValue || '';
+      const t = raw.trim();
+      if (t.length < 3 || !LATIN_START.test(t) || !NEUTRAL_END.test(t)) continue;
+      const el = n.parentElement;
+      if (!el || !el.isConnected) continue;
+      if (SKIP.some((s) => el.closest(s))) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;           // غيرُ مرئيّ
+      const cs = getComputedStyle(el);
+      if (cs.direction !== 'rtl') continue;                 // حاويةٌ LTR ⇒ لا مشكلةَ أصلًا
+      if (cs.visibility === 'hidden' || cs.opacity === '0') continue;
+      scanned++;
+      // **القياسُ الحاسم:** موضعُ أوّل محرفٍ مقابلَ آخرِه داخل عقدة النصّ نفسِها.
+      // الإزاحاتُ تُحسَب من النصّ **الخام** لا المشذَّب: فراغٌ بادئٌ عرضُه صفرٌ يُسقِط
+      // القياسَ صامتًا، وفراغٌ من الطرفين يقيس محارفَ داخليّةً فيحكم عشوائيًّا.
+      const off = raw.indexOf(t);
+      let verdict = null;
+      try {
+        const a = document.createRange(); a.setStart(n, off); a.setEnd(n, off + 1);
+        const b = document.createRange();
+        b.setStart(n, off + t.length - 1); b.setEnd(n, off + t.length);
+        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        // التفافٌ سطريّ ⇒ الطرفان على سطرين ومقارنةُ الأفقيّ بلا معنًى ⇒ لا حكم.
+        if (ra.width > 0 && rb.width > 0 && Math.abs(ra.top - rb.top) <= 1) {
+          // اللاتينيُّ قويُّ الاتّجاه: السليمُ أن يقع أوّلُه **يسارَ** آخره (انظر الترويسة).
+          verdict = ra.left < rb.left;
+        }
+      } catch (e) { /* مدًى يتعذّر قياسُه ⇒ لا حكم */ }
+      if (verdict === null) continue;
+      const entry = { text: t.slice(0, 60), selector: el.className || el.tagName,
+                      bidi: cs.unicodeBidi, ok: verdict };
+      checked.push(entry);
+      if (!verdict && flagged.length < ${limit}) flagged.push(entry);
+    }
+    return { present: true, scanned, visited, truncated,
+             checked: checked.length, flaggedTotal: checked.filter((c) => !c.ok).length, flagged };
+  })()`);
+}
+
+/**
+ * [VA-02] حارسُ لغةِ المستند ودورِ الاتّجاه — **دائمٌ لا برهانُ آليّةٍ عابر**.
+ *
+ * وثيقتُنا تسجّل العطبَ بوضوح: خبزُ العربيّة يتجاوز حلَّ اللغة، فيبقى
+ * `configuration.nls.language` غيرَ معرَّفٍ ويكتب `setupNLS` ‏`lang="en"` — واجهةٌ عربيّةٌ
+ * كاملةٌ ومستندٌ يقول إنّه إنجليزيّ. والمهمُّ في القصّة أنّ المحدِّدَ `:lang(ar)` **مات
+ * صامتًا فعلًا**، واجتاز حارسَي L0 وL2، ولم يكشفه إلّا قياسٌ حيّ.
+ *
+ * وثلاثةُ أشياءَ تنكسر معًا حين تسقط السمة: نطقُ قارئات الشاشة (WCAG 3.1.1)، و**كلُّ
+ * طباعتنا العربيّة** — لأنّ القاعدة ٢٠ كلَّها معلَّقةٌ بـ`:lang(ar)` — وتلميحُ محرّك تشكيل
+ * النصّ. أي أنّ سمةً واحدةً تحمل الوصولَ والخطَّ العربيَّ معًا، وقد سقطت مرّةً بلا صوت.
+ *
+ * ولذلك **لا يكفي أن تكون القاعدةُ مكتوبةً**: نطالب بعرضِ خطٍّ **مقيسٍ فعلًا** يثبت أنّها
+ * طُبِّقت. ونقيس معها الأسطحَ الفرعيّة (`iframe`/`webview`) التي تحمل نصًّا عربيًّا.
+ */
+export async function documentLangDir(cdp) {
+  await bringToFront(cdp);
+  return cdp.evaluate(`(() => {
+    const html = document.documentElement;
+    const wb = document.querySelector('.monaco-workbench');
+    if (!wb) return { present: false };
+    const cs = getComputedStyle(wb);
+    // برهانُ **التطبيق** لا الكتابة: قياسُ عرضِ نصٍّ عربيٍّ بالوجه الجاري. لو مات
+    // محدِّدُ اللغة لتغيّر المكدّسُ فتغيّر العرضُ — وهو ما لا يراه فحصٌ نصّيّ.
+    // (بلا شواهدَ خلفيّةٍ في هذا التعليق: نحن داخل قالبٍ نصّيّ، والشاهدةُ تُنهيه.)
+    let arabicWidth = null, charWidths = null, charSpread = null;
+    try {
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = cs.fontSize + ' ' + cs.getPropertyValue('--monaco-monospace-font').trim();
+      arabicWidth = +ctx.measureText('نصاب_الفضة').width.toFixed(2);
+      // **البرهانُ الحاسم:** أحاديّةُ العرض للعربيّة. لو مات محدِّدُ اللغة وسقط المكدّسُ إلى
+      // خطّ نظامٍ متناسب لتفاوتت هذه الأربعة — وهو ما لا يراه فحصٌ نصّيٌّ على اسم المكدّس.
+      const w = { M: +ctx.measureText('M').width.toFixed(3),
+                  a: +ctx.measureText('ا').width.toFixed(3),
+                  m: +ctx.measureText('م').width.toFixed(3),
+                  s: +ctx.measureText('ص').width.toFixed(3) };
+      const v = Object.values(w);
+      charWidths = w;
+      charSpread = +((Math.max(...v) - Math.min(...v)) / Math.max(...v)).toFixed(4);
+    } catch (e) { /* بلا canvas ⇒ لا برهانَ عرض */ }
+    return {
+      present: true,
+      lang: html.lang || null,
+      dir: html.getAttribute('dir'),
+      workbenchDir: wb.getAttribute('dir'),
+      baked: Array.isArray(globalThis._VSCODE_NLS_MESSAGES) && globalThis._VSCODE_NLS_MESSAGES.length > 0,
+      monospaceFont: cs.getPropertyValue('--monaco-monospace-font').trim(),
+      arabicWidth, charWidths, charSpread,
+    };
+  })()`);
+}
+
+/**
  * [القاعدة 22] الرموز الاتّجاهيّة: تُقاس **بالأثر لا بالإعلان**.
  *   • مثلّث الشجرة: نقارن مربّع الرمز عند عمقين ⇒ يجب أن **يتدرّج** مع العمق (كان مثبَّتًا).
  *   • أدلّة التشجير: يجب أن تُرسى على جهة الصفوف نفسها لا الحافّة المقابلة.
@@ -1129,6 +1387,14 @@ export async function bidiPanels(cdp) {
       + " .gettingStartedContainer,"
       // ودجاتٌ عائمة **داخل حاوية المحرّر LTR**: نصُّها واجهةٌ مترجَمة لا كود.
       + " .editor-widget.find-widget, .suggest-widget, .action-widget, .zone-widget,"
+      // **عدساتُ الكود [LN-01] — خامسُ أفراد عائلة «القاعدة 30»، ولم يُفتَح قطّ.**
+      // محرابٌ يصيّر عدستَين عربيّتين من صنعه («شغّل» و«ابنِ» فوق دالّة البداية في كلّ
+      // ملفّ ص)، وامتدادُ merge-conflict المحزوم يضيف عدساتِه العربيّة فوق كتلة التعارض.
+      // والعائلةُ نفسُها قِيست فوُجدت مكسورةً في أربعة أسطحٍ متتالية. والعدسةُ لم تكن في
+      // النطاق **أصلًا**: لا تُبلِّغ نظيفًا ولا تُبلِّغ شيئًا — وهي حالٌ أشدُّ من «نطاقٍ بلا
+      // محتوًى». وهي ودجةُ محتوًى (‏allowEditorOverflow: false) تسكن ‎.contentWidgets‎
+      // **أختًا** لـ‎.view-lines‎ لا ابنةً لها، فلا يُسقِطها استثناءُ سطور المحرّر أدناه.
+      + " .codelens-decoration,"
       // محرّرُ المقارنة: **أوراقُ واجهته وحدها** لا سطورُه. سطورُ المقارنة كودُ المستخدم
       // (مقاطعُ ومساراتٌ ومحايدات) فتُغرِق الماسحَ كما أغرقته ‎.view-lines‎ و‎.xterm-rows‎.
       // ما نمسحه: شريطُ الأسطر المطويّة ومراجعةُ المقارنة الميسورة — نصُّهما واجهةٌ مترجَمة.
@@ -1159,7 +1425,13 @@ export async function bidiPanels(cdp) {
       return { l: Math.min(...rs.map(b => b.left)), r: Math.max(...rs.map(b => b.right)) };
     };
     // الحاويات LTR التي نقبل مسحَ نصوصها: ودجات المحرّر العائمة (نصُّها واجهةٌ مترجَمة).
-    const LTRHOST = ".find-widget, .suggest-widget, .action-widget, .zone-widget";
+    // ⚠️ **سطران لا سطر، وإلّا فصفرٌ صامت.** إدخالُ ‎.codelens-decoration‎ في ‎SCOPE‎ وحده
+    // لا يقيس شيئًا: الشرطُ أدناه يُسقِط كلَّ عنصرٍ اتّجاهُه ليس ‎rtl‎ ما لم يكن داخل
+    // ‏‎LTRHOST‎ — ورقعةُ المنبع تُثبِّت ‎.monaco-editor.text-direction-rtl { direction: ltr }‎
+    // لحماية الكود، فالعدسةُ داخل حاويةٍ ‎LTR‎ بالتصميم. فلولا هذا السطرُ لَمرّ البندُ
+    // «منفَّذًا» بلا ورقةٍ واحدةٍ تُقاس — وهو أخبثُ من الأخضر الكاذب: لا يُبلِّغ نظيفًا،
+    // بل يجعلنا نظنّ أنّنا أضفنا حارسًا.
+    const LTRHOST = ".find-widget, .suggest-widget, .action-widget, .zone-widget, .codelens-decoration";
     let scanned = 0;
     for (const root of SCOPE) for (const el of root.querySelectorAll("*")) {
       if (el.children.length) continue;

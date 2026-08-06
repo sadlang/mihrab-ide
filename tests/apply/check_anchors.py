@@ -142,6 +142,39 @@ def check_patcher(name, mode):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def check_core_diff(diff_rel):
+    """رُقعةُ منبعٍ (diff): تُطبَّق نظيفةً على المنبع المثبَّت؟ يعيد (ok, رسالة).
+
+    لا مراسيَ هنا تُفحَص فرديًّا — الفحصُ أقوى: نجهّز الملفّات النظيفة التي يمسّها الـdiff
+    في مجلّد مؤقّت ونشغّل `git apply --check` عليه. أيّ انجرافٍ في المنبع يظهر فورًا،
+    وبنفس الأداة التي يستعملها البناء (patch_bundle_extensions ⇐ `git apply --3way`).
+    """
+    targets = M.core_diff_files(ROOT, diff_rel, existing_only=True)
+    if not targets:
+        return False, "رُقعةٌ بلا ملفّات (شكلٌ غير متوقَّع)"
+    tmp = tempfile.mkdtemp(prefix="mihrab_l1_diff_")
+    try:
+        origin = None
+        for rel in targets:
+            content, org = _pristine_source(rel)
+            if content is None:
+                return None, f"لا مصدر نظيف لـ{rel} (تخطٍّ)"
+            origin = origin or org
+            dst = os.path.join(tmp, rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, "w", encoding="utf-8", newline="") as f:
+                f.write(content)
+        patch = os.path.join(ROOT, diff_rel.replace("/", os.sep))
+        r = subprocess.run(["git", "apply", "--check", "--verbose", patch],
+                           cwd=tmp, capture_output=True)
+        if r.returncode != 0:
+            err = (r.stdout + r.stderr).decode("utf-8", errors="replace").strip()[:500]
+            return False, f"لا تُطبَّق على المنبع المثبَّت (انجراف):{chr(10)}       {err}"
+        return True, f"تُطبَّق نظيفةً على {len(targets)} ملفًّا [{origin}]"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     print("═══ L1: تطبيق مراسي الرُقَع على المنبع المثبَّت ═══")
     have_upstream = os.path.isdir(os.path.join(UPSTREAM_VSCODE, ".git")) and not _force_snapshot()
@@ -161,7 +194,18 @@ def main():
         else:
             failed += 1
             print(f"  ❌ {name}: {msg}")
-    total = len(M.PATCHERS)
+    for diff in getattr(M, "CORE_DIFFS", []):
+        ok, msg = check_core_diff(diff)
+        name = os.path.basename(diff)
+        if ok is None:
+            skipped += 1
+            print(f"  ⏭️  {name}: {msg}")
+        elif ok:
+            print(f"  ✅ {name}: {msg}")
+        else:
+            failed += 1
+            print(f"  ❌ {name}: {msg}")
+    total = len(M.PATCHERS) + len(getattr(M, "CORE_DIFFS", []))
     print(f"─── {total - failed - skipped}/{total} نجحت، {skipped} تخطٍّ، {failed} فشل ───")
     return 1 if failed else 0
 

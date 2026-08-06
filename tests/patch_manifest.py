@@ -12,8 +12,9 @@
 """
 
 # (اسم المرقِّع، الوضع، [ملفّات المنبع النسبيّة التي يمسّها])
-# ملاحظة: patch_workbench_rtl ينسخ أيضًا mihrab-rtl.css إلى media/ قبل ترقيع workbench.ts،
-# لكنّ فحص المراسي يحتاج workbench.ts فقط (النسخ خطوة بناء لا مرساة).
+# ملاحظة: نسخُ ورقتَي الأنماط إلى media/ ليس من عمل `patch_workbench_rtl` (كما كان مكتوبًا
+# هنا خطأً) — يفعله `build.sh` تهيئةً و`patch_bundle_extensions` حقنًا. والمرقِّعُ يحقن
+# **استيرادَهما** وحدَه. وفحصُ المراسي يحتاج workbench.ts فقط.
 PATCHERS = [
     ("patch_main_locale.py", "file", ["src/main.ts"]),
     ("patch_workbench_rtl.py", "file", ["src/vs/workbench/browser/workbench.ts"]),
@@ -26,6 +27,10 @@ PATCHERS = [
      ["src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts"]),
     ("patch_welcome_rtl.py", "file",
      ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts"]),
+    # اتّجاهُ لوح شرح الجولة: مستندُ webview مستقلٌّ لا يرث dir القشرة (والمطهِّر ينزع dir
+    # من محتوانا، فلا مَخرجَ من L1). يشتقّ dir/lang من مستند المضيف.
+    ("patch_walkthrough_dir.py", "file",
+     ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedDetailsRenderer.ts"]),
     # إسقاط جولات المنبع التعريفيّة كي تتصدّر جولة محراب صفحةَ الترحيب.
     ("patch_walkthroughs_drop.py", "file",
      ["src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts"]),
@@ -35,8 +40,6 @@ PATCHERS = [
     # افتراضُ الحوار المشروط = custom: بدونه يعرض ويندوز حوارَه بلغته وباتّجاه LTR.
     ("patch_dialog_style.py", "file",
      ["src/vs/workbench/electron-browser/desktop.contribution.ts"]),
-    # جذر: يشتقّ ملفّاته الثمانية من FILES (تُستخرَج ديناميكيًّا في L1).
-    ("patch_editor_rtl.py", "root", None),
     # جذر: مجلّد إعدادات المشروع `.محراب` بتوافقٍ خلفيّ. ستّةَ عشرَ ملفًّا لأنّ المنبع
     # يكتب '.vscode' حرفيًّا خارج ثابته — تبديلُ الثابت وحده يجعل المحرّر يقرأ من
     # مكانٍ ويكتب في آخر بلا خطأٍ ولا سجلّ. يُضيف كذلك وحدتَي TS من patches/core/.
@@ -49,7 +52,6 @@ PATCHERS = [
 # رُقَع «الجذر» تشتقّ ملفّاتها من قائمة FILES داخلها. لا تُسرَد هنا يدويًّا: نسخةٌ
 # يدويّة تتباعد عن الحقيقة صامتةً، فيمرّ فحصُ المراسي على ملفٍّ لم يعد مقصودًا.
 ROOT_PATCHER_FILES_ATTR = {
-    "patch_editor_rtl.py": "FILES",
     "patch_config_folder.py": "FILES",
     "patch_settings_labels.py": "FILES",
 }
@@ -64,8 +66,31 @@ BUILD_PATCHERS = [
     "patch_npmrc_tolerance.py",    # م0
 ]
 
+# رُقَعُ **المنبع** (diff موحَّد لا مرقِّع بايثون): تعديلاتٌ مصوغةٌ للرفع إلى microsoft/vscode
+# ومحفوظةٌ هنا حتّى تُدمَج. تُطبَّق بـ`git apply --3way` داخل شجرة vscode بعد reset. لا مراسيَ
+# لها تُفحَص فرديًّا: الفحصُ أن تُطبَّق نظيفةً على المنبع المثبَّت (L1) — وهو أقوى من مرساة.
+#   • 010-editor-text-direction.patch ⇐ المقترح م-٢ (خيار editor.textDirection). وُلِّد من
+#     شوكةٍ نظيفة على العقدة نفسها؛ لا يُحرَّر يدويًّا بل يُعاد توليده منها.
+#   • 020-nonlatin-word-start.patch ⇐ المقترح م-١٥/ب (حدُّ الكلمة بعد أداة التعريف في
+#     المطابقة الضبابيّة). أثرُه مقيسٌ في tests/dx/completion_rank.mjs — قبلَه وبعدَه.
+CORE_DIFFS = [
+    "patches/core/010-editor-text-direction.patch",
+    "patches/core/020-nonlatin-word-start.patch",
+]
+
 # طبقة الأنماط (تُفحَص في L0/L2 لا L1):
 CSS_PATCH = "patches/mihrab-rtl.css"
+
+# ورقةُ الهويّة البصريّة [VA-05] — **منفصلةٌ عمدًا** عن ورقة الاتّجاه. قواعدُها ليست دَينَ
+# اتّجاهٍ (لا تقلب شيئًا)، وخلطُها بالأولى كان يجعل مؤشّرَ صحّة الطبقات يبالغ في الدَّين.
+# تُستورَد بعدها في workbench.ts، وتخضع لحارسٍ خاصٍّ يمنع تسلّلَ أيّ خاصّيّةٍ اتّجاهيّة إليها.
+IDENTITY_CSS = "patches/mihrab-identity.css"
+
+# أصنافُ الهويّة المحقونة — **مصدرُ حقيقةٍ واحد** لثلاثة قرّاء: حارسا L0 (‏`_css_lint`
+# و`_identity_css_lint`) ومِجَسّاتُ L2 في `check_injected.py`. تحقنها `patch_welcome_rtl.py`
+# في ترويسة صفحة الترحيب. وكانت مسرودةً في موضعين، ونسختان لحقيقةٍ واحدة تتباعدان صامتتين:
+# صنفٌ رابعٌ يُضاف إلى الحارس ولا يُضاف إلى المِجَسّ يمرّ بلا شاهدٍ على وصوله.
+IDENTITY_CLASSES = ("mihrab-welcome-mark", "mihrab-welcome-pattern", "mihrab-welcome-lede")
 
 # أصول الهوية البصريّة: يجهّزها build.sh في .mihrab-branding ويحقنها patch_bundle_extensions
 # فوق resources/win32/ (electron.ts:winIcon='resources/win32/code.ico' ⇒ أيقونة الـexe؛
@@ -103,8 +128,16 @@ BRANDING_SESSIONS_ASSETS = [
 # بالحدس. تُنسَخ إلى اللقطة مع ملفّات الرُقَع لأنّ `.upstream/` مُتجاهَلٌ في git، وبلا
 # نسخةٍ مُلتزَمةٍ يصير الفحصُ المشتقّ معطَّلًا في CI صامتًا.
 #   • strings.ts: جدولُ المحارف الملتبِسة (`_common`) ⇐ يشتقّ منه AR-04 قائمةَ الإعفاء.
+#   • wordHelper.ts: `USUAL_WORD_SEPARATORS` ⇐ يشتقّ منه IN-01 **بادئةَ** قيمتنا. وقيمةُ
+#     `editor.wordSeparators` سُلَّميّةٌ من نوع string: تجاوزُها **يستبدل** الافتراضَ ولا
+#     يضيف إليه، فنحن مضطرّون إلى نسخ ثابتٍ منبعيٍّ إلى ملفّنا. ولولا هذا المرجعُ لانحرفت
+#     النسخةُ صامتةً لو زاد المنبعُ محرفًا — وهو الصنفُ نفسُه الذي يحرسه strings.ts.
+#     ولم يُضَف `cursorWordOperations.ts` ولا `wordCharacterClassifier.ts`: لا فحصَ يشتقّ
+#     منهما توقُّعًا، وانجرافُ **الخوارزميّة** يمسكه القياسُ الحيّ (`word_boundaries.live.mjs`)
+#     لا مقارنةُ نصّ. ملفُّ مرجعٍ بلا مشتقٍّ منه وزنٌ يُحمَل بلا حراسةٍ تُكتسَب.
 REFERENCE_FILES = [
     "src/vs/base/common/strings.ts",
+    "src/vs/editor/common/core/wordHelper.ts",
 ]
 
 
@@ -125,6 +158,23 @@ def root_target_files(build_dir, patcher):
     return [relpath for (relpath, _mark, _edits) in getattr(mod, attr)]
 
 
-def editor_target_files(build_dir):
-    """توافقٌ خلفيّ: نداءٌ باسم المحرّر تحديدًا."""
-    return root_target_files(build_dir, "patch_editor_rtl.py")
+def core_diff_files(root_dir, diff_relpath, existing_only=False):
+    """الملفّاتُ التي يمسّها diff موحَّد (من أسطر `+++ b/...`) — لا تُسرَد يدويًّا.
+
+    existing_only=True يستثني الملفّاتِ التي **يُنشئها** الـdiff (`--- /dev/null`): لا نسخةَ
+    نظيفةَ لها في المنبع بحكم التعريف، فطلبُها يُسقِط الفحصَ تخطّيًا كاذبًا.
+    """
+    import os
+
+    files = []
+    path = os.path.join(root_dir, diff_relpath.replace("/", os.sep))
+    prev = ""
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        for line in f:
+            if line.startswith("+++ b/"):
+                rel = line[6:].strip()
+                is_new = prev.startswith("--- /dev/null")
+                if rel != "/dev/null" and rel not in files and not (existing_only and is_new):
+                    files.append(rel)
+            prev = line
+    return files
