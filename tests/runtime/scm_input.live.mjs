@@ -94,11 +94,17 @@ function buildRepo() {
 // ‏[SC-02] محرّرُ الدمج ثلاثيُّ اللوحات **مطفأٌ افتراضيًّا في المنبع** (‏`git.mergeEditor`
 // افتراضُه false في `extensions/git/package.json`). فبلا هذا السطر يُفتَح التعارضُ في
 // محرّرٍ عاديٍّ ولا يُقاس السطحُ المقصود إطلاقًا — وكنّا سنُبلِّغ «سليم» عن سطحٍ لم يُفتَح.
-writeFileSync(join(userData, "User", "settings.json"), JSON.stringify({
+//
+// **ومصدرٌ واحدٌ للأساس.** قسمُ التجدُّد الحيّ (‏SC-01/د) يعيد كتابةَ هذا الملفّ بمفتاحٍ
+// واحدٍ زائد، ثمّ يستعيده. فلو كُتب الأساسُ مرّتين لانزلق أحدُهما عن الآخر، فيصير
+// «الاستعادةُ» تغييرًا ثانيًا يُقرأ انتقالًا.
+const BASE_SETTINGS = {
   "window.restoreWindows": "none",
   "git.mergeEditor": true,
   "git.openRepositoryInParentFolders": "always",
-}, null, 2), "utf8");
+};
+const SETTINGS_PATH = join(userData, "User", "settings.json");
+writeFileSync(SETTINGS_PATH, JSON.stringify(BASE_SETTINGS, null, 2), "utf8");
 
 /** ⚠️ فخُّ `ELECTRON_RUN_AS_NODE` الموروث — موثَّقٌ في `launch.mjs` و`unicode_guard.live.mjs`. */
 function cleanEnv() {
@@ -263,6 +269,11 @@ const MEASURE = `(() => {
     ligaEffectEditor: edFont ? ligaEffect(edFont) : null,
     editorFontSizePx: edCs ? parseFloat(edCs.fontSize) : null,
     editorFontFamily: edCs ? edCs.fontFamily : null,
+    // **ضوابطُ الوصول.** الرقعةُ ‎032‎ تُقاس بالانتقال، والانتقالُ لا يُقاس بلا برهانٍ على
+    // أنّ الكتابةَ بلغت التطبيقَ أصلًا. فالمحرّرُ الرئيسُ يقرأ المفاتيحَ الثلاثةَ اليوم بلا
+    // رقعة؛ فإن لم يتحرّك هو فالعطبُ في مراقب الإعدادات لا في الصندوق، وذلك **أحمرُ كاذب**.
+    editorDirAttr: editorLine ? editorLine.getAttribute('dir') : null,
+    editorLineHeightPx: edCs ? +parseFloat(edCs.lineHeight).toFixed(2) : null,
   };
 })()`;
 
@@ -397,8 +408,9 @@ try {
         // لم يُقَس. فرقُ الإعلان حقيقةٌ قابلةٌ للقياس، وحدُّه يُقال ولا يُهرَّب.
         ok(m.features === m.editorFeatures,
           "SC-01/الأشكالُ السياقيّة (المُعلَن): الصندوقُ كالمحرّر",
-          `صندوق «${m.features}» ≠ محرّر «${m.editorFeatures}» — fontLigatures ليست في ` +
-          `رقعةِ النواة ‎030‎ — والقيمتان تتطابقان الآن، وهو المطلوب. ` +
+          `صندوق «${m.features}» ${m.features === m.editorFeatures ? "=" : "≠"} محرّر ` +
+          `«${m.editorFeatures}» — والمطلوبُ التطابق: fontLigatures تبلغ المحرّرَ البسيطَ ` +
+          `برقعة النواة ‎030‎، فتباعدُهما يعني سقوطَها. ` +
           `‏(أثرُ التصيير لم يُقَس: الضابطُ لم يُظهِر فرقًا بالقماش.)`);
       } else {
         ok(Math.abs(m.ligaEffectBox - m.ligaEffectEditor) < 0.01,
@@ -443,7 +455,8 @@ try {
         // الشاهدُ ليمسك سقوطَ الرقعة. و`featFixed` صار المتوقَّعُ فيه **الثبات** لا التغيّر.
         const shaped = /calt/.test(css.before.feat) && !/calt"?\s*0/.test(css.before.feat);
         ok(shaped, "SC-01/ب: الأشكالُ السياقيّةُ عاملةٌ في الصندوق **بلا ورقة** (رقعة ‎030‎)",
-          `المحسوب قبل أيّ حقن: «${css.before.feat}» — يُتوقَّع calt مفعَّلة. سقطت الرقعةُ ‎030‎؟`);
+          `المحسوب قبل أيّ حقن: «${css.before.feat}» — والمطلوبُ calt مفعَّلة؛ ` +
+          `إطفاؤها هنا يعني سقوطَ الرقعة ‎030‎.`);
         if (featFixed) console.log("  ℹ️  حقنُ الورقة ما يزال يُغيِّر القيمة — القاعدةُ ‎37‎ قد تلزم ثانيةً (سقطت الرقعة؟).");
         if (!boxGrew) {
           console.log("  ℹ️  و**ارتفاعُ السطر لا تصلحه الورقة**: صندوقُ السطر لم يكبر بحقن " +
@@ -456,6 +469,86 @@ try {
       ok(m.fontSizePx === EDITOR_FONT_SIZE,
         `SC-01/حجمُ الخطّ = ${EDITOR_FONT_SIZE} المقيس في VA-04`,
         `المقيس ${m.fontSizePx}px · المحرّر ${m.editorFontSizePx}px`);
+
+      // ═══ (٦) التجدُّدُ الحيّ — رقعةُ النواة ‎032‎ [SC-01/د · م-١٧] ═══
+      //
+      // **وكلُّ ما فوقَ هذا السطر لا يحرس الرقعةَ ‎032‎ إطلاقًا.** توكيداتُ الحال —
+      // ‏`dirAttr === "rtl"` و`lineHeightEm >= 1.88` و`features === editorFeatures` —
+      // تمرّ برقعة ‎030‎ وحدَها، فهي **خضراءُ قبل ‎032‎ وبعدها سواء**. وحارسٌ لا يفرّق بين
+      // وجود الرقعة وعدمِها حارسٌ صوريّ. فالمقياسُ هنا **انتقالٌ داخل الجلسة الواحدة**:
+      // يُقاس الحال، ثمّ يُكتب مفتاحٌ **واحد**، ثمّ يُنتظَر انقلابُ المقيس.
+      //
+      // وثلاثةُ شروطٍ تجعل الانتقالَ فارزًا، سقوطُ أيٍّ منها يُعيده إلى «أخضرَ في الحالتين»:
+      //   (أ) **مفتاحٌ واحدٌ في كلّ كتابة.** المرشِّحُ القائمُ في المنبع يذكر `editor.fontFamily`
+      //       و`scm.inputFontSize` وغيرَهما؛ فتغييرُ مفتاحَين معًا يُنعِش الصندوقَ بالمفتاح
+      //       **القديم** فيُقرأ تجدُّدًا وليس به.
+      //   (ب) **ضابطُ وصول.** بعد كلّ كتابةٍ يُقاس المحرّرُ الرئيس: هو يقرأ المفاتيحَ الثلاثةَ
+      //       اليوم بلا رقعة. فإن لم يتحرّك، فالكتابةُ لم تبلغ التطبيقَ ⇒ فجوةٌ معلَنةٌ لا فشل.
+      //   (ج) **لا إعادةَ تحميل، ولا نومٌ ثابت**: استطلاعٌ بمهلة، ونفادُها يُقال فجوةً.
+      //
+      // ولا تُجرَّب `rtl ⇄ auto`: تحت واجهةٍ عربيّةٍ تُحسَب `auto` إلى `rtl`
+      // (‏`EffectiveTextDirection.compute` ⇒ `isRtlLanguage(platform.language)`)، فالتجربةُ
+      // **تنجح فارغة**. المُميِّزُ هو `ltr` صراحةً.
+      const settingsPath = SETTINGS_PATH;
+      const writeOne = (key, value) => writeFileSync(settingsPath,
+        JSON.stringify({ ...BASE_SETTINGS, [key]: value }, null, 2), "utf8");
+      /** يستطلع القياسَ حتّى يتحقّق الشرطُ أو تنفد المهلة. يُعيد آخرَ قراءةٍ دائمًا. */
+      const settle = async (pred, ms = 12000) => {
+        const t0 = Date.now();
+        let last = null;
+        while (Date.now() - t0 < ms) {
+          last = await cdp.evaluate(MEASURE);
+          if (last && last.present && pred(last)) return last;
+          await sleep(400);
+        }
+        return last;
+      };
+
+      for (const t of [
+        {
+          name: "الاتّجاه", key: "editor.textDirection", value: "ltr",
+          read: (x) => x.dirAttr, control: (x) => x.editorDirAttr,
+          // الأساسُ `rtl` من `configurationDefaults`، والقيمةُ المكتوبةُ `ltr` تغلبه.
+          // و`viewLine.ts` يكتب `dir="ltr"` صراحةً على عربيّةٍ في فقرةٍ LTR — فالقيمةُ
+          // ثلاثيّةٌ (rtl · ltr · غائبة) ولا تُختصَر إلى «موجودة».
+          want: "ltr",
+        },
+        {
+          name: "ارتفاعُ السطر", key: "editor.lineHeight", value: 40,
+          read: (x) => x.lineHeightPx, control: (x) => x.editorLineHeightPx,
+          want: 40,
+        },
+        {
+          name: "الأشكالُ السياقيّة", key: "editor.fontLigatures", value: false,
+          read: (x) => x.features, control: (x) => x.editorFeatures,
+          want: null, // لا قيمةَ متوقَّعةٌ بعينها — المطلوبُ **تغيُّرٌ** عن الأساس
+        },
+      ]) {
+        const before = await cdp.evaluate(MEASURE);
+        if (!before || !before.present) { gap(`SC-01/د: ${t.name}`, "تعذّر قياسُ الأساس"); continue; }
+        const b = t.read(before), bc = t.control(before);
+        if (t.want !== null && b === t.want) {
+          // الأساسُ يساوي الهدفَ سلفًا ⇒ الانتقالُ غيرُ قابلٍ للقياس، ولو خضّرناه لكان
+          // أخضرَ في الحالتين. يُقال فجوةً لا نجاحًا.
+          gap(`SC-01/د: ${t.name}`, `الأساسُ يساوي الهدفَ سلفًا (${b}) — لا انتقالَ يُقاس`);
+          continue;
+        }
+        writeOne(t.key, t.value);
+        const after = await settle((x) => t.read(x) !== b && t.control(x) !== bc);
+        const a = t.read(after), ac = t.control(after);
+        if (ac === bc) {
+          gap(`SC-01/د: ${t.name}`,
+            `الضابطُ لم يتحرّك (المحرّرُ الرئيس ${bc} ⇒ ${ac}) — الكتابةُ لم تبلغ التطبيق، ` +
+            `فلا يُحكَم على الصندوق`);
+        } else {
+          ok(a !== b && (t.want === null || a === t.want),
+            `SC-01/د: ${t.name} يتجدّد حيًّا بلا إعادة تحميل [رقعة ‎032‎]`,
+            `الصندوق ${b} ⇒ ${a} · الضابط ${bc} ⇒ ${ac}. ` +
+            `تساويهما قبلًا وبعدًا يعني أنّ المفتاحَ التُقِط عند الإنشاء ولم يتبع تغيُّرَه.`);
+        }
+        writeFileSync(settingsPath, JSON.stringify(BASE_SETTINGS, null, 2), "utf8");
+        await settle((x) => t.read(x) === b, 8000);
+      }
     }
   }
 

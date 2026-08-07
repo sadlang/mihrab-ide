@@ -403,6 +403,10 @@ fi
 # والحبرُ لا يتبعه — فالتكبيرُ يزيد الفراغَ ولا يزيد المقروء. تعديلٌ منبعيٌّ بحتٌ (سطرا CSS
 # مربوطان بمتغيّرٍ منبعيٍّ قائم، بلا مفتاحٍ جديد ولا واجهةٍ عامّة): يسقط يومَ يُدمَج.
 [[ -f "$ROOT/patches/core/031-debug-tree-font-size.patch" ]] && cp -f "$ROOT/patches/core/031-debug-tree-font-size.patch" "$UP/.mihrab-debug-tree-font-size.patch"
+# تجدُّدُ خيارات صندوق الالتزام حيًّا [SC-01 + م-١٧]: الاتّجاهُ والأشكالُ السياقيّةُ وارتفاعُ
+# السطر تُلتقَط عند الإنشاء ولا تتبع تغيُّرَ الإعداد. تعديلٌ منبعيٌّ بحتٌ بلا مفتاحٍ جديد:
+# ‏`affectsConfiguration` للثلاثة، ودفعُ مفتاحَين في حمولة `updateOptions`. يسقط يومَ يُدمَج.
+[[ -f "$ROOT/patches/core/032-scm-input-live-options.patch" ]] && cp -f "$ROOT/patches/core/032-scm-input-live-options.patch" "$UP/.mihrab-scm-input-live-options.patch"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
 [[ -f "$ROOT/build/patch_walkthrough_dir.py" ]] && cp -f "$ROOT/build/patch_walkthrough_dir.py" "$UP/.mihrab-patch-walkthrough-dir.py"
 [[ -f "$ROOT/build/patch_walkthroughs_drop.py" ]] && cp -f "$ROOT/build/patch_walkthroughs_drop.py" "$UP/.mihrab-patch-walkthroughs-drop.py"

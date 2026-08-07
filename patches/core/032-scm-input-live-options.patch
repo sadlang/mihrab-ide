@@ -1,0 +1,46 @@
+diff --git a/src/vs/workbench/contrib/scm/browser/scmInput.ts b/src/vs/workbench/contrib/scm/browser/scmInput.ts
+index 126baa30..6100e18a 100644
+--- a/src/vs/workbench/contrib/scm/browser/scmInput.ts
++++ b/src/vs/workbench/contrib/scm/browser/scmInput.ts
+@@ -262,8 +262,16 @@ class SCMInputWidgetEditorOptions {
+ 					e.affectsConfiguration('editor.cursorWidth') ||
+ 					e.affectsConfiguration('editor.emptySelectionClipboard') ||
+ 					e.affectsConfiguration('editor.fontFamily') ||
++					// `editor.lineHeight` is read by `_getEditorLineHeight` on every call, so its
++					// value was already live — but only by proxy: nothing asked for it until some
++					// *other* key in this list changed. Changing line height alone did nothing;
++					// changing it and then the font size applied both at once. Intermittent is
++					// worse than inert, because it reads as "the setting sometimes works".
++					e.affectsConfiguration('editor.lineHeight') ||
++					e.affectsConfiguration('editor.fontLigatures') ||
+ 					e.affectsConfiguration('editor.roundedSelection') ||
+ 					e.affectsConfiguration('editor.rulers') ||
++					e.affectsConfiguration('editor.textDirection') ||
+ 					e.affectsConfiguration('editor.wordWrap') ||
+ 					e.affectsConfiguration('editor.wordSegmenterLocales') ||
+ 					e.affectsConfiguration('scm.inputFontFamily') ||
+@@ -307,8 +315,23 @@ class SCMInputWidgetEditorOptions {
+ 		const cursorWidth = this.configurationService.getValue<IEditorOptions['cursorWidth']>('editor.cursorWidth') ?? 1;
+ 		const emptySelectionClipboard = this.configurationService.getValue<boolean>('editor.emptySelectionClipboard') === true;
+ 		const roundedSelection = this.configurationService.getValue<boolean>('editor.roundedSelection') === true;
++		// These two arrive from `getSimpleEditorOptions` when the widget is constructed, but the
++		// widget outlives almost everything: `RowCache` returns released rows to a pool instead of
++		// disposing them, and `disposeTemplate` only runs when the tree itself goes away. Switching
++		// repositories re-uses the same widget, and collapsing the view detaches the body without
++		// re-rendering it. So "on reload" here means, in practice, "for the rest of the session".
++		//
++		// Both are runtime-updatable options — a changed `textDirection` re-flushes every rendered
++		// line, and `fontLigatures` feeds `fontInfo`, which `ViewLines` re-applies — so they only
++		// need to be part of the payload that `updateOptions` receives.
++		//
++		// The visible symptom without this is not just a stale box: a user who changes the setting
++		// and then reveals a second repository gets a *newly built* widget on the new value next to
++		// the pooled one on the old, i.e. two commit boxes in one view disagreeing about direction.
++		const textDirection = this.configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection');
++		const fontLigatures = this.configurationService.getValue<boolean | string>('editor.fontLigatures');
+ 
+-		return { ...this._getEditorLanguageConfiguration(), accessibilitySupport, cursorBlinking, cursorStyle, cursorWidth, fontFamily, fontSize, lineHeight, emptySelectionClipboard, roundedSelection, wordSegmenterLocales };
++		return { ...this._getEditorLanguageConfiguration(), accessibilitySupport, cursorBlinking, cursorStyle, cursorWidth, fontFamily, fontSize, fontLigatures, lineHeight, textDirection, emptySelectionClipboard, roundedSelection, wordSegmenterLocales };
+ 	}
+ 
+ 	private _getEditorFontFamily(): string {
