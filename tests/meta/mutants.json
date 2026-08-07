@@ -53,6 +53,16 @@
       "why": "مِحرفٌ واحدٌ داخل البرنامج المضمَّن يُبطِل بصمة CSP في الترويسة، فيحجب المتصفّح البرنامج وتنطفئ كلُّ لوحات الـwebview صامتةً. وهذا هو العطبُ بعينِه الذي تُحدِثُه أيُّ رقعةٍ تلمس ذلك الملفّ."
     },
     {
+      "id": "output-panel-partial-line-never-flushed",
+      "guardFile": "extensions/mihrab-welcome/output-panel.test.js",
+      "guard": "node --test extensions/mihrab-welcome/output-panel.test.js",
+      "file": "extensions/mihrab-welcome/output-panel.js",
+      "old": "const IDLE_FLUSH_MS = ",
+      "new": "const IDLE_FLUSH_MS = 3600000, _IDLE_MUTANT_ORIGINAL = ",
+      "expect": "طردةُ سطرٍ حيّ",
+      "why": "المُصابُ يُصيب **المفتاحَ لا القيمة** كي لا يبطل عند أوّل معايرةٍ للمهلة (درسُ `size-total-floor`). وبمهلةٍ لا تنتهي عمليًّا يعود السلوكُ إلى ما كان: المفسّرُ يطبع رسالةَ «اقرأ» بلا فاصلِ سطر، فتُحتجَز في `rest` حتّى `close` — والمستخدمُ يرى لوحةً فارغةً بينما البرنامجُ ينتظره. حارسٌ بلا هذا المُصابِ يقيس صياغتَنا لا سلوكَ الأنبوب."
+    },
+    {
       "id": "patchers-undocumented-core-diff",
       "guardFile": "tests/static/lint_patchers.py",
       "guard": "python tests/static/lint_patchers.py",

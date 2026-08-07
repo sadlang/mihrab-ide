@@ -46,6 +46,13 @@ const MSG_START = "start"; // ext→web: بدء تشغيل جديد (label = س�
 const MSG_LINES = "lines"; // ext→web: دفعة أسطر مخرجات (stream = out/err) — دفعة واحدة لكلّ حدث data
 const MSG_EXIT = "exit"; // ext→web: انتهاء (label + ok)
 const MSG_CLEAR = "clear"; // ext→web: تفريغ السجلّ
+// ext→web: **سطرٌ حيٌّ مفتوح** — بقيّةٌ لم يصلها فاصلُ سطرٍ بعدُ وسكت عنها البرنامج [م٧].
+// يُلحَق نصُّه بعنصرٍ واحدٍ يُحدَّث في مكانه، ولا يُضاف سطرًا جديدًا: الطردُ كسطرٍ جديدٍ يُشظّي
+// السطرَ العربيَّ الواحدَ إلى شظايا يستقلّ كلٌّ منها باتّجاهه تحت `unicode-bidi: plaintext`،
+// أي **يهدم AR-01 نفسَه** الذي وُجدت اللوحةُ له — ويُفسِد النسخَ (سطرٌ واحدٌ يُنسَخ ثلاثةً).
+const MSG_PARTIAL = "partial";
+// ext→web: سطرُ نظامٍ خبريّ (ليس مخرَجَ البرنامج) — يُعرَض بنمط `sys`.
+const MSG_NOTE = "note";
 const MSG_STOP = "stop"; // web→ext: طلب إيقاف التشغيل الجاري
 const MSG_READY = "ready"; // web→ext: الـwebview حمّل واستمع (مصافحة تمنع فقدان أوّل رسائل)
 // web→ext: قياسُ عرض المحارف الفعليّ [TY-03]. عيّنةُ القياس تُستورَد من `font-probe.js`
@@ -69,6 +76,21 @@ const ACTION_BUILD = "build";
 // إشارة إنهاء العمليّة عند الإيقاف أو الاستبدال بتشغيل أحدث. (ملاحظة منصّة: على ويندوز يقتل
 // TerminateProcess العمليّة لا أحفادها — لو أطلق sad-run عمليّات فرعيّة قد تُيتَّم؛ قيد مقبول.)
 const KILL_SIGNAL = "SIGTERM";
+
+// [م٧] مجاري العمليّة صراحةً: **الدخلُ مُغلَق**، والمخرجان أنبوبان. الافتراضُ (`pipe` للثلاثة)
+// كان يترك أنبوبَ دخلٍ مفتوحًا لا يُكتَب فيه ولا يُغلَق ⇒ برنامجٌ يستدعي «اقرأ» يعلّق **أبدًا**
+// واللوحةُ تعرض «يشغّل: …» بلا نهاية. بالإغلاق يصل EOF فترجع القراءةُ نصًّا فارغًا وينتهي
+// البرنامجُ برمزِ خروج. ولأنّ «انتهى بنجاح» فوق قراءةٍ لم تقع كذبٌ أهدأُ صوتًا لا إصلاح،
+// يرافقه سطرُ نظامٍ يقول ما جرى (`COPY.noStdin`) حين يكشف المسحُ الساكنُ استدعاءَ «اقرأ».
+const STDIO = ["ignore", "pipe", "pipe"];
+
+// [م٧] مهلةُ خمولٍ (م.ث) يُطرَد بعدها السطرُ الجزئيُّ إلى اللوحة سطرًا حيًّا مفتوحًا. تُصفَّر
+// وتُعاد عند **كلّ** دفعة، ولا تُسلَّح إلّا إذا بقيت بقيّةٌ ⇒ تدفّقٌ منتهٍ بأسطرٍ لا يُسلّحها
+// أصلًا، وتدفّقٌ متّصلٌ لا يبلغ الخمولَ فلا تُطلَق: لا إبطاءَ ولا تشظٍّ تحت الفيضان.
+// الرقمُ مشتقٌّ من ميزانيّة `docs/rtl/typography-decisions.md` (‏١٠٠ م.ث = تُحسّ فوريّة،
+// ١ ثانية = حدُّ بقاء الانتباه): ١٥٠ تقع في العَشْر الأوّل من الميزانيّة، والمتلقّي إنسانٌ
+// يستغرق قراءةَ السؤال أضعافَها. ولا داعيَ لأكثر: تحت «السطر الحيّ» الطردُ المبكِّر بلا كلفة.
+const IDLE_FLUSH_MS = 150;
 
 // أكواد أخطاء «فشل الإطلاق» في حدث child 'error' (لم تبدأ العمليّة أصلًا) — تُميَّز عن أخطاء
 // ما-بعد-التشغيل: حدث 'error' مُهيمَن عليه بهذه (الأداة محذوفة/ممنوعة بين الفحص والإطلاق = TOCTOU).
@@ -107,6 +129,12 @@ const COPY = {
   spawnFail: (e) => `تعذّر بدء التشغيل: ${e}`,
   procError: (e) => `خطأ في التشغيل: ${e}`,
   notStarted: "لم يبدأ التشغيل.",
+  // [م٧] الجملةُ الوحيدةُ التي تمنع «انتهى بنجاح» من أن يُقرأ حكمًا على برنامجٍ لم يُعطَ دخلَه.
+  // صياغتُها **شرطيّةٌ صادقة**: «كلُّ قراءةٍ نُفِّذت» — لا ندّعي أنّ القراءةَ وقعت (لا سبيلَ
+  // لرصدها من خارج العمليّة)، بل ما يلزم عنها حتمًا لو وقعت. وتُعطي المخرَجَ لا التصنيف.
+  noStdin:
+    "اللوحةُ لا تستقبل دخلًا. وهذا الملفّ يستدعي «اقرأ» — فكلُّ قراءةٍ نُفِّذت أعادت نصًّا " +
+    "فارغًا. لتشغيلٍ بدخلٍ حقيقيّ: شغّله في الطرفيّة.",
 };
 
 // ───────────────────────── منطق نقيّ (بلا vscode) ─────────────────────────
@@ -131,6 +159,26 @@ function takeLines(prev, chunk, maxLineLen) {
     rest = rest.slice(maxLineLen);
   }
   return { lines, rest };
+}
+
+// [م٧] استدعاءٌ **حرٌّ** لدالّة القراءة `اقرأ(` — لا مسبوقًا بنقطةٍ (`إ2.اقرأ(...)` استدعاءُ
+// عضوٍ مختلفٌ موجودٌ فعلًا في الدروس) ولا بحرفِ مُعرِّف (فلا يُلتقط ذيلُ اسمٍ أطول).
+const READ_CALL_RE = /(?:^|[^.\wء-ي])اقرأ\s*\(/;
+
+/**
+ * هل يستدعي نصُّ برنامجِ ص قراءةَ الدخل؟ مسحٌ ساكنٌ نقيٌّ — **لا يدّعي أنّ القراءةَ ستقع**،
+ * بل يجيب: أينبغي أن نُخبر المستخدمَ أنّ اللوحةَ لا تستقبل دخلًا؟ نافذةٌ خاطئةٌ موجبةٌ هنا
+ * تكلّف سطرَ نظامٍ زائدًا، والخاطئةُ السالبةُ تكلّف «انتهى بنجاح» فوق برنامجٍ لم يُسأل.
+ * تُطرَح النصوصُ والتعليقاتُ أوّلًا كي لا يُحسَب `اقرأ(` داخل نصٍّ حرفيٍّ أو شرحٍ استدعاءً.
+ * @param {string} [text] @returns {boolean}
+ */
+function usesStdinRead(text) {
+  if (!text) return false;
+  const stripped = String(text)
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""') // نصوص حرفيّة
+    .replace(/#[^\n]*/g, "") // تعليق #
+    .replace(/\/\/[^\n]*/g, ""); // تعليق //
+  return READ_CALL_RE.test(stripped);
 }
 
 // ───────────────────────── طبقة webview/العمليّة ─────────────────────────
@@ -215,7 +263,12 @@ function buildHtml(fontDataUri) {
 </head>
 <body>
   <div id="head"><span id="file"></span><button id="stop" hidden>أوقِف</button></div>
-  <div id="log"></div>
+  <!-- ‏[م٧] السجلُّ منطقةُ بثٍّ حيٍّ مُعلَنة: دورُ log وصفٌ **صادقٌ** لِما هو (سجلٌّ يُلحَق
+       به زمنيًّا)، لا إعلانٌ مُجازف. والسطرُ الحيُّ المفتوحُ يُستثنى منها بـaria-live=off
+       لأنّه يتحوّر مع كلّ طردة؛ يُعلَن مرّةً واحدةً حين يُغلَق سطرًا مكتملًا. وما يسمعه قارئُ
+       شاشةٍ فعلًا يبقى دعوى SR-01 — لا تُدَّعى هنا لأنّها تُقاس بجلسةٍ بشريّةٍ لا بحارس.
+       (بلا شواهدَ خلفيّةٍ هنا: نحن داخل قالبٍ نصّيّ، والشاهدةُ تُنهيه فتُسقِط الملفّ.) -->
+  <div id="log" role="log" aria-live="polite" aria-label="سجلّ مخرجات البرنامج"></div>
   <!-- [ON-02] الحالةُ الفارغة: اللحظاتُ التي يكون فيها المستخدمُ عالقًا وحاضرَ الذهن.
        جملةُ حالٍ + فعلٌ واحدٌ بزرّ — لا فراغٌ صامتٌ يُقرأ عطبًا. -->
   <div id="empty">
@@ -253,6 +306,29 @@ function buildHtml(fontDataUri) {
     if (stick) log.scrollTop = log.scrollHeight;
   }
 
+  // [م٧] السطرُ الحيُّ المفتوحُ لكلّ مجرى: عنصرٌ واحدٌ يُحدَّث في مكانه حتّى يصل فاصلُ السطر.
+  // حين تصل الأسطرُ المكتملةُ للمجرى نفسِه يُزال أوّلًا — لأنّ أوّلَ سطرٍ مكتملٍ **يحوي**
+  // نصَّه أصلًا (takeLines يصل البقيّةَ بالدفعة التالية)، فلا تكرار.
+  const openEls = { '${STREAM_OUT}': null, '${STREAM_ERR}': null };
+  function closeOpen(stream) {
+    const el = openEls[stream];
+    if (el) { el.remove(); openEls[stream] = null; }
+  }
+  function setOpen(stream, text, cls) {
+    if (emptyEl) { emptyEl.hidden = true; }
+    const stick = nearBottom();
+    let el = openEls[stream];
+    if (!el) {
+      el = document.createElement('div');
+      el.className = cls;
+      el.setAttribute('aria-live', 'off');
+      log.appendChild(el);
+      openEls[stream] = el;
+    }
+    el.textContent = text; // نصّ فقط — لا حقن HTML من مخرجات البرنامج
+    if (stick) log.scrollTop = log.scrollHeight;
+  }
+
   stop.addEventListener('click', () => vscode.postMessage({ type: '${MSG_STOP}' }));
 
   window.addEventListener('message', (e) => {
@@ -260,12 +336,19 @@ function buildHtml(fontDataUri) {
     if (m.type === '${MSG_CLEAR}') {
       if (emptyEl) { emptyEl.hidden = false; }
       log.textContent = '';
+      openEls['${STREAM_OUT}'] = null;
+      openEls['${STREAM_ERR}'] = null;
     } else if (m.type === '${MSG_START}') {
       fileEl.textContent = m.label || '';
       stop.hidden = false;
     } else if (m.type === '${MSG_LINES}') {
       const cls = 'line ' + (m.stream === '${STREAM_ERR}' ? 'err' : 'out');
+      closeOpen(m.stream);
       append(m.lines, cls);
+    } else if (m.type === '${MSG_PARTIAL}') {
+      setOpen(m.stream, m.text, 'line ' + (m.stream === '${STREAM_ERR}' ? 'err' : 'out'));
+    } else if (m.type === '${MSG_NOTE}') {
+      append([m.label], 'line sys');
     } else if (m.type === '${MSG_EXIT}') {
       append([m.label], 'line sys ' + (m.ok ? 'ok' : 'bad'));
       stop.hidden = true;
@@ -338,6 +421,12 @@ class SadOutputPanel {
     this._ready = false;
     /** @type {object[]} */
     this._pending = [];
+    // [م٧] مؤقّتا طردِ السطر الجزئيّ (واحدٌ لكلّ مجرًى) — انظر `_armIdle`.
+    /** @type {{ out: any, err: any }} */
+    this._idle = { [STREAM_OUT]: null, [STREAM_ERR]: null };
+    // [م٧] هل يستدعي الملفُّ المُشغَّلُ «اقرأ»؟ يُحسَب مرّةً عند الإطلاق (مسحٌ ساكن) ويُقرأ
+    // عند الخروج ليُرافَق «انتهى بنجاح» بسطرِ نظامٍ يقول إنّ اللوحةَ لا تستقبل دخلًا.
+    this._interactive = false;
     // الخطّ المحزوم كـdata: URI (يُقرأ مرّةً؛ null إن غاب ⇒ سقوط رشيق لمكدّس الخطّ النظاميّ).
     this._fontDataUri = loadBundledFontDataUri(context);
     // [TY-03] مستقبِلُ قياس عرض المحارف — يُحقَن من `activate` ولا تعرفه اللوحة.
@@ -413,8 +502,35 @@ class SadOutputPanel {
     void this._panel.webview.postMessage(message);
   }
 
+  /** [م٧] يُلغي مؤقّتَي الخمول (كلاهما أو أحدهما) — لا طردَ متأخّرًا لعمليّةٍ ماتت. */
+  _clearIdle(stream) {
+    const slots = stream ? [stream] : [STREAM_OUT, STREAM_ERR];
+    for (const s of slots) {
+      if (this._idle && this._idle[s]) {
+        clearTimeout(this._idle[s]);
+        this._idle[s] = null;
+      }
+    }
+  }
+
+  /**
+   * [م٧] يُسلّح مؤقّتَ طردِ السطر الجزئيّ لمجرًى واحد: يُصفَّر ويُعاد عند **كلّ** دفعة، ولا
+   * يُسلَّح إن لم تبقَ بقيّة. فالتدفّقُ المنتهي بأسطرٍ لا يُسلّحه أصلًا، والمتّصلُ لا يبلغ
+   * الخمولَ فلا يُطلقه — وهذا ما يفرّقه عن `setInterval` دوريٍّ يُطلِق **وسطَ** الفيضان فيشظّي.
+   */
+  _armIdle(proc, stream, ref) {
+    this._clearIdle(stream);
+    if (!ref.rest) return;
+    this._idle[stream] = setTimeout(() => {
+      this._idle[stream] = null;
+      if (this._proc !== proc || !ref.rest) return;
+      this._post({ type: MSG_PARTIAL, stream, text: ref.rest });
+    }, IDLE_FLUSH_MS);
+  }
+
   /** يقتل العمليّة الجارية (إن وُجدت) ويصفّر المرجع. */
   _killProc() {
+    this._clearIdle();
     if (this._proc) {
       try {
         this._proc.kill(KILL_SIGNAL);
@@ -438,10 +554,14 @@ class SadOutputPanel {
    * action ∈ {run, build} يحدّد عنوان البدء ووسم الانتهاء (تشغيل مقابل ترجمة) [SAD-04].
    * @param {string} cmd @param {string[]} args @param {string} cwd @param {string} fileLabel
    * @param {"run"|"build"} [action]
+   * @param {string} [sourceText] نصُّ برنامج ص — يُمسَح ساكنًا بحثًا عن «اقرأ» [م٧]. يُمرَّر
+   *        نصًّا لا مسارًا: الوثيقةُ محفوظةٌ للتوّ فالنصُّ عينُه، وبلا قراءةِ قرصٍ ولا ترميز.
    */
-  run(cmd, args, cwd, fileLabel, action) {
+  run(cmd, args, cwd, fileLabel, action, sourceText) {
     if (this._disposed) return;
     const isBuild = action === ACTION_BUILD;
+    // البناءُ لا يشغّل البرنامج، فلا قراءةَ دخلٍ فيه مهما كان نصُّه.
+    this._interactive = !isBuild && usesStdinRead(sourceText);
     const hadLive = !!this._proc; // كان تشغيلٌ جارٍ سيُستبدَل ⇒ نُعلِم بدل مسح/قتل صامت [تدقيق #3]
     this._killProc(); // استبدل أيّ تشغيل سابق قبل بدء الجديد
     const panel = this._ensurePanel();
@@ -452,7 +572,7 @@ class SadOutputPanel {
 
     let proc;
     try {
-      proc = cp.spawn(cmd, args, { cwd, windowsHide: true });
+      proc = cp.spawn(cmd, args, { cwd, windowsHide: true, stdio: STDIO });
     } catch (e) {
       this._post({ type: MSG_LINES, stream: STREAM_ERR, lines: [COPY.spawnFail(errText(e))] });
       this._post({ type: MSG_EXIT, label: COPY.notStarted, ok: false });
@@ -472,6 +592,7 @@ class SadOutputPanel {
       const { lines, rest } = takeLines(ref.rest, dec.write(buf), MAX_LINE_LEN);
       ref.rest = rest;
       if (lines.length) this._post({ type: MSG_LINES, stream, lines });
+      this._armIdle(proc, stream, ref); // [م٧] يُصفَّر ويُعاد مع كلّ دفعة
     };
     // يبثّ ما تبقّى (سطر أخير بلا فاصل) عند انتهاء العمليّة.
     const flushTail = (dec, stream, ref) => {
@@ -498,8 +619,15 @@ class SadOutputPanel {
     });
     proc.on("close", (code, signal) => {
       if (this._proc !== proc) return; // استُبدل بتشغيل أحدث أو أُوقِف يدويًّا ⇒ تجاهل
+      this._clearIdle(); // [م٧] لا طردَ متأخّرًا بعد الخروج — flushTail أدناه يُغلق المفتوح
       flushTail(outDec, STREAM_OUT, outRef);
       flushTail(errDec, STREAM_ERR, errRef);
+      // [م٧] سطرُ النظام قبل حكمِ الخروج: البرنامجُ طلب دخلًا واللوحةُ لا تعطيه، فلولاه
+      // يُقرأ «انتهى بنجاح» حكمًا على البرنامج — فيُصلِح المستخدمُ شيفرتَه وليست عاطلة.
+      // لا يظهر لبرنامجٍ لم يستدعِ «اقرأ»، ولا لبناء، ولا لتشغيلٍ أُنهيَ بإشارة (لم يكمل).
+      if (this._interactive && !signal) {
+        this._post({ type: MSG_NOTE, label: COPY.noStdin });
+      }
       let label;
       if (signal) label = COPY.exitSignal(signal);
       else if (isBuild) label = code === 0 ? COPY.buildOk : COPY.buildFail(code);
@@ -526,6 +654,8 @@ function errText(e) {
 module.exports = {
   SadOutputPanel,
   takeLines,
+  usesStdinRead,
+  IDLE_FLUSH_MS,
   buildHtml,
   loadBundledFontDataUri,
   COPY,

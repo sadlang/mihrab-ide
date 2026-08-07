@@ -436,7 +436,16 @@ async function runSadFile(arg) {
   // لوحة مخرجات عربيّة واعية بالاتّجاه (كلّ سطر يأخذ اتّجاهه من محتواه). العربيّة تُقرأ صحيحةً.
   // المسار المحلول (المدمج ثمّ PATH) والوسيط مفصولان (spawn بلا صدفة، فلا حقن)، ومجلّد العمل =
   // مجلّد الملفّ كي تُحلّ المسارات النسبيّة داخل برنامج ص صوابًا. [M5]
-  sadOutput.run(sadRunCmd, [doc.fileName], path.dirname(doc.fileName), path.basename(doc.fileName), ACTION_RUN);
+  // نصُّ الوثيقة يُمرَّر لمسحٍ ساكنٍ عن «اقرأ» [م٧]: اللوحةُ لا تستقبل دخلًا، فإن طلبه
+  // البرنامجُ رافَقَ سطرَ الخروجِ سطرُ نظامٍ يقول ذلك — لئلّا يُقرأ «انتهى بنجاح» حكمًا عليه.
+  sadOutput.run(
+    sadRunCmd,
+    [doc.fileName],
+    path.dirname(doc.fileName),
+    path.basename(doc.fileName),
+    ACTION_RUN,
+    doc.getText()
+  );
 }
 
 /** يشتقّ مسار المخرَج التنفيذيّ من ملفّ المصدر: بجواره باسمه دون لاحقة ص (sad-build يضيف لاحقة المنصّة). */
