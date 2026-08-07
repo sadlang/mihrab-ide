@@ -152,10 +152,21 @@ BRANDING_SESSIONS_ASSETS = [
 #     ولم يُضَف `cursorWordOperations.ts` ولا `wordCharacterClassifier.ts`: لا فحصَ يشتقّ
 #     منهما توقُّعًا، وانجرافُ **الخوارزميّة** يمسكه القياسُ الحيّ (`word_boundaries.live.mjs`)
 #     لا مقارنةُ نصّ. ملفُّ مرجعٍ بلا مشتقٍّ منه وزنٌ يُحمَل بلا حراسةٍ تُكتسَب.
+#   • webview/pre/index.html: مستضيفُ **كلِّ** لوحات الـwebview، وترويسةُ CSP فيه تحمل
+#     `script-src 'sha256-…'` لبرنامجها المضمَّن الوحيد. البصمةُ **مصونةٌ يدويًّا** — ظهرت
+#     مرّةً واحدةً في الشجرة كلِّها، ولا خطوةَ بناءٍ تعيد حسابها. فتعديلُ بايتٍ واحدٍ في جسم
+#     البرنامج يُبطلها، فيحجب المتصفّحُ البرنامجَ كلَّه وتنطفئ **كلُّ** اللوحات — بلا خطأٍ في
+#     الطرفيّة ولا لوحٍ فارغٍ مُعلَّل. كمينٌ صامتٌ يستحقّ حارسًا قبل أن تُكتَب رقعتُه، لا بعدها.
+#     ويشتقّ منه `check_webview_csp` توقُّعَه: البصمةُ تُحسَب على الجسم **بعد تسوية الأسطر
+#     إلى LF** (‏CRLF يعطي بصمةً أخرى — قِيس الطرفان).
 REFERENCE_FILES = [
     "src/vs/base/common/strings.ts",
     "src/vs/editor/common/core/wordHelper.ts",
+    "src/vs/workbench/contrib/webview/browser/pre/index.html",
 ]
+
+# الملفُّ الذي يفحصه حارسُ بصمةِ CSP (‏L1) — مُسمًّى مرّةً ليقرأه الحارسُ والوثائقُ معًا.
+WEBVIEW_HOST_HTML = "src/vs/workbench/contrib/webview/browser/pre/index.html"
 
 
 def root_target_files(build_dir, patcher):

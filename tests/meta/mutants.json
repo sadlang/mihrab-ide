@@ -43,6 +43,16 @@
       "why": "لقطةٌ من وسمٍ غيرِ الوسم المثبَّت تجعل كلَّ مرساةٍ تُقاس على شجرةٍ أخرى — وهو عين ما وُجدت اللقطةُ لمنعه."
     },
     {
+      "id": "webview-csp-hash-drift",
+      "guardFile": "tests/apply/check_anchors.py",
+      "guard": "python tests/apply/check_anchors.py --snapshot",
+      "file": "tests/apply/snapshot/src/vs/workbench/contrib/webview/browser/pre/index.html",
+      "old": "no-csp-found",
+      "new": "no-csp-fouNd",
+      "expect": "بصمة",
+      "why": "مِحرفٌ واحدٌ داخل البرنامج المضمَّن يُبطِل بصمة CSP في الترويسة، فيحجب المتصفّح البرنامج وتنطفئ كلُّ لوحات الـwebview صامتةً. وهذا هو العطبُ بعينِه الذي تُحدِثُه أيُّ رقعةٍ تلمس ذلك الملفّ."
+    },
+    {
       "id": "patchers-undocumented-core-diff",
       "guardFile": "tests/static/lint_patchers.py",
       "guard": "python tests/static/lint_patchers.py",

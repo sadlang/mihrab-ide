@@ -21,8 +21,11 @@ HEAD وشجرة العمل، لكنّ L1 الأخضر لا يبرهن صمود �
 
 الاستعمال: python tests/apply/check_anchors.py   (خرج 0 = نجاح/تخطٍّ، 1 = انجراف مرساة)
 """
+import base64
+import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -55,7 +58,11 @@ def _git_show(relpath):
 
 
 def _force_snapshot():
-    return os.environ.get("MIHRAB_L1_SOURCE", "").strip().lower() == "snapshot"
+    # `--snapshot` مرادفٌ للمتغيّر البيئيّ، ووجودُه ليس ترفًا: **حارسُ الحرّاس** يشغّل
+    # الحُرّاسَ عبر صَدَفةِ النظام، وصيغةُ `VAR=x cmd` لا تعمل على cmd.exe في ويندوز —
+    # فمُصابٌ يحتاج وضعَ اللقطة كان سيتعذّر زرعُه، أي حارسٌ بلا مُصابٍ بحُجّةٍ بيئيّة.
+    return (os.environ.get("MIHRAB_L1_SOURCE", "").strip().lower() == "snapshot"
+            or "--snapshot" in sys.argv[1:])
 
 
 def _pristine_source(relpath):
@@ -176,6 +183,69 @@ def check_core_diff(diff_rel):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+_CSP_SHA_RE = re.compile(r"'sha256-([A-Za-z0-9+/=]+)'")
+_INLINE_SCRIPT_RE = re.compile(r"<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", re.S)
+
+
+def check_webview_csp():
+    """بصمةُ CSP لمستضيف الـwebview تطابق برنامجَه المضمَّن؟ يعيد (ok, رسالة).
+
+    **ليس فحصَ مرساة — بل كمينٌ يُنزَع قبل أن يقع.** `pre/index.html` يستضيف كلَّ لوحة
+    webview في المحرّر، وترويسةُ CSP فيه تسمح ببرنامجٍ مضمَّنٍ واحدٍ ببصمة `sha256-`.
+    البصمةُ مصونةٌ **يدويًّا**: لا خطوةَ بناءٍ تعيد حسابها. فأيُّ رقعةِ محرابٍ مستقبليّةٍ
+    تلمس جسمَ ذلك البرنامج — ولو بمِحرفٍ — تُبطِل البصمةَ، فيحجب المتصفّحُ البرنامجَ
+    وتنطفئ اللوحاتُ كلُّها **صامتةً**: لا خطأً في الطرفيّة ولا لوحًا فارغًا مُعلَّلًا،
+    فيُقرأ العطبُ «الامتدادُ لا يعمل» لا «الرقعةُ كسرت CSP».
+
+    والحسابُ على الجسم **بعد تسوية الأسطر إلى LF**: قِيس الطرفان، فبصمةُ CRLF لا تطابق
+    الترويسةَ وبصمةُ LF تطابقها حرفًا. وهذا وحدَه فخٌّ ثانٍ على ويندوز، حيث تُسلَّم شجرةُ
+    العمل بـCRLF بينما المُسلَّم إلى المتصفّح LF.
+    """
+    rel = getattr(M, "WEBVIEW_HOST_HTML", None)
+    if not rel:
+        return None, "لا WEBVIEW_HOST_HTML في البيان (تخطٍّ)"
+    content, origin = _pristine_source(rel)
+    if content is None:
+        return None, f"لا مصدر نظيف لـ{rel} (تخطٍّ)"
+    # لو مسَّت رقعةُ نواةٍ هذا الملفَّ، فالمقيسُ هو **ما يُشحَن** لا ما في المنبع.
+    touching = [d for d in getattr(M, "CORE_DIFFS", [])
+                if rel in M.core_diff_files(ROOT, d, existing_only=True)]
+    if touching:
+        tmp = tempfile.mkdtemp(prefix="mihrab_csp_")
+        try:
+            dst = os.path.join(tmp, rel.replace("/", os.sep))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, "w", encoding="utf-8", newline="") as f:
+                f.write(content)
+            for d in touching:
+                r = subprocess.run(["git", "apply", os.path.join(ROOT, d.replace("/", os.sep))],
+                                   cwd=tmp, capture_output=True)
+                if r.returncode != 0:
+                    return False, f"تعذّر تطبيق {os.path.basename(d)} لقياس البصمة"
+            with open(dst, "r", encoding="utf-8", newline="") as f:
+                content = f.read()
+            origin = f"{origin}+{len(touching)} رقعة"
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    declared = _CSP_SHA_RE.findall(content)
+    scripts = _INLINE_SCRIPT_RE.findall(content)
+    if not declared:
+        return False, "لا بصمةَ sha256 في ترويسة CSP — أزيلت أو تغيّر شكلُها"
+    if not scripts:
+        return False, "لا برنامجَ مضمَّنًا في المستضيف — تغيّر شكلُ الملفّ"
+    actual = {base64.b64encode(
+        hashlib.sha256(s.replace("\r\n", "\n").encode("utf-8")).digest()).decode()
+        for s in scripts}
+    missing = [d for d in declared if d not in actual]
+    if missing:
+        return False, ("بصمةُ CSP لا تطابق البرنامجَ المضمَّن — كلُّ لوحات الـwebview "
+                       f"ستنطفئ صامتةً.{chr(10)}       المُعلَنة: {missing[0][:16]}… · "
+                       f"المحسوبة: {sorted(actual)[0][:16]}…{chr(10)}"
+                       "       أعِد حسابَ السطر 8 من index.html: sha256 على جسم البرنامج بعد تسوية LF.")
+    return True, f"بصمةُ CSP تطابق البرنامجَ المضمَّن ({len(scripts)} برنامج) [{origin}]"
+
+
 def main():
     print("═══ L1: تطبيق مراسي الرُقَع على المنبع المثبَّت ═══")
     have_upstream = os.path.isdir(os.path.join(UPSTREAM_VSCODE, ".git")) and not _force_snapshot()
@@ -227,7 +297,17 @@ def main():
         else:
             failed += 1
             print(f"  ❌ {name}: {msg}")
-    total = len(M.PATCHERS) + len(getattr(M, "CORE_DIFFS", []))
+    ok, msg = check_webview_csp()
+    if ok is None:
+        skipped += 1
+        print(f"  ⏭️  بصمةُ CSP للـwebview: {msg}")
+    elif ok:
+        print(f"  ✅ بصمةُ CSP للـwebview: {msg}")
+    else:
+        failed += 1
+        print(f"  ❌ بصمةُ CSP للـwebview: {msg}")
+
+    total = len(M.PATCHERS) + len(getattr(M, "CORE_DIFFS", [])) + 1
     print(f"─── {total - failed - skipped}/{total} نجحت، {skipped} تخطٍّ، {failed} فشل ───")
     return 1 if failed else 0
 
