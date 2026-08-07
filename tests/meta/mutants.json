@@ -111,6 +111,56 @@
       "new": "| `030-simple-editor-rtl-input-XX.patch` |",
       "expect": "بلا مبرَّرٍ مكتوب",
       "why": "رقعةُ نواةٍ تُشحَن بلا سطرٍ يبرّرها هي دَينُ دمجٍ خفيّ — والحارسُ أمسك هذا فعلًا عند إضافة الرقعة ‎030‎."
+    },
+    {
+      "id": "l0-check-measures-nothing",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "tests/static/lint_patchers.py",
+      "old": "inv = os.path.join(ROOT, \"docs\", \"rtl\", \"rtl-inventory.md\")",
+      "new": "inv = os.path.join(ROOT, \"docs\", \"rtl\", \"rtl-inventory-MUTANT.md\")",
+      "expect": "شاهدُ التفعيل",
+      "why": "حبّةُ التغطية في حارس الحرّاس **ملفٌّ لا فحص**: `lint_patchers.py` حارسٌ واحدٌ فيه اثنان وستّون فحصًا، فأيُّ فحصٍ يولد لا يرى شيئًا يمرّ بلا شاهد. والمُصابُ يُخفي عن الفحص الملفَّ الذي يقرؤه، فيعود باكرًا **ناجحًا بلا توكيدٍ واحد** — وهي الصورةُ الدقيقةُ للأخضر على العدم. الحارسُ المقصودُ هنا هو شاهدُ التفعيل في المشغّل لا الفحصُ نفسُه."
+    },
+    {
+      "id": "board-cites-absent-mutant",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "docs/milestones.md",
+      "old": "lsp-byte-ranges-not-repaired",
+      "new": "lsp-byte-ranges-not-repaired-drift",
+      "expect": "بلا شاهد",
+      "why": "لوحُ الحالة يسمّي حرّاسًا «شُوهدوا وهم يحمرّون». ومعرّفٌ يُعاد تسميتُه في `mutants.json` يُبقي على اللوح **دعوى مشاهدةٍ لا شاهدَ لها** — والقارئُ يصدّقها لأنّها مكتوبةٌ بصيغة المقيس. يُصيب اللوحَ لا الحارس: هذا هو الاتّجاهُ الذي ينجرف فعلًا [DR-01]."
+    },
+    {
+      "id": "rtl-inventory-omits-shipped-patcher",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "docs/rtl/rtl-inventory.md",
+      "old": "welcome_rtl",
+      "new": "welcome_rtl_MUTANT",
+      "expect": "ولا يذكرها جردُ الاتّجاه",
+      "why": "يُعيد زرعَ العطب الحقيقيّ بعينه: جدولُ المقاييس كان يسرد `editor_rtl` (غيرُ موجود) ولا يسرد `welcome_rtl` (موجود) — فالمجموعُ يصادف أن يبقى ‎7‎ والقائمةُ خاطئةٌ في عنصرين. **مجموعٌ صحيحٌ فوق قائمةٍ كاذبة**، وهو أخفى من رقمٍ خاطئ."
+    },
+    {
+      "id": "brand-hinge-suffix-drift",
+      "guardFile": "tests/brand/check_brand.py",
+      "guard": "python tests/brand/check_brand.py",
+      "file": "build/mihrab_brand.py",
+      "old": "HINGE_SUFFIXES = (\".orig.json\",)",
+      "new": "HINGE_SUFFIXES = (\".orig.jsonx\",)",
+      "expect": "الأصل",
+      "why": "‏`check_brand.py` كان مُعلَنًا «بلا مُصاب» بحجّة «كسابقه — يقرأ الحزمةَ المشحونة». **والقياس: صفرُ قراءةٍ للحزمة** — يشهد لسلوك قاعدة التطبيع على شجرةٍ مصنوعة، ويعمل بلا بناء. فالإعفاءُ كان يُشترى بحجّةٍ لا تنطبق، وذاك أخطرُ من إعلانٍ صريح. والمُصابُ يُفسِد لاحقةَ ملفّات الأصل، فتُعَدُّ ملفّاتُ الإنجليزيّة تسرّبًا للهويّة — ويسقط تمييزُ «ما نُعيد منه البناء» عن «ما يُصيَّر»."
+    },
+    {
+      "id": "nebras-contract-source-drift",
+      "guardFile": "extensions/mihrab-nebras/contract/gen_contract.py",
+      "guard": "python extensions/mihrab-nebras/contract/gen_contract.py --check",
+      "file": "extensions/mihrab-nebras/contract/protocol-contract.yaml",
+      "old": "const: PROTOCOL_VERSION,",
+      "new": "const: PROTOCOL_VERSION_MUTANT,",
+      "expect": "عقد السلك منحرف",
+      "why": "كان مُعلَنًا «بلا مُصابٍ لأنّ له حارسًا مكافئًا: `git diff` يُظهر الانجراف». والإعلانُ يشترط أن يُعاد التوليدُ قبل الالتزام — وهو ما لا يفرضه شيء. المُصابُ يزرع في **مصدر الحقيقة** لا في المولَّد، فيقيس ما يدّعيه الحارسُ فعلًا: أنّ الاثنين متطابقان."
     }
   ],
   "uncovered": [
@@ -119,20 +169,12 @@
       "why": "الشيءُ المحروسُ هو **الحزمةُ المبنيّة** لا ملفٌّ في الشجرة: زرعُ عطبٍ فيه يستلزم بناءً كاملًا (‏≈40 دقيقة) لكلّ مُصاب. ومُصابٌ لا يُشغَّل ليس تغطية. الشرطُ لرفع هذا الإعلان: وظيفةُ CI تبني مرّةً ثمّ تزرع في المخرَج مباشرةً."
     },
     {
-      "guardFile": "tests/brand/check_brand.py",
-      "why": "كسابقه — يقرأ الحزمةَ المشحونة."
-    },
-    {
       "guardFile": "tests/lexicon/check_lexicon.mjs",
       "why": "يشترط `tsc` من شجرة المنبع، وهو مشروطٌ في `run.sh` نفسِه بوجودها. مُصابٌ يتخطّى نفسَه على أكثر الأجهزة ليس تغطية."
     },
     {
       "guardFile": "tests/dx/completion_rank.mjs",
       "why": "كسابقه — يشترط شجرةَ المنبع لتصريف المُطابِق الضبابيّ."
-    },
-    {
-      "guardFile": "extensions/mihrab-nebras/contract/gen_contract.py",
-      "why": "‏**غيرُ مؤجَّلٍ لسببٍ تقنيّ بل لأنّ له حارسًا مكافئًا**: المولِّدُ يُقارَن بمخرَجه المتتبَّع في git، فأيُّ انجرافٍ يظهر في `git diff` قبل الالتزام. يُغطّى حين يُضاف مُصابٌ يزرع في `protocol-contract.yaml`."
     }
   ]
 }

@@ -550,19 +550,37 @@ def _docs_urls_resolve_to_pages():
     رابطًا ميّتًا — ولا شيءَ يصرخ حتّى يشتكي مستخدم.
     """
     prod = json.load(open(os.path.join(ROOT, "product-overrides", "product.json"), encoding="utf-8"))
-    site_root = "https://sadlang.github.io/mihrab-ide/"
     content = os.path.join(ROOT, "site", "content")
     if not os.path.isdir(content):
         return  # لا موقع في هذا الفرع — تخطٍّ
+    # ‏**الأصلُ يُقرأ ولا يُكتَب هنا.** كان مكتوبًا بيدٍ (`sadlang.github.io/mihrab-ide/`)،
+    # ثمّ انتقل الأصلُ إلى `sad-lang.org/mihrab/` وصارت تلك مرآةً — فتوقّف الفحصُ عن
+    # مطابقة رابطٍ واحد وبقي **أخضرَ يقيس صفرًا**. مصدرُ الحقيقة `site/data/site.json`،
+    # وهو ما يبنى منه `rel=canonical` في كلّ صفحة.
+    site_root = json.load(open(os.path.join(ROOT, "site", "data", "site.json"),
+                               encoding="utf-8"))["canonical"]
+    if not site_root.endswith("/"):
+        site_root += "/"
     slugs = {fn[:-3] for fn in os.listdir(content) if fn.endswith(".md")}
+    # وصفحاتٌ تُولَّد بلا ملفِّ محتوى (‏`docs/` و`download/`) — تُقرأ من المولِّد نفسِه
+    # لا من قائمةٍ ثانيةٍ تنجرف.
+    slugs |= set(re.findall(r'write\(os\.path\.join\(OUT,\s*"([^"]+)",\s*"index\.html"',
+                            _read(os.path.join(ROOT, "site", "build.py"))))
+    seen = 0
     for k, v in prod.items():
         if not isinstance(v, str) or not v.startswith(site_root):
             continue
+        seen += 1
         rest = v[len(site_root):].strip("/")
         if not rest:
             continue  # الجذر: الصفحة الأولى، تُولَّد دائمًا
         assert rest in slugs, (
             f"{k} يشير إلى /{rest}/ ولا ملفَّ site/content/{rest}.md — رابطٌ ميّت في القائمة.")
+    # شاهدُ تفعيلٍ موجَب: بلا رابطٍ واحدٍ مطابقٍ للأصل، الفحصُ أعلاه أخضرُ على العدم.
+    assert seen >= 3, (
+        f"‏{seen} روابطَ فقط في product.json تبدأ بأصل الموقع «{site_root}» — "
+        "إمّا انتقل الأصلُ ولم يُنقَل معه، وإمّا حُذفت روابطُ القائمة. "
+        "وفحصُ «لا 404» بلا روابطَ يفحصها أخضرُ على العدم.")
 
 
 @check("مجلّد الإعدادات: الرقعة موصولة فعلًا (نسخٌ + استدعاء + وحدتا TS)")
@@ -733,11 +751,19 @@ def _merge_editor_not_flipped_back():
     """
     body = _strip_css_comments(_read(os.path.join(ROOT, M.CSS_PATCH)))
     import re as _re
+    # ‏**شاهدُ تفعيلٍ موجَبٌ قبل التأكيد السالب.** حكمُ هذا الفحص كلُّه «لا قاعدةَ تفعل
+    # كذا»، والصوابُ **ألّا توجد** كتلةُ `.merge-editor` أصلًا — فالقرارُ قرارُ إبقاء.
+    # فلا يصلح وجودُ الكتلة شاهدًا، ويصلح **أنّ المِسطرة ترى الورقة**: بلا كتلةٍ واحدةٍ
+    # مُحلَّلةٍ يمرّ الفحصُ أخضرَ سواءٌ أكانت الورقةُ نظيفةً أم كان المحلِّلُ أعمى (انتقلت
+    # الورقةُ، أو كُتبت بصياغةٍ متداخلةٍ لا يفهمها التعبيرُ النمطيّ). وهما حالان لا
+    # يفرّق بينهما إلّا هذا التوكيد.
+    blocks = [(m.group(1), m.group(2)) for m in _re.finditer(r"([^{}]*)\{([^{}]*)\}", body)]
+    assert len(blocks) >= 20, (
+        f"‏{len(blocks)} كتلةً فقط حُلِّلت من {M.CSS_PATCH} — المِسطرةُ لا ترى الورقة، "
+        "وكلُّ تأكيدات هذا الفحص السالبةِ بعدها تمرّ على العمى لا على النظافة [SC-02].")
+    touching = [b for b in blocks if "merge-editor" in b[0]]
     # كلُّ كتلةٍ محدِّدُها يمسّ `.merge-editor`: يُفحَص متنُها لا اسمُها.
-    for m in _re.finditer(r"([^{}]*)\{([^{}]*)\}", body):
-        sel, decls = m.group(1), m.group(2)
-        if "merge-editor" not in sel:
-            continue
+    for sel, decls in touching:
         for prop, bad in (("direction", None),
                           ("flex-direction", "row-reverse"),
                           ("order", None)):
@@ -2110,6 +2136,113 @@ def _milestones_links_resolve():
         "روابطُ نسبيّةٌ ميّتةٌ في لوح الحالة الوحيد: " + " · ".join(dead) + " [DR-01]")
 
 
+@check("جردُ الاتّجاه: كلُّ مرقِّع `patch_*_rtl.py` مذكورٌ فيه — لا مرقِّعَ بلا سطرٍ يبرّره")
+def _rtl_inventory_names_every_patcher():
+    """‏**اتّجاهٌ واحدٌ عمدًا**: مرقِّعٌ موجودٌ وغيرُ مذكور ⇒ فشل.
+
+    والعكسُ لا يُفرَض: الجردُ **يذكر ما زال** أيضًا (‏`editor_rtl` صار رقعةَ نواةٍ
+    `.patch`)، وذكرُ التاريخِ صدقٌ لا انجراف. فما يُمسَك هنا هو الصمتُ لا الزيادة.
+
+    والعطبُ المقيسُ الذي وُلد منه هذا الفحص: جدولُ المقاييس كان يسرد سبعةَ أسماءٍ فيها
+    `editor_rtl` (‏**غيرُ موجود**) وليس فيها `welcome_rtl` (‏**موجود**) — فالمجموعُ يصادف
+    أن يبقى ‎7‎ والقائمةُ خاطئةٌ في عنصرين. مجموعٌ صحيحٌ فوق قائمةٍ كاذبة.
+    """
+    inv = os.path.join(ROOT, "docs", "rtl", "rtl-inventory.md")
+    if not os.path.isfile(inv):
+        return
+    text = _read(inv)
+    names = sorted(f[len("patch_"):-len(".py")] for f in os.listdir(BUILD)
+                   if f.startswith("patch_") and f.endswith("_rtl.py"))
+    assert names, "لا مرقِّعَ اتّجاهٍ واحدًا في build/ — الفحصُ يحرس العدم."
+    # الاستشهادُ بالشولتين المائلتين لا بالورود الحرّ: «welcome_rtl_شيء» يحوي الاسمَ
+    # حرفيًّا ولا يستشهد به، فمطابقةُ المتنِ الحرّ تمرّ على تسميةٍ منجرفة.
+    missing = [n for n in names if ("`" + n + "`") not in text]
+    assert not missing, (
+        "مرقِّعاتُ اتّجاهٍ مشحونةٌ ولا يذكرها جردُ الاتّجاه: " + " · ".join(missing)
+        + " — والجردُ هو دليلُ إغلاق م٣، فما لا يُذكَر فيه لا يُراجَع عند الدمج.")
+
+
+@check("صدقُ لوح الحالة [DR-01]: معرّفُ مُصابٍ يُذكَر موجود · وحكمٌ سلبيٌّ مذكورٌ يقرؤه حارس")
+def _milestones_claims_are_anchored():
+    """‏**لا يقرأ هذا الفحصُ نثرًا ولا يحكم على 🟡 و⏳.**
+
+    الحالاتُ نفسُها (🟢/🟡/⏳/⛔) حكمٌ بشريٌّ لا يُقاس، وفحصٌ يحاول تكذيبَها بتحليل
+    جملٍ عربيّةٍ يبطل عند أوّل إعادة صياغة — وتنفيذُه الرخيصُ يقتضي **قائمةً ثانيةً
+    مكتوبةً بيدنا**، أي لوحَ حالةٍ ثانيًا ينجرف. وذاك عينُ ما يمنعه [DR-01].
+
+    فيُحرَس **ما يقبل الإرساء** وحدَه — رابطان ثنائيّا الاتّجاه:
+
+      ‏(١) كلُّ معرّفِ مُصابٍ يذكره اللوحُ موجودٌ في `tests/meta/mutants.json`. اللوحُ يسمّي
+          حرّاسًا «شُوهدوا وهم يحمرّون»؛ ومعرّفٌ يُعاد تسميتُه أو يُحذَف يُبقي على اللوح
+          **دعوى مشاهدةٍ لا شاهدَ لها**.
+      ‏(٢) كلُّ ملفِّ حكمٍ **سلبيٍّ** في `docs/` يُذكَر في اللوح، **ويقرؤه حارسٌ حيٌّ** في
+          `tests/`. الإغلاقُ السلبيُّ قرارُ «لا يُشحَن هذا»، وقرارٌ بلا حارسٍ يُنقَض
+          بيدٍ حسنةِ النيّة بعد ستّة أشهر ولا شيءَ يصرخ. والنموذجُ قائمٌ في `DAP-01`:
+          `lint_patchers` يقرأ وجودَ ملفّه، فرفعُ الحكم يبدأ بحذفه.
+
+    وشاهدُ التفعيل قبل التأكيدات: **وُجِد ما يُفحَص أصلًا**.
+    """
+    board_path = os.path.join(ROOT, "docs", "milestones.md")
+    board = _read(board_path)
+    spec = json.load(open(os.path.join(ROOT, "tests", "meta", "mutants.json"), encoding="utf-8"))
+    known = {m["id"] for m in spec["mutants"]}
+
+    # ‏(١) معرّفاتُ المُصابات — تُلتقَط من الشولات المائلة، فلا نصَّ حرًّا يُخمَّن.
+    quoted = set(re.findall(r"`([a-z0-9]+(?:-[a-z0-9]+){2,})`", board))
+    cited = {q for q in quoted if q in known or q.replace("-", "_") in known}
+    # مرشَّحٌ يشبه معرّفَ مُصابٍ ولا يوجد: إمّا مُصابٌ أُعيدت تسميتُه، وإمّا **اسمُ ملفّ**
+    # (‏`lsp-01-02` بادئةُ ملفّ الحكم). فيُستثنى ما يقابله أو يُبادِئ اسمَ ملفٍّ في الشجرة.
+    SKIP = {".git", "node_modules", ".upstream", "__pycache__", ".toolchain", "public"}
+    stems = set()
+    for base, dirs, files in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in SKIP]  # التقليمُ في المكان: بلا هذا يُمسَح `.upstream`
+        stems.update(os.path.splitext(f)[0] for f in files)
+    ghosts = sorted(q for q in quoted - cited
+                    if "." not in q
+                    and not any(st == q or st.startswith(q) for st in stems)
+                    and any(q.startswith(pre) for pre in {i.split("-")[0] for i in known}))
+    assert not ghosts, (
+        "معرّفاتُ مُصاباتٍ يذكرها لوحُ الحالة ولا وجودَ لها في mutants.json: "
+        + " · ".join(ghosts) + " — دعوى «شوهد وهو يحمرّ» بلا شاهد [DR-01].")
+    assert cited, (
+        "لا معرّفَ مُصابٍ واحدًا في لوح الحالة — إمّا زال جدولُ الحرّاس، وإمّا تغيّرت "
+        "صياغتُه فصار هذا التأكيدُ أخضرَ على العدم.")
+
+    # ‏(٢) أحكامُ الإغلاق السلبيّ: تُعرَف من عنوان الملفّ نفسِه لا من قائمةٍ عندنا.
+    judgments = []
+    for name in sorted(os.listdir(os.path.join(ROOT, "docs"))):
+        if not name.endswith(".md"):
+            continue
+        head = _read(os.path.join(ROOT, "docs", name)).splitlines()[0]
+        if re.search(r"مُغلَق\S*\s+سلب", head):
+            judgments.append(name)
+    assert len(judgments) >= 2, (
+        f"‏{len(judgments)} ملفَّ حكمٍ سلبيٍّ فقط في docs/ — والمِسطرةُ تتعرّف عليه من "
+        "عنوانه الأوّل. إن تغيّرت الصياغةُ فهذا الفحصُ يحرس العدم.")
+    unlinked = [n for n in judgments if n not in board and urllib.parse.quote(n) not in board]
+    assert not unlinked, (
+        "أحكامٌ سلبيّةٌ لا يذكرها لوحُ الحالة الوحيد: " + " · ".join(unlinked)
+        + " — قرارُ «لا يُشحَن» غيرُ مرئيٍّ لمن يقرأ اللوح [DR-01].")
+    unguarded = []
+    for n in judgments:
+        seen = False
+        for base, _dirs, files in os.walk(os.path.join(ROOT, "tests")):
+            if "node_modules" in base or "__pycache__" in base:
+                continue
+            for f in files:
+                if f.endswith((".py", ".mjs", ".js", ".json", ".sh")) and n in _read(os.path.join(base, f)):
+                    seen = True
+                    break
+            if seen:
+                break
+        if not seen:
+            unguarded.append(n)
+    assert not unguarded, (
+        "أحكامٌ سلبيّةٌ **لا يقرؤها حارسٌ واحد**: " + " · ".join(unguarded)
+        + " — «لا يُشحَن هذا» بلا حارسٍ يُنقَض بيدٍ حسنةِ النيّة ولا شيءَ يصرخ. "
+        "اكتب حارسًا يفشل حين يُشحَن ما مُنِع، على منوال DAP-01 في هذا الملفّ.")
+
+
 @check("سمتا محراب: تباين AA لكلّ رمز + تمايز اللوحة (ΔE) + اشتقاق القشرة من اللوحة")
 def _theme_contrast():
     ext = os.path.join(ROOT, "extensions", "mihrab-themes")
@@ -3101,6 +3234,22 @@ def _sad_capabilities_and_no_fake_debugger():
             f"ارفع الحكمَ بقياسٍ جديدٍ أوّلًا، أو لا تشحن المُهايئ [DAP-01]"
         )
 
+    # (ج) [LSP-01 · LSP-02] وحكمٌ سلبيٌّ ثانٍ كان **مكتوبًا بلا حارسٍ يقرؤه** — وهو الحالُ
+    #     الذي يُنقَض بيدٍ حسنةِ النيّة: يقرأ قادمٌ أنّ الخادم يعلن `renameProvider` فيسجّل
+    #     المزوّدَ في سطرٍ واحد. والمقيس: `rename` **يُفسِد ملفّ المستخدم** (يطوي «مُعلِّم»
+    #     إلى «معلم»، ويكرّر المديات حرفيًّا، ويُدرِج في مواضعَ صفريّة، ويصمت بلا تحريرات)،
+    #     و`references` **يُعلِّم الخطأ** بجعل الاسمين واحدًا. ورفعُ الحكم يبدأ بحذف ملفّه.
+    lsp_verdict = os.path.join(ROOT, "docs", "lsp-01-02-مديات-وطيّ.md")
+    FORBIDDEN_WHILE_CLOSED = ("registerRenameProvider", "registerReferenceProvider")
+    if os.path.isfile(lsp_verdict):
+        shipped = [r for r in FORBIDDEN_WHILE_CLOSED if r in js]
+        assert not shipped, (
+            f"مزوّدٌ مُغلَقٌ سلبًا صار مُسجَّلًا: {shipped} — والحكمُ LSP-01/LSP-02 قائمٌ في "
+            f"docs/lsp-01-02-مديات-وطيّ.md. `rename` يُفسِد ملفّ المستخدم و`references` "
+            f"يُعلِّم أنّ «معلم» و«مُعلِّم» اسمٌ واحد. ارفع الحكمَ بقياسٍ يستوفي شرطَ إعادة "
+            f"الفتح المكتوبَ فيه، أو لا تُسجّل المزوّد [LSP-01]"
+        )
+
 
 # ───────────── L0-19: wordPattern لغة ص عربيّ-الوعي (مانع انحدار الإكمال التلقائيّ) ─────────────
 @check("إعداد لغة ص: wordPattern يطابق العربيّة (كائن براية u عند \\p{}) — لا انحدار إكمال تلقائيّ")
@@ -3378,19 +3527,74 @@ def _fetcher_matches_asset_naming():
         "‏`sadc` صارت قبل `sad-full` في أفضليّة الأصول — حزمةُ مترجمٍ بلا مفسّر.")
 
 
+# ───────────────────────── شاهدُ التفعيل ─────────────────────────
+# ‏**فحصٌ لا يُنفِّذ توكيدًا واحدًا يقيس صفرًا** — وهو أخضرُ إلى الأبد.
+#
+# هذا `PF-02` (ثراءُ العيّنة) مطبَّقًا على حرّاس L0: هناك يُرصَد تعبيرٌ نمطيٌّ طُبِّق ولم
+# يطابق قطّ، وهنا يُرصَد **فحصٌ رُكِّب ولم يقِس شيئًا**. والحبّةُ في `mutation.mjs` أخشنُ
+# من أن تراه: `lint_patchers.py` **ملفٌّ واحد** في عدّ الحرّاس وفيه ستّون فحصًا، فأيُّ
+# فحصٍ يولد لا يرى شيئًا يمرّ بلا شاهد — وهي عينُ الفجوة التي أُمسِكت في حلقة
+# `node --test`، مكرَّرةً بحجمٍ أكبر.
+#
+# والقياسُ مباشر: تُتعقَّب أسطرُ هذا الملفّ المنفَّذةُ في كلّ فحص، ويُقاطَع الناتجُ بأسطرِ
+# `assert`. صفرٌ ⇒ الفحصُ لم يُصدِر حكمًا واحدًا على هذه الشجرة.
+#
+# ‏**ولا يُحتسَب `raise AssertionError` شاهدًا** عمدًا: الفحصُ السالب («لا قاعدةَ تفعل
+# كذا») يمرّ بصفر رفعاتٍ سواءٌ أكانت الشجرةُ نظيفةً أم كانت العيّنةُ فارغةً — وهما حالان
+# لا يفرّق بينهما إلّا **شاهدُ تفعيلٍ موجَب**: توكيدٌ أنّ ما يُفحَص وُجِد أصلًا. وهي
+# القاعدةُ نفسُها المكتوبةُ في `word_boundaries.live.mjs`.
+#
+# والإعفاءُ ممكنٌ **بسببٍ مكتوب** — بعقد `uncovered` و`known_absent` نفسِه: قائمةٌ تُقصَر
+# ولا تطول إلّا بالتزامٍ مرئيّ. وإعفاءٌ عن فحصٍ زائلٍ يُفشِل كذلك.
+ASSERT_FREE_WAIVERS = {
+    # "اسمُ الفحص": "لماذا يصحّ أن يقيس صفرًا على شجرةٍ سليمة",
+}
+
+
+def _assert_lines():
+    return {i + 1 for i, line in enumerate(_read(__file__).splitlines())
+            if line.strip().startswith("assert ")}
+
+
 # ───────────────────────── المشغّل ─────────────────────────
 def main():
     print("═══ L0: فحص ساكن لطبقة الرقعة ═══")
+    asserts = _assert_lines()
+    me = __file__
     failed = 0
+    silent = []
     for name, fn in _checks:
+        hit = set()
+
+        def _tr(frame, event, arg, _hit=hit, _me=me):
+            if frame.f_code.co_filename != _me:
+                return None
+            if event == "line":
+                _hit.add(frame.f_lineno)
+            return _tr
+
+        sys.settrace(_tr)
         try:
             fn()
+            sys.settrace(None)
             print(f"  ✅ {name}")
+            if not (hit & asserts) and name not in ASSERT_FREE_WAIVERS:
+                silent.append(name)
         except Exception as e:  # noqa: BLE001
+            sys.settrace(None)
             failed += 1
             print(f"  ❌ {name}\n       {type(e).__name__}: {e}")
     print(f"─── {len(_checks) - failed}/{len(_checks)} نجحت ───")
-    return 1 if failed else 0
+    if silent:
+        print(f"  ❌ شاهدُ التفعيل: {len(silent)} فحصًا نجح ولم يُنفّذ توكيدًا واحدًا — يقيس صفرًا:")
+        for name in silent:
+            print(f"       {name}")
+        print("     أضِف شاهدَ تفعيلٍ موجبًا (توكيدًا أنّ ما يُفحَص وُجِد)، أو أعلِنه في "
+              "ASSERT_FREE_WAIVERS بسببٍ مكتوب.")
+    stale = sorted(set(ASSERT_FREE_WAIVERS) - {n for n, _ in _checks})
+    for name in stale:
+        print(f"  ❌ إعفاءٌ عن فحصٍ زائل: «{name}» — احذف سطرَ الإعفاء.")
+    return 1 if (failed or silent or stale) else 0
 
 
 if __name__ == "__main__":

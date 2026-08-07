@@ -801,7 +801,7 @@ APPROVE-WITH-NITS (النقاط مُطبَّقة: قياس الاتّجاه من
 
 | المقياس | القيمة |
 |---------|--------|
-| رُقَع النواة | **7** (`workbench_rtl`، `menubar_rtl`، `menu_rtl`، `sash_rtl`، `splitview_rtl`، `tabsdrop_rtl`، `editor_rtl` بـ9 مواقع منها rulers) |
+| رُقَع النواة | **7** (`workbench_rtl`، `menubar_rtl`، `menu_rtl`، `sash_rtl`، `splitview_rtl`، `tabsdrop_rtl`، `welcome_rtl`) — و`editor_rtl` **لم يعد مرقِّعَ بايثون**: صار `patches/core/010-editor-text-direction.patch` (‏9 مواقع منها rulers) |
 | قواعد CSS | 18 مُرقَّمة في `mihrab-rtl.css` = **16 كتلة نشطة + 2 لا-عمل موثَّق** (9=ثقةٌ بـ`row-reverse` المنبعيّ، 11=محقونة عبر رقعة `menu.ts`؛ 18=تحييد إفلات الالتفاف #18) |
 | حرّاس الانحدار | L0 (12 ساكن) · L1 (**10 مرقِّعات** idempotent، upstream+snapshot) · L2 (18 حزمة) · L3 (**19 تأكيد CDP حيّ = 15 طبقة-RTL منها `editorBidi` و`tabsDropRtl` + 4 هويّة**) |
 | PRs الختاميّة | #6 (RTL-3 + حارس bidi) · #7 (المسطرات + إصلاح CRLF) · #8 (توثيق حدّ GPU) · #9 (إعلان الإغلاق) |
