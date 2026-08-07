@@ -63,6 +63,46 @@
       "why": "المُصابُ يُصيب **المفتاحَ لا القيمة** كي لا يبطل عند أوّل معايرةٍ للمهلة (درسُ `size-total-floor`). وبمهلةٍ لا تنتهي عمليًّا يعود السلوكُ إلى ما كان: المفسّرُ يطبع رسالةَ «اقرأ» بلا فاصلِ سطر، فتُحتجَز في `rest` حتّى `close` — والمستخدمُ يرى لوحةً فارغةً بينما البرنامجُ ينتظره. حارسٌ بلا هذا المُصابِ يقيس صياغتَنا لا سلوكَ الأنبوب."
     },
     {
+      "id": "lsp-byte-ranges-not-repaired",
+      "guardFile": "extensions/sad-lang/extension.test.js",
+      "guard": "node --test extensions/sad-lang/extension.test.js",
+      "file": "extensions/sad-lang/position-encoding.js",
+      "old": "const REPAIR_MEASURED_BYTE_RANGES = ",
+      "new": "const REPAIR_MEASURED_BYTE_RANGES = false, _REPAIR_MUTANT_ORIGINAL = ",
+      "expect": "يرمّم مدى التحويم",
+      "why": "المُصابُ يُطفئ الترميمَ فيعود السلوكُ إلى ما هو مشحونٌ اليوم: خادمُ ص يرسل المديات **بالبايتات** (‏`positionEncoding` عنده `undefined` فهو يدّعي ضمنًا `utf-16`)، فيردّ `definition` مدًى `11..21` على سطرٍ طولُه ‎20‎ وحدة — أي **يقفز إلى ما بعد نهاية السطر** على كلّ سطرٍ عربيّ. والوسمُ **مفتاحٌ لا قيمة** (درسُ `size-total-floor`) فلا يبطل عند أوّل تعديلِ منطق. وحمولاتُ الاختبار **مسجَّلةٌ من الخادم المشحون** لا مصنوعة: خادمٌ زائفٌ كان سيقيس زيفَنا — `toLspPosition` دالّةُ هُويّة، فلا حسابَ مدًى في شجرتنا أصلًا."
+    },
+    {
+      "id": "lsp-folded-degenerate-symbol-kept",
+      "guardFile": "extensions/sad-lang/extension.test.js",
+      "guard": "node --test extensions/sad-lang/extension.test.js",
+      "file": "extensions/sad-lang/position-encoding.js",
+      "old": "const DROP_DEGENERATE_SYMBOLS = ",
+      "new": "const DROP_DEGENERATE_SYMBOLS = false, _DEGEN_MUTANT_ORIGINAL = ",
+      "expect": "الرمزين الزائفين",
+      "why": "الخادمُ **يطوي** «مُعلِّم» إلى «معلم» فيُصدِر لكلٍّ مدخلًا زائفًا **صفريَّ العرض** — أحدُهما على سطر «مُعلِّم». وهو نقضُ القاعدة المكتوبة في `mihrab-welcome/validate-name.js`، والطيُّ يتسرّب من الخادم إلى مخطَّط المستخدم. بإبقاء الزائف يظهر اسمان لمعرِّفٍ واحد. **وهذا المُصابُ هو ما يجعل القيدَ العربيَّ مُختبَرًا لا مذكورًا** — وعلى حمولةٍ حقيقيّةٍ من خادمٍ حقيقيّ، لا على زائفٍ نكتبه بأيدينا."
+    },
+    {
+      "id": "dap-fake-debugger-contribution",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/sad-lang/package.json",
+      "old": "  \"contributes\": {",
+      "new": "  \"contributes\": {\n    \"debuggers\": [{ \"type\": \"sad\", \"label\": \"مُصابٌ مزروع\" }],",
+      "expect": "يبدو تنقيحًا ولا يقف عند سطر",
+      "why": "‏[DAP-01] الخطرُ الحقيقيُّ ليس أن يُصلَح المنبع، بل أن يشحن أحدُنا مُهايئًا **يبدو** تنقيحًا: `setBreakpoints` يردّ `verified:true` ولا يُصدِر `stopped` قطّ، فيرى المستخدمُ نقطةَ توقّفٍ حمراءَ «مؤكَّدة» يمرّ البرنامجُ من فوقها — أخضرُ كاذبٌ في الواجهة. والحارسُ **لا يستطيع أن يحمرَّ كذبًا**: لا يُشغِّل `sad.exe` ولا يشترط بناءً، ويقرأ وجودَ ملفّ الحكم `docs/dap-01-تنقيح-ص.md` — فرفعُ الحكم يبدأ بحذفه."
+    },
+    {
+      "id": "nebras-frame-length-not-utf8",
+      "guardFile": "extensions/mihrab-nebras/rpc-client.test.js",
+      "guard": "node --test extensions/mihrab-nebras/rpc-client.test.js",
+      "file": "extensions/mihrab-nebras/rpc-client.js",
+      "old": "const ENC = ",
+      "new": "const ENC = \"latin1\", _ENC_MUTANT_ORIGINAL = ",
+      "expect": "جولة تأطير",
+      "why": "سويّةُ وحدات نِبراس كانت **خارج** حارس الحرّاس كلَّها: قاعدةُ التغطية تستخرج الحرّاسَ من `run.sh` بشكل `\"$HERE/…\"`، وحلقةُ `cd \"$_ext\" && node --test` لا يلتقطها ذلك الشكل. والمُصابُ يُصيب **ترميزَ حساب طول الإطار**: `Content-Length` عقدُه **بايتاتُ UTF-8**، فبـ`latin1` يصير طولُ الرسالة العربيّة أقصرَ من جسمها فيُقتطَع الإطارُ ويسقط الفكّ. وهو من صنف عطب هذه الجولة نفسِه — الخلطُ بين عدّ البايتات وعدّ المحارف."
+    },
+    {
       "id": "patchers-undocumented-core-diff",
       "guardFile": "tests/static/lint_patchers.py",
       "guard": "python tests/static/lint_patchers.py",

@@ -19,6 +19,7 @@ const {
   M_HOVER,
   M_DEFINITION,
   M_SEMANTIC_TOKENS_FULL,
+  M_DOCUMENT_SYMBOL,
   COMPLETION_TRIGGER_CHARACTERS,
   SEMANTIC_TOKEN_TYPES,
   SEMANTIC_TOKEN_MODIFIERS,
@@ -30,6 +31,7 @@ const {
 // [DX-01] تطبيعُ البحث العربيّ — نسخةٌ **مطابقةٌ بايتًا ببايت** لنظيرتها في `mihrab-welcome`
 // (امتدادٌ مستقلّ لا يعتمد على غيره، كـ`tool-resolve.js`)، ويحرس تطابقَهما فحصُ L0 ببصمة.
 const { dualFilterText } = require("./arabic-normalize.js");
+const { createEncodingOracle, dropDegenerateSymbols } = require("./position-encoding.js");
 
 // معرّف لغة ص (يطابق contributes.languages[].id) واسم الأمر والقناة.
 const SAD_LANGUAGE_ID = "sad";
@@ -51,9 +53,16 @@ const COPY = {
   restarted: "أُعيد تشغيل خادم ص اللغويّ.",
   // تقول ما يراه المستخدم وما يفعله، لا مصطلحَ البروتوكول: «مديات غير متّسقة» لا تعني
   // له شيئًا، و«يكسر شكل الكلمات العربيّة» هو ما رآه على الشاشة فعلًا.
+  // ‏**كانت تلوم المستخدمَ على ما لا نسخةَ تُصلحه.** قِيس خادمُ ص المشحون (2.1.0)
+  // فوُجد يرسل الأطوالَ بالبايتات — وهي **أحدثُ** نسخة، فـ«حدِّث خادم ص» توصيةٌ
+  // لا مرجعَ لها. والصياغةُ الآن تقول ما نعرفه: العطبُ في الخادم، والحدُّ عندنا،
+  // وليس على المستخدم فعلٌ. (‏وسببُ الامتناع هنا خاصّ: الخادم يخلط الترميزين داخل
+  // الرسالة الواحدة — `deltaStart` بوحدات UTF-16 و`length` بالبايتات — فلا يُرمَّم
+  // بقياس، بخلاف مديات التحويم والتعريف. انظر `position-encoding.js`.)
   semanticGuardWarn:
-    "خادمُ ص لديك قديم: يرسل أطوالًا خاطئةً تكسر شكلَ الكلمات العربيّة وتلوينَها. " +
-    "أوقفتُ التلوين الدلاليّ حمايةً للنصّ (الإبراز الساكن يعمل). حدِّث خادم ص.",
+    "خادمُ ص يرسل أطوالَ رموزٍ بالبايتات لا بوحدات النصّ، فتنكسر أشكالُ الكلمات " +
+    "العربيّة وتلوينُها. أوقفتُ التلوين الدلاليّ حمايةً للنصّ — والإبرازُ الساكن يعمل، " +
+    "ولا يلزمك فعلٌ. العيبُ مرفوعٌ إلى فريق ص.",
   semanticGuardLog:
     "[تلوين دلاليّ] مديات الرموز غير متّسقة مع النصّ (الأرجح: أطوالٌ بالبايتات بدل " +
     "وحدات UTF-16 — نسخةُ خادمٍ قديمة). أُوقف التلوين الدلاليّ لهذه الجلسة.",
@@ -135,22 +144,60 @@ function toHoverContents(contents) {
   return out;
 }
 
-/** vscode.Location[] من نتيجة تعريف LSP (Location | Location[] | LocationLink[]). */
-function toDefinitionLocations(result) {
+/**
+ * vscode.Location[] من نتيجة تعريف LSP (Location | Location[] | LocationLink[]).
+ *
+ * ‏`fix` اختياريّةٌ عمدًا: بدونها يبقى السلوكُ حرفيًّا كما كان (تحويلٌ مباشر)، فتُبقي
+ * اختباراتِ المحوّل قائمةً على ما تقيسه. ومعها يُرمَّم المدى **بنصّ الملفّ الهدف** —
+ * وقد يكون غيرَ المفتوح، فتردّ `fix` المدى كما ورد ونمتنع. [SAD-08]
+ */
+function toDefinitionLocations(result, fix) {
   if (!result) return [];
   const arr = Array.isArray(result) ? result : [result];
+  const at = (uri, r) => toVscodeRange(typeof fix === "function" ? fix(uri, r) : r);
   const locs = [];
   for (const item of arr) {
     if (!item) continue;
     if (item.targetUri && item.targetRange) {
       // LocationLink
-      locs.push(new vscode.Location(vscode.Uri.parse(item.targetUri), toVscodeRange(item.targetSelectionRange || item.targetRange)));
+      locs.push(new vscode.Location(vscode.Uri.parse(item.targetUri), at(item.targetUri, item.targetSelectionRange || item.targetRange)));
     } else if (item.uri && item.range) {
       // Location
-      locs.push(new vscode.Location(vscode.Uri.parse(item.uri), toVscodeRange(item.range)));
+      locs.push(new vscode.Location(vscode.Uri.parse(item.uri), at(item.uri, item.range)));
     }
   }
   return locs;
+}
+
+/**
+ * vscode.DocumentSymbol[] من نتيجة `documentSymbol` (‏DocumentSymbol[] الهرميّ أو
+ * SymbolInformation[] المسطَّح). [SAD-08]
+ *
+ * ‏`fix` ترمّم المدى، و`dropDegenerateSymbols` تُسقِط ما لا يُتنقَّل إليه. والمخطَّطُ
+ * وفتاتُ الخبز **فارغان اليومَ في كلّ ملفّ ص** — لا لأنّ الخادمَ لا يعلن المزوّد
+ * (يعلنه: `documentSymbolProvider: true`) بل لأنّنا لم نسجّله.
+ */
+function toDocumentSymbols(result, fix) {
+  if (!Array.isArray(result)) return [];
+  const conv = (list) =>
+    dropDegenerateSymbols(list)
+      .map((s) => {
+        const full = fix(s.range || (s.location && s.location.range));
+        const sel = fix(s.selectionRange || s.range || (s.location && s.location.range));
+        if (!full || !sel) return null;
+        const sym = new vscode.DocumentSymbol(
+          String(s.name || ""),
+          String(s.detail || ""),
+          // LSP SymbolKind يبدأ من 1، vscode من 0 — كنظيرتها في toCompletionItems.
+          typeof s.kind === "number" && s.kind > 0 ? s.kind - 1 : 0,
+          toVscodeRange(full),
+          toVscodeRange(sel),
+        );
+        if (Array.isArray(s.children)) sym.children = conv(s.children);
+        return sym;
+      })
+      .filter(Boolean);
+  return conv(result);
 }
 
 /** vscode.CompletionItem[] من نتيجة إكمال LSP (CompletionItem[] | CompletionList). */
@@ -436,6 +483,21 @@ function activate(context) {
     return proc.ready && caps && !!caps[key];
   };
 
+  // ── عرّافُ ترميز المواضع [SAD-08] ──
+  // الخادمُ المشحون (2.1.0) لا يعلن `positionEncoding` ويرسل **بايتات**، فمداه على
+  // سطرٍ عربيّ يقع في غير موضعه — و«اذهب إلى التعريف» يقفز إلى ما بعد نهاية السطر.
+  // العرّافُ **يقيس** الترميزَ من حمولة `documentSymbol` (تحمل `name`) أو من مدًى
+  // يتجاوز سطرَه، ولا يمسّ شيئًا قبل أن يُقرَّر. انظر `position-encoding.js`.
+  const oracle = createEncodingOracle();
+
+  /** قارئُ أسطرِ مستندٍ **مفتوح** بمعرِّفه؛ وغيرُ المفتوح ⇒ لا نصَّ ⇒ امتناع. */
+  const linesOf = (uri) => (n) => {
+    const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+    if (!doc || !Number.isInteger(n) || n < 0 || n >= doc.lineCount) return undefined;
+    return doc.lineAt(n).text;
+  };
+  const fixRange = (uri, range) => oracle.repair(range, linesOf(uri));
+
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(SAD_SELECTOR, {
       async provideCompletionItems(doc, position, token) {
@@ -462,7 +524,28 @@ function activate(context) {
             position: toLspPosition(position),
           }, REQUEST_TIMEOUT_MS);
           if (token.isCancellationRequested || !result || !result.contents) return undefined;
-          return new vscode.Hover(toHoverContents(result.contents), result.range ? toVscodeRange(result.range) : undefined);
+          const range = result.range ? fixRange(doc.uri.toString(), result.range) : undefined;
+          return new vscode.Hover(toHoverContents(result.contents), range ? toVscodeRange(range) : undefined);
+        } catch {
+          return undefined;
+        }
+      },
+    }),
+
+    // مخطَّطُ الرموز [SAD-08] — ويؤدّي دورًا ثانيًا: حمولتُه وحدَها تحمل `name`، فمنها
+    // **يُقاس** ترميزُ مواضع الخادم. ولذلك يُغذّى العرّافُ بالحمولة **الخام** قبل أيّ
+    // ترميم: الترميمُ بعد القرار لا قبله، وإلّا قِسنا أثرَنا لا أثرَ الخادم.
+    vscode.languages.registerDocumentSymbolProvider(SAD_SELECTOR, {
+      async provideDocumentSymbols(doc, token) {
+        if (!hasCap("documentSymbolProvider")) return undefined;
+        try {
+          const result = await proc.requestWithTimeout(M_DOCUMENT_SYMBOL, {
+            textDocument: { uri: doc.uri.toString() },
+          }, REQUEST_TIMEOUT_MS);
+          if (token.isCancellationRequested || !Array.isArray(result)) return undefined;
+          const lines = linesOf(doc.uri.toString());
+          oracle.learnFromSymbols(result, lines);
+          return toDocumentSymbols(result, (r) => (r ? oracle.repair(r, lines) : null));
         } catch {
           return undefined;
         }
@@ -478,7 +561,7 @@ function activate(context) {
             position: toLspPosition(position),
           }, REQUEST_TIMEOUT_MS);
           if (token.isCancellationRequested) return undefined;
-          return toDefinitionLocations(result);
+          return toDefinitionLocations(result, fixRange);
         } catch {
           return undefined;
         }
@@ -567,6 +650,7 @@ module.exports = {
   toVscodeDiagnostic,
   toHoverContents,
   toDefinitionLocations,
+  toDocumentSymbols,
   toCompletionItems,
   toSemanticTokens,
   serverLegendMatches,

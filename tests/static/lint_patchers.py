@@ -3049,6 +3049,59 @@ def _sad_lsp_ext():
         "إعدادات sad.lsp.serverPath/sad.lsp.trace غير معلَنة في المانيفست [SAD-01]"
 
 
+# ───────── L0-18ب: [SAD-08] مزوّدٌ مُسجَّلٌ ⇐ قدرةٌ مُعلَنة · و[DAP-01] لا مُهايئَ تنقيحٍ زائف ─────────
+@check("عميل ص LSP: كلّ مزوّدٍ مُسجَّلٍ له قدرةٌ مُعلَنة [SAD-08] · ولا مساهمةَ debuggers ما دام DAP-01 مُغلَقًا")
+def _sad_capabilities_and_no_fake_debugger():
+    import re as _re
+    ext = os.path.join(ROOT, "extensions", "sad-lang")
+    if not os.path.isdir(ext):
+        return  # لا إضافة لغة ص في هذا الفرع — تخطٍّ
+    js = _read(os.path.join(ext, "extension.js"))
+    proc_js = _read(os.path.join(ext, "sad-lsp-process.js"))
+
+    # (أ) [SAD-08] **نُعلن ما نستهلك.** كان `registerDocumentSemanticTokensProvider` مُسجَّلًا
+    #     بينما `semanticTokens` غائبةٌ عن `clientCapabilities()` — مخالفةُ مواصفةٍ قائمة.
+    #     والفحصُ **يربط الطرفين** لا يعدّ التسجيلات بالاسم: مزوّدٌ بلا قدرةٍ مُعلَنةٍ يمرّ
+    #     اليومَ على خادمٍ متسامح، ويُكتَم غدًا على خادمٍ ملتزمٍ **بحقّ** فتموت الميزةُ صامتة.
+    REGISTRATION_TO_CAPABILITY = {
+        "registerCompletionItemProvider": "completion",
+        "registerHoverProvider": "hover",
+        "registerDefinitionProvider": "definition",
+        "registerDocumentSymbolProvider": "documentSymbol",
+        "registerDocumentSemanticTokensProvider": "semanticTokens",
+    }
+    for reg, cap in REGISTRATION_TO_CAPABILITY.items():
+        if reg not in js:
+            continue  # مزوّدٌ غيرُ مشحونٍ لا يُطالَب بقدرة
+        assert _re.search(r"\b" + cap + r"\s*:", proc_js), (
+            f"مزوّدٌ مُسجَّلٌ بلا قدرةٍ مُعلَنة: {reg} يُسجَّل في extension.js و«{cap}» غائبةٌ عن "
+            f"clientCapabilities() في sad-lsp-process.js — خادمٌ ملتزمٌ يكتم القدرةَ فتموت الميزة [SAD-08]"
+        )
+
+    # (ب) [DAP-01] الحكمُ السلبيُّ على تنقيح ص **مكتوبٌ ومقيس**: خادمُ `sad --debug-server`
+    #     يردّ `verified:true` على نقطة توقّفٍ ولا يُصدِر `stopped` قطّ. فمساهمةُ `debuggers`
+    #     تُنتج نقطةَ توقّفٍ حمراءَ «مؤكَّدة» يمرّ البرنامجُ من فوقها — أخضرُ كاذبٌ في الواجهة.
+    #     ولا يُشحَن المُهايئُ إلّا بعد رفع الحكم، ورفعُه يبدأ بحذف ملفّ الحكم هذا.
+    verdict = os.path.join(ROOT, "docs", "dap-01-تنقيح-ص.md")
+    ext_root = os.path.join(ROOT, "extensions")
+    manifests = [
+        os.path.join(ext_root, d, "package.json")
+        for d in sorted(os.listdir(ext_root))
+        if os.path.isfile(os.path.join(ext_root, d, "package.json"))
+    ]
+    with_dbg = [
+        os.path.basename(os.path.dirname(m))
+        for m in manifests
+        if "debuggers" in (json.load(open(m, encoding="utf-8")).get("contributes", {}) or {})
+    ]
+    if os.path.isfile(verdict):
+        assert not with_dbg, (
+            f"مساهمةُ debuggers مشحونةٌ في {with_dbg} والحكمُ DAP-01 ما زال قائمًا في "
+            f"docs/dap-01-تنقيح-ص.md — مُهايئٌ يبدو تنقيحًا ولا يقف عند سطر. "
+            f"ارفع الحكمَ بقياسٍ جديدٍ أوّلًا، أو لا تشحن المُهايئ [DAP-01]"
+        )
+
+
 # ───────────── L0-19: wordPattern لغة ص عربيّ-الوعي (مانع انحدار الإكمال التلقائيّ) ─────────────
 @check("إعداد لغة ص: wordPattern يطابق العربيّة (كائن براية u عند \\p{}) — لا انحدار إكمال تلقائيّ")
 def _sad_word_pattern():

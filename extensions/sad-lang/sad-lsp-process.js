@@ -20,6 +20,8 @@ const {
   M_WORK_DONE_CREATE,
   M_CONFIGURATION,
   POSITION_ENCODING_UTF16,
+  SEMANTIC_TOKEN_TYPES,
+  SEMANTIC_TOKEN_MODIFIERS,
 } = require("./lsp-protocol.js");
 
 // اسم الثنائيّ المدمج واسم PATH الاحتياطيّ.
@@ -59,7 +61,19 @@ function readConfig() {
   };
 }
 
-/** قدرات العميل المُعلَنة في initialize (اليوم الأوّل: مزامنة كاملة + تشخيص + إكمال/تحويم/تعريف). */
+/**
+ * قدرات العميل المُعلَنة في `initialize`.
+ *
+ * ‏**نُعلن ما نستهلك.** كان `extension.js` يسجّل مزوّدًا دلاليًّا ويشترط
+ * `semanticTokensProvider` بينما لا تُعلَن `semanticTokens` هنا إطلاقًا — مخالفةُ
+ * مواصفةٍ قائمة. و**التعليلُ الذي كُتب لها أوّلَ مرّة كان خاطئًا**: قيل إنّ خادمًا
+ * ملتزمًا «قد لا يعلن المزوّدَ فتموت الميزةُ صامتة». **قِيس فبطل**: خادمُ ص المشحون
+ * (‏2.1.0) يعلن `semanticTokensProvider` و`documentSymbolProvider` كاملَين
+ * **بهذه القدرات نفسِها قبل الإصلاح**. فالإعلانُ لا يُحيي ميزةً ميّتة.
+ *
+ * ويُصلَح مع ذلك، **بالحجّة الصحيحة**: خادمٌ ثانٍ ملتزمٌ بالمواصفة يشتقّ ما يعلنه من
+ * قدرات العميل، فيكتم القدرةَ **بحقّ** — والاعتمادُ على تسامح خادمٍ بعينه دَينٌ صامت.
+ */
 function clientCapabilities() {
   return {
     general: { positionEncodings: [POSITION_ENCODING_UTF16] },
@@ -69,6 +83,13 @@ function clientCapabilities() {
       completion: { completionItem: { snippetSupport: false } },
       hover: { contentFormat: ["markdown", "plaintext"] },
       definition: { linkSupport: false },
+      documentSymbol: { hierarchicalDocumentSymbolSupport: true },
+      semanticTokens: {
+        requests: { full: true, range: false },
+        tokenTypes: SEMANTIC_TOKEN_TYPES,
+        tokenModifiers: SEMANTIC_TOKEN_MODIFIERS,
+        formats: ["relative"],
+      },
     },
     workspace: { configuration: true, workspaceFolders: true },
   };
@@ -290,11 +311,22 @@ class SadLspProcess {
         INIT_TIMEOUT_MS,
       );
       this._serverCapabilities = (result && result.capabilities) || {};
-      // [S4] تحقّق من تفاوض ترميز المواضع: محوّلاتنا تفترض utf-16 (افتراض VS Code). خادم يخالفه
-      //      يُنتج انزياح مواضع صامتًا في الأحرف متعدّدة الوحدات — نحذّر في قناة التتبّع.
+      // [S4/SAD-08] تفاوضُ ترميز المواضع.
+      //
+      // ‏**العطبُ ليس أنّ التحذيرَ مكتومٌ** — `_trace` يكتب في قناة الخرج دائمًا،
+      // و`_traceEnabled` يحكم تسجيلَ stderr المطوَّل وحدَه (‏:277) لا هذا السطر.
+      // العطبُ أنّ الشرطَ `if (enc && …)` **لا يصدق أبدًا على الخادم المشحون**:
+      // `positionEncoding` عنده `undefined` بالقياس. فالسطرُ يُنفَّذ ولا يُطلَق —
+      // شرطٌ مكتوبٌ لحالةٍ لا تقع، بينما الحالةُ الواقعةُ تمرّ من تحته صامتة.
+      //
+      // ولا يُحوَّل مع ذلك إلى **فشل**: غيابُ الحقل **مطابقٌ للمواصفة** (‏الافتراضُ عند
+      // غيابه هو `utf-16` نصًّا)، فإفشالُ الجلسة عليه أحمرُ كاذبٌ يُعطِّل كلَّ خادمٍ
+      // ملتزمٍ يحذفه. البديلُ أن يصير الإعلانُ **مُدخَلًا للقياس**: ما يُعلَن صراحةً
+      // يُصدَّق ويُسلَّم للعرّاف، وما يُسكَت عنه يُقاس من الحمولة (`position-encoding.js`).
       const enc = this._serverCapabilities.positionEncoding;
+      this._declaredPositionEncoding = typeof enc === "string" ? enc : null;
       if (enc && enc !== POSITION_ENCODING_UTF16) {
-        this._trace(`[sad-lsp] ⚠️ الخادم يستعمل ترميز مواضع «${enc}» لا ${POSITION_ENCODING_UTF16} — قد تنزاح المواضع.`);
+        this._trace(`⚠️ الخادم يعلن ترميز مواضع «${enc}» لا ${POSITION_ENCODING_UTF16} — تُرمَّم المديات.`);
       }
       rpc.notify(M_INITIALIZED, {});
       this._emitReady(true);

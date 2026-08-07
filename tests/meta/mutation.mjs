@@ -65,7 +65,28 @@ for (const m of runSh.matchAll(/"(\$HERE|\$NEBRAS)\/([\w./-]+\.(?:py|mjs|cjs|js)
   if (rel.includes("/..")) continue;
   guardsInRun.add(rel);
 }
+// **وحلقةُ اختبارات الامتدادات ليست في هذا الشكل** (`run.sh`: `cd "$_ext" && node --test`)،
+// فكانت تسقط من العدّ كلَّها: أيُّ اختبارِ وحدةٍ يُكتَب في `extensions/*` يقع **خارج** حارس
+// الحرّاس ولا يشتكي أحد. والحارسُ هنا **الأمرُ لا الملفّ**: `node --test` واحدٌ لكلّ امتداد،
+// فالتغطيةُ أن يحمل الامتدادُ مُصابًا واحدًا على الأقلّ يُثبِت أنّ سويّتَه تُشغَّل وترى —
+// لا مُصابًا لكلّ ملفِّ اختبارٍ من الأربعة والعشرين (ذاك عدٌّ لا قياس).
+const extDirs = [];
+for (const m of runSh.matchAll(/for _ext in (.+); do/g)) {
+  for (const tok of m[1].matchAll(/"([^"]+)"/g)) {
+    const rel = tok[1]
+      .replace("$NEBRAS", "extensions/mihrab-nebras")
+      .replace("$HERE/../", "")
+      .replace("$HERE/", "tests/");
+    if (rel.startsWith("extensions/")) extDirs.push(rel);
+  }
+}
+for (const d of extDirs) guardsInRun.add(d);
+
+// مُصابٌ على ملفٍّ داخل امتدادٍ يُغطّي أمرَ `node --test` الخاصَّ به.
 const covered = new Set(spec.mutants.map(m => m.guardFile));
+for (const d of extDirs) {
+  if (spec.mutants.some(m => m.guardFile.startsWith(d + "/"))) covered.add(d);
+}
 const declaredUncovered = new Map((spec.uncovered || []).map(u => [u.guardFile, u.why]));
 let rc = 0;
 

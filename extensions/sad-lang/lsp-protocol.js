@@ -20,6 +20,9 @@ const M_COMPLETION = "textDocument/completion";
 const M_HOVER = "textDocument/hover";
 const M_DEFINITION = "textDocument/definition";
 const M_SEMANTIC_TOKENS_FULL = "textDocument/semanticTokens/full";
+// [SAD-08] مخطَّطُ الرموز — ومعه **عرّافُ الترميز**: حمولتُه وحدَها تحمل `name`، فبها
+// يُقاس ترميزُ مواضع الخادم بدل أن يُفترَض. انظر `position-encoding.js`.
+const M_DOCUMENT_SYMBOL = "textDocument/documentSymbol";
 
 // أحرف تحفيز الإكمال: تطابق ما يعلنه خادم ص (lsp_engine_core.cpp: completion_provider.trigger_characters).
 // أحرف الكلمة (حروف/أرقام/_) تُحفَّز تلقائيًّا عبر quickSuggestions (بشرط wordPattern عربيّ-الوعي)؛ أمّا
@@ -76,6 +79,7 @@ module.exports = {
   M_HOVER,
   M_DEFINITION,
   M_SEMANTIC_TOKENS_FULL,
+  M_DOCUMENT_SYMBOL,
   COMPLETION_TRIGGER_CHARACTERS,
   SEMANTIC_TOKEN_TYPES,
   SEMANTIC_TOKEN_MODIFIERS,

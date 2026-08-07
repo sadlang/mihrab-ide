@@ -56,6 +56,16 @@ class CompletionItem {
     this.kind = kind;
   }
 }
+class DocumentSymbol {
+  constructor(name, detail, kind, range, selectionRange) {
+    this.name = name;
+    this.detail = detail;
+    this.kind = kind;
+    this.range = range;
+    this.selectionRange = selectionRange;
+    this.children = [];
+  }
+}
 class SemanticTokens {
   constructor(data, resultId) {
     this.data = data;
@@ -77,6 +87,7 @@ const vscodeStub = {
   MarkdownString,
   Hover,
   CompletionItem,
+  DocumentSymbol,
   SemanticTokens,
   SemanticTokensLegend,
   Uri: { parse: (s) => ({ toString: () => s, _s: s }) },
@@ -435,4 +446,138 @@ test("toCompletionItems: filterText من الخادم يُحترَم ويُوس�
   const [item] = ext.toCompletionItems([{ label: "عرض", filterText: "الفِضَّة" }]);
   assert.ok(item.filterText.startsWith("الفِضَّة"), "أصلُ الخادم في المقدّمة");
   assert.ok(item.filterText.includes("الفضه"), "ومعه المطبَّع");
+});
+
+// ═══════════════ [SAD-08] ترميزُ المواضع: قياسٌ لا تخمين ═══════════════
+//
+// ‏**الحمولاتُ أدناه مسجَّلةٌ حرفيًّا من خادم ص المشحون** (`sad-lsp.exe` 2.1.0،
+// ‏`serverInfo = {"name":"خادم لغة ص","version":"2.1.0"}`) لا مصنوعةً بأيدينا —
+// درسُ `richness-poor-sample`: تأكيدٌ صحيحٌ فوق عيّنةٍ فقيرةٍ لا يقيس شيئًا. وخادمٌ
+// زائفٌ نكتبه هنا كان سيقيس **زيفَنا**: `toLspPosition` دالّةُ هُويّة، فلا قرارَ
+// تطبيعٍ ولا حسابَ مدًى في شجرتنا أصلًا.
+
+const PE = require("./position-encoding.js");
+
+// السطرُ المقيس: 15 وحدةَ UTF-16 · 27 بايتًا.
+const LINE_DAALA = "دالة مُعلِّم(س)";
+// السطرُ المقيس: 14 وحدة · 24 بايتًا.
+const LINE_MUTAGHAYYIR = "متغير معلم = ٥";
+
+/** حمولةُ `documentSymbol` كما وردت من الخادم على الملفّ المكوَّن من السطرين وبينهما جسمُ الدالّة. */
+const SYMBOLS_MEASURED = [
+  { kind: 12, name: "مُعلِّم",
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 27 } },
+    selectionRange: { start: { line: 0, character: 9 }, end: { line: 0, character: 23 } } },
+  { kind: 13, name: "معلم",
+    range: { start: { line: 3, character: 0 }, end: { line: 3, character: 24 } },
+    selectionRange: { start: { line: 3, character: 11 }, end: { line: 3, character: 19 } } },
+  // رمزان زائفان: الخادمُ طوى «مُعلِّم» إلى «معلم» فأصدر لكلٍّ مدخلًا **صفريَّ العرض**.
+  { kind: 12, name: "معلم", detail: "(س: غير_محدد) ← غير_محدد",
+    range: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } },
+    selectionRange: { start: { line: 0, character: 5 }, end: { line: 0, character: 5 } } },
+  { kind: 13, name: "معلم", detail: "رقم",
+    range: { start: { line: 3, character: 6 }, end: { line: 3, character: 6 } },
+    selectionRange: { start: { line: 3, character: 6 }, end: { line: 3, character: 6 } } },
+];
+
+const LINES_MEASURED = [LINE_DAALA, "    ارجع س", "نهاية", LINE_MUTAGHAYYIR];
+const lineOfMeasured = (n) => LINES_MEASURED[n];
+
+test("[SAD-08] byteToUtf16: يقف على حدود المحارف، ويمتنع داخلها وبعد نهاية السطر", () => {
+  assert.equal(LINE_DAALA.length, 15);
+  assert.equal(Buffer.byteLength(LINE_DAALA, "utf8"), 27);
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 0), 0);
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 9), 5); // «دالة » = 9 بايتات = 5 وحدات
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 23), 12); // نهايةُ «مُعلِّم»
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 27), 15); // نهايةُ السطر
+  // إزاحةٌ تقع **داخل** محرفٍ عربيٍّ (بايتٌ واحدٌ من اثنين) ⇒ امتناعٌ لا تقريب.
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 1), null);
+  assert.equal(PE.byteToUtf16(LINE_DAALA, 28), null); // بعد نهاية السطر
+});
+
+test("[SAD-08] decideFromSymbol: يقرّر «بايتات» من الحمولة المقيسة", () => {
+  assert.equal(PE.decideFromSymbol("مُعلِّم", LINE_DAALA, 9, 23), PE.ENC_BYTES);
+  assert.equal(PE.decideFromSymbol("معلم", LINE_MUTAGHAYYIR, 11, 19), PE.ENC_BYTES);
+});
+
+test("[SAD-08] decideFromSymbol: ملاحظةٌ لا تُميّز ⇒ لا قرار (سياجُ العيّنة الفقيرة)", () => {
+  // سطرٌ لاتينيٌّ محض: البايتاتُ والوحداتُ سواء، فالمطابقةُ لا تدلّ على ترميز.
+  // ولو قُبلت لثُبِّت `utf-16` من عيّنةٍ فقيرةٍ ولَما رُمِّم شيءٌ بعدها في الجلسة.
+  assert.equal(PE.decideFromSymbol("abc", "let abc = 1", 4, 7), null);
+});
+
+test("[SAD-08] decideFromSymbol: اسمٌ مطبَّعٌ لا يطابق أيَّ فرع ⇒ امتناع", () => {
+  // الخادمُ يطوي فيسمّي «مُعلِّم» باسم «معلم» — لا الوحداتُ ولا البايتاتُ تُنتجه.
+  assert.equal(PE.decideFromSymbol("معلم", LINE_DAALA, 9, 23), null);
+});
+
+test("[SAD-08] rangeProvesBytes: مدًى يتجاوز نهايةَ سطره لا يمكن أن يكون UTF-16", () => {
+  // المدى المقيس من `definition`: 11..21 على سطرٍ طولُه 20 وحدة.
+  const line = 'متغير مرحبا = "أهلا"';
+  assert.equal(line.length, 20);
+  assert.equal(Buffer.byteLength(line, "utf8"), 34);
+  assert.ok(PE.rangeProvesBytes(
+    { start: { line: 0, character: 11 }, end: { line: 0, character: 21 } }, () => line));
+  // ومدًى سليمٌ لا يُثبِت شيئًا — البرهانُ من طرفٍ واحدٍ فقط.
+  assert.equal(PE.rangeProvesBytes(
+    { start: { line: 0, character: 6 }, end: { line: 0, character: 11 } }, () => line), false);
+});
+
+test("[SAD-08] العرّاف: لا يمسّ مدًى قبل أن يُقرَّر الترميز", () => {
+  const oracle = PE.createEncodingOracle();
+  assert.equal(oracle.encoding(), PE.ENC_UNKNOWN);
+  const line = "اطبع(مرحبا)"; // 11 وحدة · 20 بايتًا
+  const asIs = { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } };
+  // 8 ≤ 11 فلا برهانَ فيه ⇒ يُردّ **كما ورد**: سلوكُنا هو سلوكُ اليوم بالضبط.
+  assert.deepEqual(oracle.repair(asIs, () => line), asIs);
+  assert.equal(oracle.encoding(), PE.ENC_UNKNOWN);
+});
+
+test("[SAD-08] العرّاف: يتعلّم من المخطَّط ثمّ يرمّم مدى التحويم المقيس", () => {
+  const oracle = PE.createEncodingOracle();
+  assert.equal(oracle.learnFromSymbols(SYMBOLS_MEASURED, lineOfMeasured), PE.ENC_BYTES);
+  // المدى المقيس من `hover` لـ«اطبع»: 0..8 بالبايتات ⇒ 0..4 بالوحدات.
+  const line = "اطبع(مرحبا)";
+  const fixed = oracle.repair(
+    { start: { line: 0, character: 0 }, end: { line: 0, character: 8 } }, () => line);
+  assert.deepEqual(fixed.end, { line: 0, character: 4 });
+  assert.equal(line.slice(fixed.start.character, fixed.end.character), "اطبع");
+});
+
+test("[SAD-08] العرّاف: يتعلّم من مدًى يتجاوز سطرَه بلا مخطَّط", () => {
+  const oracle = PE.createEncodingOracle();
+  const line = 'متغير مرحبا = "أهلا"';
+  const fixed = oracle.repair(
+    { start: { line: 0, character: 11 }, end: { line: 0, character: 21 } }, () => line);
+  assert.equal(oracle.encoding(), PE.ENC_BYTES);
+  assert.deepEqual(fixed, { start: { line: 0, character: 6 }, end: { line: 0, character: 11 } });
+  assert.equal(line.slice(6, 11), "مرحبا");
+});
+
+test("[SAD-08] dropDegenerateSymbols: يُسقِط الرمزين الزائفين ويُبقي الحقيقيَّين", () => {
+  const kept = PE.dropDegenerateSymbols(SYMBOLS_MEASURED);
+  assert.equal(kept.length, 2);
+  assert.deepEqual(kept.map((s) => s.name), ["مُعلِّم", "معلم"]);
+  // والزائفُ المُسقَط هو **الطيُّ نفسُه يتسرّب إلى الواجهة**: «معلم» على سطر «مُعلِّم».
+  assert.ok(SYMBOLS_MEASURED.some((s) => s.name === "معلم" && s.range.start.line === 0));
+  assert.ok(!kept.some((s) => s.name === "معلم" && s.range.start.line === 0));
+});
+
+test("[SAD-08] toDocumentSymbols: مخطَّطٌ مرمَّمُ المديات، والاسمُ يُقتطع من موضعه", () => {
+  const oracle = PE.createEncodingOracle();
+  oracle.learnFromSymbols(SYMBOLS_MEASURED, lineOfMeasured);
+  const syms = ext.toDocumentSymbols(SYMBOLS_MEASURED, (r) => (r ? oracle.repair(r, lineOfMeasured) : null));
+  assert.equal(syms.length, 2);
+  assert.deepEqual(syms.map((s) => s.name), ["مُعلِّم", "معلم"]);
+  // كلُّ مدًى مختارٍ يقتطع **اسمَه** من سطره — وهذا هو معنى «مقيس».
+  for (const s of syms) {
+    const line = LINES_MEASURED[s.selectionRange.start.line];
+    assert.equal(line.slice(s.selectionRange.start.character, s.selectionRange.end.character), s.name);
+  }
+});
+
+test("[SAD-08] toDefinitionLocations: بلا `fix` يبقى السلوكُ حرفيًّا كما كان", () => {
+  const raw = { uri: "file:///a.ص", range: { start: { line: 0, character: 11 }, end: { line: 0, character: 21 } } };
+  const [loc] = ext.toDefinitionLocations(raw);
+  assert.deepEqual(loc.range.end, { line: 0, character: 21 });
 });
