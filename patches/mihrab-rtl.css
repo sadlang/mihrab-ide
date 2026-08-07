@@ -941,8 +941,19 @@
 	margin-left: 0;
 	margin-inline-start: 6px;
 }
+/* ‏**والرابطةُ `>` أُسقِطت من شقّ المجموعة.** كتبنا `.group > .source`، والمنبعُ يبني
+   ‏`.group` صفًّا، ثمّ `.output.expression.value-and-source` بداخله، ثمّ `.source`
+   بداخله (‏`replViewer.ts:106-110` · `:451`) — أي أنّ `.source` **حفيدٌ لا ابن**، فكان
+   ذلك الشقُّ يُشحَن ويطابق **صفرًا**. **ولم يُسقِط ذلك أثرًا على المستخدم**، لأنّ الشقَّ
+   الأوّلَ فوقَه (‏`.output.expression.value-and-source > .source`) يطابق العناصرَ نفسَها
+   — بل يطابق ما هو أعمُّ منها: سطورَ المخرَج العاديّة التي لا `.group` لها أصلًا
+   (‏`replViewer.ts:177-183`). فالشقّان في المنبع (‏`repl.css:79-80`) أحدُهما مُغنٍ عن
+   الآخر، ونحن نُحاكيه كما هو. **والقولُ إنّ القاعدةَ كانت لا تفعل شيئًا مبالغةٌ صُحِّحت**:
+   شقٌّ ميّتٌ داخلَ قاعدةٍ حيّة، لا قاعدةٌ ميّتة. ويبقى الدرسُ في الحارس: حلقةُ
+   ‏`DG-01/ز` كانت تسأل «هل يُحدِث الحقنُ فرقًا» — وهو صفرٌ حتمًا بعد الشحن — فصارت تسأل
+   «هل يطابق المحدِّدُ ويَنفُذ»، وبها وحدَها ظهر الشقُّ الميّت. */
 .monaco-workbench[dir="rtl"] .repl .repl-tree .output.expression.value-and-source > .source,
-.monaco-workbench[dir="rtl"] .repl .repl-tree .group > .source {
+.monaco-workbench[dir="rtl"] .repl .repl-tree .group .source {
 	margin-left: 0;
 	margin-right: 0;
 	margin-inline-start: auto;

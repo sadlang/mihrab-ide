@@ -1,0 +1,35 @@
+diff --git a/src/vs/workbench/contrib/debug/browser/media/debug.contribution.css b/src/vs/workbench/contrib/debug/browser/media/debug.contribution.css
+index 2a8f7661..5dd16000 100644
+--- a/src/vs/workbench/contrib/debug/browser/media/debug.contribution.css
++++ b/src/vs/workbench/contrib/debug/browser/media/debug.contribution.css
+@@ -101,6 +101,30 @@
+ 	font-size: 11px;
+ }
+ 
++/*
++ * The debug tree rows already scale with `workbench.sideBar.experimental.fontSize`:
++ * `VariablesDelegate.getHeight()` returns `FONT.sidebarSize22`, which `updateSidebarSize()`
++ * recomputes from that setting. The text inside the row does not — it is pinned at 13px
++ * (11px on macOS) by the rules above. Raising the setting therefore grows the row and
++ * leaves the glyphs behind, which makes the variables, watch and call stack views the one
++ * part of the side bar that does not answer the accessibility setting meant to resize it.
++ *
++ * Bind the two together the way the rest of the debug UI already does: debugToolBar.css and
++ * debugViewlet.css derive their metrics from `--vscode-workbench-sidebar-font-size`, which
++ * sidebarPart.ts sets on the side bar container. The macOS rule keeps its 11/13 ratio rather
++ * than a literal, so the default rendering is byte-identical on both platforms and only a
++ * user who changes the setting sees a difference. The fallbacks cover the places the
++ * variable is not in scope — the hover widget lives in the editor, and the debug views can
++ * be dragged to the bottom panel.
++ */
++.monaco-workbench .debug-pane .monaco-list-row .expression {
++	font-size: var(--vscode-workbench-sidebar-font-size, 13px);
++}
++
++.monaco-workbench.mac .debug-pane .monaco-list-row .expression {
++	font-size: calc(var(--vscode-workbench-sidebar-font-size, 13px) * 11 / 13);
++}
++
+ .monaco-workbench .monaco-list-row .expression .value {
+ 	margin-left: 6px;
+ }

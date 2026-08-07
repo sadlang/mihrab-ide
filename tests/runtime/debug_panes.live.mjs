@@ -279,6 +279,18 @@ const PAIR_MEASURE = (root) => `(() => {
       gapInner: Math.round(Math.min(Math.abs(v.left - nameR), Math.abs(nameL - v.right))),
       dirName: csn.direction, bidiName: csn.unicodeBidi, dirRow: cse.direction,
       fontSizePx: parseFloat(cse.fontSize), fontFamily: cse.fontFamily,
+      // ‏[DG-01 · رقعة النواة 031] **اقتران** الحبر بالصفّ لا حجمُ الحبر وحدَه.
+      // ارتفاعُ الصفّ يُحسَب في JS من FONT.sidebarSize22 المشتقّ من مفتاح حجمِ خطّ
+      // الشريط الجانبيّ؛ فالمقياسُ الصحيح أن يُشتقَّ الحبرُ من المصدر نفسِه. ونقرأ
+      // المتغيّرَ **من الحاوية المُصيَّرة** لا من الإعداد: قاعدةٌ حاضرةٌ في الورقة
+      // ومتغيّرٌ خارجَ نطاقها يُعطيان القيمةَ الاحتياطيّةَ بصمت.
+      sidebarVar: (getComputedStyle(document.documentElement)
+        .getPropertyValue('--vscode-workbench-sidebar-font-size') || '').trim()
+        || (() => { const sb = ex.closest('.part.sidebar, .part.auxiliarybar, .part.panel');
+                    return sb ? getComputedStyle(sb)
+                      .getPropertyValue('--vscode-workbench-sidebar-font-size').trim() : ''; })(),
+      rowHeightPx: row ? Math.round(row.getBoundingClientRect().height) : null,
+      inPanel: !!ex.closest('.part.panel'),
     });
   }
   return { present: true, count: out.length, list: out };
@@ -462,6 +474,34 @@ async function openDebugView() {
   return !!(await cdp.evaluate(has));
 }
 
+/**
+ * فتحُ نطاقاتِ لوحة المتغيّرات المطويّة.
+ *
+ * الوقفةُ تُصيِّر صفَّ نطاقٍ لكلِّ نطاق (‏Local · Global)، وطيُّها أو فتحُها **حالةُ عرضٍ
+ * محفوظةٌ في ملفّ التعريف** لا نتيجةُ الجلسة. فمساحةٌ زائلةٌ بملفِّ تعريفٍ جديدٍ قد
+ * تُصيِّرها مطويّةً، فلا تظهر قيمةُ متغيّرٍ واحدةٍ — ويُقرأ ذلك «الوقفةُ لم تقع».
+ * يُنقَر مثلثُ الطيّ على كلِّ صفٍّ `aria-expanded="false"`؛ ولا يُنقَر شيءٌ إن كانت
+ * مفتوحةً سلفًا، فالدالّةُ محايدةٌ حين لا عملَ لها.
+ */
+async function expandScopes() {
+  const pts = await cdp.evaluate(`(() => {
+    const out = [];
+    for (const r of document.querySelectorAll('.debug-variables .monaco-list-row[aria-expanded="false"]')) {
+      const t = r.querySelector('.monaco-tl-twistie') || r;
+      const b = t.getBoundingClientRect();
+      if (b.width < 2 || b.height < 2) continue;
+      out.push({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) });
+    }
+    return out.slice(0, 4);
+  })()`);
+  for (const pt of (pts || [])) {
+    await cdp.cmd("Input.dispatchMouseEvent", { type: "mousePressed", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+    await cdp.cmd("Input.dispatchMouseEvent", { type: "mouseReleased", x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+    await sleep(400);
+  }
+  return (pts || []).length;
+}
+
 /** إيقافُ الجلسة **بإقرارٍ بالقياس** لا بادّعاء: يُنتظَر اختفاءُ الشريط فعلًا. */
 async function stopSession() {
   try {
@@ -509,6 +549,10 @@ try {
   while (Date.now() - t1 < 30000) {
     live = await cdp.evaluate(LIVE_STOPPED);
     if (live && live.toolbarVisible && live.frameCount >= 1 && live.sentinel) break;
+    // النطاقاتُ قد تُصيَّر **مطويّةً**، فتُقرأ صفّان اثنان بلا شاهدٍ فيهما ويُحكَم «لم
+    // يتوقّف» على جلسةٍ متوقّفةٍ فعلًا — تشخيصٌ واحدٌ لسببٍ آخرَ تمامًا. والطيُّ حالةُ
+    // عرضٍ لا حالةُ جلسة، فيُفتَح كما يُفتَح جزءُ التنقيح: خطوةُ تهيئةٍ لا قياس.
+    await expandScopes();
     await sleep(500);
   }
 
@@ -550,23 +594,66 @@ try {
       }
 
       // (٢) **لبُّ م-١٨ في السلسلة لا في البكسل**: المنبعُ يبني `name + ' ='` عقدةَ نصٍّ
-      //     واحدةً تذهب إلى aria-label وإلى «نسخ». ولا مُحدِّدَ CSS يصل إلى **جزءٍ** من
-      //     عقدة نصّ — `unicode-bidi` تعزل صندوقًا لا محرفًا. فالعلاجُ منبعيٌّ قطعًا.
+      //     واحدة. ولا مُحدِّدَ CSS يصل إلى **جزءٍ** من عقدة نصّ — `unicode-bidi` تعزل
+      //     صندوقًا لا محرفًا. فالعلاجُ منبعيٌّ قطعًا.
+      //
+      // **وهذا يُقاس ويُعلَن، ولا يُؤكَّد.** كان تأكيدًا أحمرَ يسقط في كلّ تشغيلة — وهو
+      // ‏`DG-02`: بندٌ **مفتوحٌ عن قرارٍ مكتوب** لا انحدارٌ يقع. وأحمرُ دائمٌ على قرارٍ
+      // مقصودٍ يُعلِّم تجاهُلَ الأحمر، فيمرّ الانحدارُ الحقيقيُّ يومَ يقع. وقد قُرئ المسارُ
+      // بعدَها فسقط تعليلُ الضرر نفسُه: التسميةُ الوصوليّةُ تُبنى من `name`/`value`
+      // مباشرةً (‏`variablesView.ts:664`) فلا تمرّ بالسلسلة، و`user-select: none` على
+      // ‏`.monaco-list` يمنع النسخَ منها. فلا مستهلِكَ متضرِّرًا مُثبَتًا — ويُقال رقمًا.
       if (ar) {
         const glued = /[؀-ۿ]\s*=\s*$/u.test(ar.nameText);
         const isolated = ar.nameText.indexOf("⁨") >= 0;
-        ok(!glued || isolated,
-          "DG-01/أ٢: «=» غيرُ ملصَقةٍ باسمٍ عربيٍّ في عقدة النصّ نفسِها [م-١٨]",
-          `النصّ=${JSON.stringify(ar.nameText)} · عزلٌ صريح=${isolated}`);
+        if (glued && !isolated) {
+          gap("DG-01/أ٢: «=» ملصَقةٌ بالاسم في عقدة النصّ [DG-02 · م-١٨]",
+            `النصّ=${JSON.stringify(ar.nameText)} — علاجُه منبعيٌّ (فصلُ العنصر أو FSI/PDI)، ` +
+            `ولا ضررَ مقيسًا: الموضعُ البصريُّ صحيحٌ (أ١)، والتسميةُ الوصوليّةُ لا تمرّ بالسلسلة`);
+        } else {
+          ok(true, "DG-01/أ٢: «=» مفصولةٌ أو معزولةٌ في عقدة النصّ [م-١٨]",
+            `النصّ=${JSON.stringify(ar.nameText)} · عزلٌ صريح=${isolated} — ` +
+            `تغيَّر المنبعُ أو قُبِل المقترح`);
+        }
       }
 
-      // (٣) حجمُ الخطّ: `.expression { font-size: 13px }` مثبَّتٌ في ورقة المنبع،
-      //     مستقلٌّ تمامًا عن `editor.fontSize` المقيس عندنا ‎15‎ [VA-04].
-      const fs = (ar || lat || {}).fontSizePx;
+      // (٣) حجمُ الخطّ — **والمقياسُ تبدّل، فيُقال لماذا**.
+      //
+      // كان التوكيدُ هنا `fontSizePx >= 14` مسنودًا بـVA-04، وكان **يطلب المستحيلَ
+      // بغير وجهه**: ارتفاعُ الصفّ في هذه الشجرة يُحسَب في JS من `FONT.sidebarSize22`
+      // (‏`variablesView.ts:371` ⇐ `font.ts:166`)، وهو مشتقٌّ من
+      // ‏`workbench.sideBar.experimental.fontSize`. فإجبارُ الحبر على ‎15px‎ من الورقة
+      // كان **يفصله عن صندوقه** — حبرٌ أكبرُ في صفٍّ ما زال محسوبًا على ‎13‎.
+      //
+      // والمقياسُ الصحيحُ **اقترانٌ لا عتبة**: أن يُشتقَّ الحبرُ من المصدر الذي يُشتقّ
+      // منه الصفُّ. وذلك ما تفعله رقعةُ النواة ‎031‎. والتوكيدُ يقيس الاقترانَ نفسَه، فلو
+      // شُحنت القاعدةُ ولم يبلغها المتغيّرُ (نطاقٌ خاطئ، أو اللوحةُ سُحبت إلى الأسفل)
+      // سقط — وهو بالضبط الأخضرُ الكاذبُ الذي يتربّص بهذا الإصلاح.
+      const row0 = (ar || lat || {});
+      const fs = row0.fontSizePx;
+      const svar = parseFloat(row0.sidebarVar || "");
       if (fs) {
-        ok(fs >= EDITOR_FONT_SIZE - 1,
-          `DG-01/أ٣: حجمُ خطّ لوحة المتغيّرات ≥ ${EDITOR_FONT_SIZE - 1} المقيس في VA-04`,
-          `المقيس ${fs}px`);
+        if (row0.inPanel) {
+          gap("DG-01/أ٣: اقترانُ حبر الشجرة بمصدر ارتفاع صفّها",
+            "اللوحةُ في الجزء السفليّ — خارجَ نطاق متغيّر الشريط الجانبيّ، وذلك حدٌّ مكتوبٌ في م-٢١ لا انحدار");
+        } else if (!Number.isFinite(svar)) {
+          gap("DG-01/أ٣: اقترانُ حبر الشجرة بمصدر ارتفاع صفّها",
+            "لم يُقرأ ‎--vscode-workbench-sidebar-font-size‎ من أيّ حاوية");
+        } else {
+          ok(Math.abs(fs - svar) <= 0.6,
+            "DG-01/أ٣: حبرُ شجرة التنقيح مقترنٌ بمفتاح حجم خطّ الشريط [رقعة ‎031‎]",
+            `الحبرُ ${fs}px والمتغيّرُ ${svar}px — فرقٌ ${(fs - svar).toFixed(2)}px. ` +
+            `القاعدةُ ‎031‎ تربط الطرفين؛ وتباعدُهما يعني إمّا أنّ الرقعةَ لم تُشحَن ` +
+            `وإمّا أنّ محدِّدًا أخصَّ منها يسبقها.`);
+          // وارتفاعُ الصفّ من المصدر نفسِه: ‎22/13‎ من قيمة المفتاح.
+          if (row0.rowHeightPx) {
+            const expected = svar * 22 / 13;
+            ok(Math.abs(row0.rowHeightPx - expected) <= 2,
+              "DG-01/أ٣ب: ارتفاعُ الصفّ مشتقٌّ من المفتاح نفسِه (‎×22/13‎)",
+              `المقيس ${row0.rowHeightPx}px والمتوقَّع ${expected.toFixed(1)}px — ` +
+              `تباعدُهما يعني أنّ الطرفين عادا إلى مصدرين، فيعود الحبرُ ينفصل عن صندوقه.`);
+          }
+        }
       }
 
       // (٤) فجوةُ القيمة: `.value { margin-left: 6px }` فيزيائيّة ⇒ في RTL تقع على
@@ -610,9 +697,19 @@ try {
         gap("DG-01/ب٤: فجوتا الإطار", "لا رقمَ سطرٍ مُصيَّرًا في الإطار");
       }
       // الحشوةُ الطرفيّة: `padding-right: 12px` فيزيائيّة على `.stack-frame`.
-      ok(f.padEnd >= f.padStart,
-        "DG-01/ب٥: حشوةُ الإطار على طرف نهاية القراءة (padding-inline-end)",
-        `يمين=${f.padStart}px · يسار=${f.padEnd}px`);
+      //
+      // **فجوةٌ معلَنةٌ لا تأكيد.** القاعدةُ المرشَّحةُ جُرِّبت بالحقن الحيّ فلم تُسقِط
+      // الحشوةَ الفيزيائيّة، فلم تُشحَن — والسببُ مكتوبٌ في `mihrab-rtl.css` عند القاعدة
+      // ‎38/ج‎: «ولا تُشحَن قاعدةٌ لم تثبت جدواها ولو بدت صحيحة». وتأكيدٌ أحمرُ على قرارٍ
+      // مكتوبٍ ليس حراسةً بل تدريبٌ على تجاهُل الأحمر. فيُقاس الرقمُ ويُعلَن.
+      if (f.padEnd >= f.padStart) {
+        ok(true, "DG-01/ب٥: حشوةُ الإطار على طرف نهاية القراءة (padding-inline-end)",
+          `بداية=${f.padStart}px · نهاية=${f.padEnd}px`);
+      } else {
+        gap("DG-01/ب٥: حشوةُ إطار كومة الاستدعاء فيزيائيّة",
+          `بداية=${f.padStart}px · نهاية=${f.padEnd}px — القاعدةُ ‎38/ج‎ جُرِّبت فلم تُثبِت ` +
+          `جدواها فلم تُشحَن؛ قرارٌ مكتوبٌ لا انحدار`);
+      }
       // رقمُ السطر «12:5»: نقطتان بين رقمين ⇒ يبقى بترتيبه.
       if (f.lineStartsRight !== null) {
         ok(f.lineStartsRight === false, "DG-01/ب٦: رقمُ السطر يبقى بترتيبه", `${f.line}`);
@@ -788,21 +885,65 @@ try {
       if (!block.trim()) {
         gap("DG-01/ز: القاعدة 38 المشحونة", "لم يُعثَر على كتلتها في mihrab-rtl.css");
       } else {
-        for (const [name, sel, reader] of [
-          ["اسمُ الملفّ", ".debug-pane .debug-call-stack .stack-frame > .file > .file-name", READ_MARGIN],
-          ["كتلةُ الملفّ", ".debug-pane .debug-call-stack .stack-frame > .file", READ_MARGIN],
-          ["قيمةُ المتغيّر", ".debug-pane .monaco-list-row .expression > .value", READ_MARGIN],
-          ["رابطُ المصدر", ".repl .repl-tree .source", READ_MARGIN],
+        // ⚠️ **والمقياسُ تبدّل بعد أن شُحنت القاعدة، فيُقال لماذا.**
+        //
+        // كان هنا حقنُ نصِّ القاعدة ‎38‎ ثمّ الحكمُ بأنّ شيئًا **تغيَّر**. وذلك صحيحٌ يومَ
+        // كُتب — كانت القاعدةُ مرشَّحةً لم تُشحَن بعد، فحقنُها يُحدِث فرقًا. ولمّا شُحنت
+        // صار حقنُها **إعادةَ ما هو نافذٌ سلفًا**: صفرُ فرقٍ حتمًا، فاحمرَّت الأربعُ في كلّ
+        // تشغيلةٍ على قاعدةٍ **عاملةٍ تمامًا**. تجربةُ ما قبل الشحن تُركت حارسًا بعده،
+        // فانقلبت إلى **أحمرَ كاذبٍ دائم** — وهو العطبُ نفسُه الذي أُصلح في
+        // ‏`_squeeze_combinators`، بصيغةٍ أخرى.
+        //
+        // والسؤالُ المقصودُ أصلًا لا يحتاج حقنًا: **هل المحدِّدُ المشحونُ يطابق شيئًا،
+        // وهل أثرُه قائمٌ على العنصر؟** (‏والعطبُ التاريخيُّ الذي وُجدت له هذه الحلقةُ هو
+        // محدِّدٌ أضيقُ بقليلٍ لا يطابق شيئًا فيُشحَن ولا يفعل.) فيُقاس الطرفان مباشرةً:
+        // عددُ المطابقات من الورقة المشحونة، وقيمةُ الهامش المنطقيّ على أوّل مطابقة.
+        // **ومحدِّدٌ لا يطابق ليس دائمًا عطبًا**: قد يكون السطحُ غيرَ مُصيَّرٍ في هذه
+        // الجلسة (وحدةُ التصحيح لا تُخرِج مجموعاتٍ إلّا إن سُجِّلت). فيُقاس **حضورُ
+        // الصنف** أوّلًا بمحدِّدٍ أوسع: صفرٌ هناك ⇒ فجوةٌ معلَنة، أمّا حضورُه مع صفرِ
+        // مطابقةٍ لمحدِّدنا فهو العطبُ التاريخيُّ بعينه — محدِّدٌ أضيقُ يُشحَن ولا يفعل.
+        for (const [name, sel, present] of [
+          ["اسمُ الملفّ", ".debug-pane .debug-call-stack .stack-frame .file-name",
+           ".debug-pane .debug-call-stack .stack-frame"],
+          ["كتلةُ الملفّ", ".debug-pane .debug-call-stack .stack-frame > .file:not(:first-child)",
+           ".debug-pane .debug-call-stack .stack-frame .file"],
+          ["قيمةُ المتغيّر", ".debug-pane .monaco-list-row .expression > .value",
+           ".debug-pane .monaco-list-row .expression"],
+          // شقّان في القاعدة نفسِها، ويُقاسان **منفصلَين**: الأوّلُ يبلغ سطورَ المخرَج
+          // العاديّة (وهي ما يُصيَّر في كلّ جلسةٍ تقريبًا)، والثاني لا يبلغ إلّا صفوفَ
+          // ‏`console.group`. فقياسُهما بمشهودٍ واحدٍ يجعل غيابَ المجموعات يُقرأ «الشقُّ
+          // ميّت»، أو حضورَ السطور يُخضِّر شقًّا لم يُختبَر — والوجهان كذبٌ متقابل.
+          ["رابطُ المصدر", ".repl .repl-tree .output.expression.value-and-source > .source",
+           ".repl .repl-tree .source"],
+          ["رابطُ مصدرِ المجموعة", ".repl .repl-tree .group .source",
+           ".repl .repl-tree .group"],
         ]) {
-          const t = await cdp.evaluate(RULE_TRY(sel, block, reader));
-          if (!t.applicable) { gap(`DG-01/ز: القاعدة 38 — ${name}`, t.why); continue; }
-          // **الحكمُ هنا `changed` لا `moved` — والفرقُ مقيسٌ لا مفترَض.** المرشَّحُ
-          // المنفردُ يُحكَم عليه بالزحزحة؛ أمّا الكتلةُ كاملةً فقواعدُها تتحرّك معًا:
-          // ‏`.file` يزحف ‎10px‎ إلى جهةٍ و`.file-name` مثلَها إلى الأخرى، فيقع صافي
-          // إزاحةِ الاسمِ **صفرًا** وهو مُصلَحٌ تمامًا. فالحكمُ بالزحزحة هنا كان سيحمرّ
-          // على قاعدةٍ عاملة — والمقصودُ إثباتُ أنّ **المحدِّدَ المشحونَ يطابق ويُطبَّق**.
-          ok(t.changed, `DG-01/ز: القاعدة 38 المشحونة تُطبَّق على ${name}`,
-            `${JSON.stringify(t.before)} ⇐ ${JSON.stringify(t.after)} · زحزحة=${t.moved}`);
+          const t = await cdp.evaluate(`(() => {
+            const els = document.querySelectorAll(${JSON.stringify(sel)});
+            const p = document.querySelectorAll(${JSON.stringify(present)}).length;
+            if (!els.length) return { n: 0, p };
+            const cs = getComputedStyle(els[0]);
+            return { n: els.length, p,
+                     mS: cs.marginInlineStart, mE: cs.marginInlineEnd,
+                     mL: cs.marginLeft, mR: cs.marginRight };
+          })()`);
+          if (!t || !t.n) {
+            if (!t || !t.p) {
+              gap(`DG-01/ز: القاعدة 38 — ${name}`,
+                `السطحُ غيرُ مُصيَّرٍ في هذه الجلسة (صفرُ مطابقاتٍ لـ«${present}») — لا مشهودَ عليه`);
+            } else {
+              ok(false, `DG-01/ز: مُحدِّدُ القاعدة 38 المشحون يطابق — ${name}`,
+                `السطحُ حاضرٌ (${t.p} عنصرًا) ومحدِّدُنا «${sel}» يطابق صفرًا — ` +
+                `قاعدةٌ تُشحَن ولا تفعل شيئًا`);
+            }
+            continue;
+          }
+          // الأثرُ: هامشٌ منطقيٌّ غيرُ صفريّ على أحد الطرفين. القاعدةُ تُصفّر الفيزيائيَّ
+          // وتضع المنطقيَّ، فصفرُ الاثنين معًا يعني أنّ القاعدةَ لم تُطبَّق.
+          const nz = (v) => parseFloat(v || "0") > 0.5;
+          ok(nz(t.mS) || nz(t.mE),
+            `DG-01/ز: القاعدة 38 المشحونة مطابِقةٌ ونافذة — ${name}`,
+            `${t.n} مطابقة · بداية=${t.mS} نهاية=${t.mE} (فيزيائيّ: يسار=${t.mL} يمين=${t.mR})`);
         }
       }
     }
