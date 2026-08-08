@@ -491,10 +491,36 @@ fi
 #         يفشل تنظيف gulp بـEBUSY بعد ~20 د. نُجهض الآن برسالة واضحة بدل إهدار الوقت. ──
 OUTDIR="$UP/$OUT_NAME"
 if [[ -d "$OUTDIR" ]]; then
-  rm -rf "$OUTDIR" 2>/dev/null || true
+  # محاولاتٌ متباعدة: مقبضُ ماسحِ الفيروسات/المفهرِس عابرٌ ويسقط في ثوانٍ، وإفشالُ
+  # بناءٍ من أربعين دقيقةً على قفلٍ عمرُه ثلاثُ ثوانٍ إهدارٌ لا حراسة.
+  for _try in 1 2 3 4 5; do
+    rm -rf "$OUTDIR" 2>/dev/null || true
+    [[ -d "$OUTDIR" ]] || break
+    [[ $_try -lt 5 ]] && sleep 3
+  done
   if [[ -d "$OUTDIR" ]]; then
     echo "❌ مجلّد المخرَج مقفول: $OUTDIR" >&2
-    echo "   أغلق أيّ نسخة محراب/VSCodium قيد التشغيل ثمّ أعد المحاولة." >&2
+    # ‏**سمِّ المُمسِك ولا تُخمّنه.** كانت الرسالة هنا تقول «أغلق أيّ نسخة محراب قيد
+    # التشغيل»، وقِيس يومًا أنّ المُمسِك عمليّةُ خدمةٍ تابعةٌ لـVS Code ولا نسخةَ
+    # محرابٍ تعمل أصلًا. فالقارئُ يبحث عمّا لا وجودَ له، ثمّ يستنتج أنّ العطبَ عرضيّ
+    # فيعيد المحاولة — ورسالةٌ تسمّي سببًا خاطئًا أسوأُ من رسالةٍ صامتة.
+    _named=no
+    if [[ "$IS_WIN" == "yes" && -f "$ROOT/build/who_locks.ps1" ]]; then
+      while IFS= read -r _f; do
+        _who="$(powershell -NoProfile -ExecutionPolicy Bypass -File "$ROOT/build/who_locks.ps1" \
+                  -Path "$(cygpath -w "$_f")" 2>/dev/null | tr -d '\r')"
+        [[ -n "$_who" ]] || continue
+        _named=yes
+        echo "   ${_f#$OUTDIR/} يُمسِكه:" >&2
+        while IFS=$'\t' read -r _pid _app; do
+          echo "     • PID $_pid — ${_app:-?}" >&2
+        done <<< "$_who"
+      done < <(find "$OUTDIR" -type f 2>/dev/null | head -5)
+    fi
+    if [[ "$_named" == "no" ]]; then
+      echo "   لم يُعرَف المُمسِك. أغلق أيّ نسخة محراب/VSCodium قيد التشغيل، وأيّ محرّرٍ" >&2
+      echo "   يفهرس .upstream، ثمّ أعد المحاولة." >&2
+    fi
     exit 1
   fi
 fi
