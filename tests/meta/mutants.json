@@ -161,6 +161,26 @@
       "new": "const: PROTOCOL_VERSION_MUTANT,",
       "expect": "عقد السلك منحرف",
       "why": "كان مُعلَنًا «بلا مُصابٍ لأنّ له حارسًا مكافئًا: `git diff` يُظهر الانجراف». والإعلانُ يشترط أن يُعاد التوليدُ قبل الالتزام — وهو ما لا يفرضه شيء. المُصابُ يزرع في **مصدر الحقيقة** لا في المولَّد، فيقيس ما يدّعيه الحارسُ فعلًا: أنّ الاثنين متطابقان."
+    },
+    {
+      "id": "editor-root-direction-conditional",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/core/010-editor-text-direction.patch",
+      "old": "+.monaco-editor {",
+      "new": "+.monaco-editor.text-direction-rtl {",
+      "expect": "عاد مقصورًا",
+      "why": "يزرع العطبَ الذي شُوهد في المشحون بعينه: تثبيتٌ مشروطٌ بـ`.text-direction-rtl` يترك المحرّرَ **اليساريّ** داخل واجهةٍ يمينيّةٍ يرث `rtl`، فتنزل `.view-lines` عند x≈16776322 ويختفي النصُّ كلُّه وتبقى أرقامُ الأسطر. والصياغةُ هي صياغةُ الكتلة قبل الإصلاح حرفيًّا — لا مُصابٌ مخترَع."
+    },
+    {
+      "id": "theme-hand-edited-drift",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-themes/themes/mihrab-dark-color-theme.json",
+      "old": "\"scope\": \"markup.heading\"",
+      "new": "\"scope\": \"markup.heading.MUTANT\"",
+      "expect": "انجرفت عن مولِّدها",
+      "why": "السماتُ مولَّدة، وتحريرٌ يدويٌّ فيها يضيع في أوّل توليدٍ لاحق. المُصابُ يحرّر المولَّدَ لا المولِّد، فيقيس ما يدّعيه الحارس: أنّ الملفَّ على القرص هو ناتجُ `gen_themes.py` حرفًا بحرف."
     }
   ],
   "uncovered": [

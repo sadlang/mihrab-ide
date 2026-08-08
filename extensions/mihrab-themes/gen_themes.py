@@ -17,8 +17,11 @@
   • لا selfKeyword في الرموز الدلاليّة: خادم ص لا يُصدره (يصنّف «هذا» كـKeyword).
   • meta.interpolation بلا foreground: نلوّن المحتوى الداخليّ لا الحاوية.
 """
+import io
 import json
 import os
+import re
+import sys
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "themes")
 
@@ -35,10 +38,12 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "themes")
 #       ذهبان متطابقان عمليًّا؛ والنصّ #8FCBA8 والدالّة #7FD1C1 على بُعد 11.6. أُصلِح هنا
 #       بإرجاع الرقم إلى نُحاسيّ حقيقيّ والنصّ إلى أخضر حقيقيّ بعيدًا عن فيروزيّ الدالّة.)
 DARK = dict(cm="#738991", kw="#E3BE68", cls="#6FB2D8", fn="#7FD1C1", str="#A8CC85",
-            num="#E2926A", bool="#E2926A", op="#9DB0B6", var="#D4DEDF", esc="#E2926A")
+            num="#E2926A", bool="#E2926A", op="#9DB0B6", var="#D4DEDF", esc="#E2926A",
+            err="#F48771")
 # الفاتحة: النبرات نفسها مُغمَّقة لعتبة AA على الحجر #F5F0E4 مع حفظ ترتيب العائلات الخمس.
 LIGHT = dict(cm="#626B75", kw="#8A5A0E", cls="#255F87", fn="#0E776A", str="#4C6B22",
-             num="#A6431A", bool="#A6431A", op="#5D6B6F", var="#43565A", esc="#A6431A")
+             num="#A6431A", bool="#A6431A", op="#5D6B6F", var="#43565A", esc="#A6431A",
+             err="#B3261E")
 
 # ── لوحتا التباين العالي (hc-black / hc-light) ──
 # لماذا وُجدتا: أصول الهوية تشحن letterpress-hcDark/hcLight منذ البداية، لكن لم تكن ثمّة
@@ -46,11 +51,13 @@ LIGHT = dict(cm="#626B75", kw="#8A5A0E", cls="#255F87", fn="#0E776A", str="#4C6B
 # مقصود) كان يقع على سمة VS Code العامّة بلا أثر من محراب. العائلات الخمس نفسها، مُشبَعة
 # ومُفتَّحة/مُغمَّقة إلى **AAA (‏≥7:1)** على أسودَ/أبيضَ خالصين — يفرضه حارس L0 بعتبة أعلى.
 HC_DARK = dict(cm="#9FB3BA", kw="#FFD479", cls="#7FC4EC", fn="#6FE7D2", str="#B8E986",
-               num="#FFAE85", bool="#FFAE85", op="#C3D2D7", var="#FFFFFF", esc="#FFAE85")
+               num="#FFAE85", bool="#FFAE85", op="#C3D2D7", var="#FFFFFF", esc="#FFAE85",
+               err="#FFA599")
 # الرقم نُحاسيّ محروق (#99270A لا #8A3200): التغميق إلى AAA كان يقارب الذهب (ΔE=24)،
 # فأُزيح نحو الأحمر ليحفظ ΔE≥25 — القيد نفسه المفروض على السمتين العاديّتين.
 HC_LIGHT = dict(cm="#4A5560", kw="#6B4400", cls="#00457A", fn="#00564C", str="#33520C",
-                num="#99270A", bool="#99270A", op="#37474F", var="#101418", esc="#99270A")
+                num="#99270A", bool="#99270A", op="#37474F", var="#101418", esc="#99270A",
+                err="#8E1B20")
 
 WB_DARK = {
     "editor.background": "#0F1C24", "editor.foreground": "#D4DEDF",
@@ -181,7 +188,137 @@ WB_HC_DARK = _wb_hc(HC_DARK, "#000000", "#FFFFFF", "#0D0D0D", "#00463E", "#FFFFF
 WB_HC_LIGHT = _wb_hc(HC_LIGHT, "#FFFFFF", "#101418", "#F2F2F2", "#CFE6E0", "#101418", "#8A9499")
 
 
-def token_colors(p):
+# ── الأساسُ المُورَّد: قواعدُ سمة المنبع الافتراضيّة لكلّ اللغات ──────────────────
+# لماذا: كانت هذه السماتُ تحمل **سبعَ قواعدَ لا غير**، ستٌّ منها مقيَّدةٌ بلغة ص. فكلُّ
+# ملفٍّ ليس ص — `.md` و`.html` و`.py` و`.json` — يُفتَح **بلونٍ واحد**، وقِيس على
+# المشحون: ملفُّ HTML من ‎13‎ شظيّةً كلُّها اللونُ الافتراضيّ. والسمةُ مفروضةٌ افتراضًا
+# (`package.json` ⇐ `workbench.colorTheme`)، فلا يختارها المستخدمُ ليكتشف نقصَها.
+#
+# والأساسُ **مُورَّدٌ في المستودع** لا مقروءٌ من `.upstream`: فحصُ L0 يعمل حيث لا شجرةَ
+# منبع، وحارسٌ يتخطّى نفسَه عند غياب المنبع أخضرُ إلى الأبد. يُعاد التوريدُ بـ`--vendor`
+# في التزامٍ مرئيّ.
+#
+# وألوانُ الأساس **تُترجَم إلى لوحة محراب** بخريطةِ دور: لولاها لصارت السمةُ لوحتين
+# متجاورتين — أزرقُ المنبع لكلمات بايثون المفتاحيّة وذهبُ محرابٍ لكلمات ص في النافذة
+# نفسِها. والترجمةُ **شاملة**: لونٌ بلا دورٍ يعني لونًا لم يمرّ على عتبة AA، وقد أمسك
+# ذلك حارسُ التباين فعلًا حين تُرك `#000080` كما هو (‏1.08:1 على الليل).
+TOKENS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tokens")
+
+ROLE_OF_UPSTREAM_COLOR = {
+    # ── الداكنة (dark_vs · dark_plus · dark_modern · hc_black) ──
+    "#6A9955": "cm",  "#7CA668": "cm",  "#646695": "cm",  "#808080": "cm",  "#000080": "cm",
+    "#CE9178": "str", "#D16969": "str", "#CBEDCB": "str",
+    "#B5CEA8": "num", "#4FC1FF": "num", "#D7BA7D": "num",
+    "#569CD6": "kw",  "#C586C0": "kw",  "#B46695": "kw",
+    "#4EC9B0": "cls", "#6796E6": "cls",
+    "#DCDCAA": "fn",
+    "#9CDCFE": "var", "#D4D4D4": "var", "#C8C8C8": "var", "#FFFFFF": "var",
+    "#F44747": "err",
+    # ── الفاتحة (light_vs · light_plus · light_modern · hc_light) ──
+    "#008000": "cm",  "#515151": "cm",  "#5A5A5A": "cm",
+    "#A31515": "str", "#811F3F": "str",
+    "#098658": "num", "#0070C1": "num", "#800080": "num",
+    "#096D48": "num", "#02715D": "num", "#CD9731": "num",
+    "#0000FF": "kw",  "#AF00DB": "kw",  "#800000": "kw",
+    "#0F4A85": "kw",  "#5E2CBC": "kw",  "#316BCD": "kw",
+    "#267F99": "cls", "#185E73": "cls",
+    "#795E26": "fn",
+    "#001080": "var", "#0451A5": "var", "#000000": "var", "#000000FF": "var",
+    "#292929": "var", "#062F4A": "var", "#264F78": "var",
+    "#E50000": "err", "#EE0000": "err", "#CD3131": "err", "#B5200D": "err",
+}
+
+
+def base_tokens(variant, p):
+    """قواعدُ الأساس المُورَّد مترجَمةً إلى لوحة `p`. لونٌ بلا دورٍ **يُفشِل** لا يُمرَّر."""
+    path = os.path.join(TOKENS_DIR, "base-" + variant + ".json")
+    with open(path, encoding="utf-8") as f:
+        base = json.load(f)["tokenColors"]
+    out, orphan = [], {}
+    for rule in base:
+        r = json.loads(json.dumps(rule))          # نسخةٌ عميقة: لا نمسّ المُورَّد
+        st = r.get("settings") or {}
+        fg = st.get("foreground")
+        if fg:
+            role = ROLE_OF_UPSTREAM_COLOR.get(fg.upper())
+            if role is None:
+                orphan[fg.upper()] = orphan.get(fg.upper(), 0) + 1
+            else:
+                st["foreground"] = p[role]
+        out.append(r)
+    if orphan:
+        raise SystemExit(
+            "❌ ألوانُ أساسٍ بلا دورٍ في " + variant + " — لو مُرّرت كما هي لأفلتت من "
+            "عتبة التباين: " + " ".join(k + "×" + str(n) for k, n in sorted(orphan.items()))
+            + "\n   أضِفها إلى ROLE_OF_UPSTREAM_COLOR في gen_themes.py.")
+    return out
+
+
+def vendor():
+    """يُعيد توريدَ الأساس من شجرة المنبع — خطوةٌ صريحةٌ تُلتزَم، لا خطوةُ بناء."""
+    up = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "..", "..", ".upstream", "vscode", "extensions", "theme-defaults", "themes")
+    up = os.path.normpath(up)
+    if not os.path.isdir(up):
+        raise SystemExit("❌ لا شجرةَ منبعٍ في " + up + " — التوريدُ وحدَه يحتاجها.")
+    os.makedirs(TOKENS_DIR, exist_ok=True)
+    for variant, src in (("dark", "dark_modern.json"), ("light", "light_modern.json"),
+                         ("hc-dark", "hc_black.json"), ("hc-light", "hc_light.json")):
+        toks, chain = _resolve_upstream(os.path.join(up, src))
+        with open(os.path.join(TOKENS_DIR, "base-" + variant + ".json"),
+                  "w", encoding="utf-8", newline="\n") as f:
+            json.dump({
+                "_مولَّد": "‏gen_themes.py --vendor — لا يُحرَّر بيد.",
+                "_المصدر": " <= ".join(reversed(chain)),
+                "_ملحوظة": "قواعدُ سمة المنبع مسطَّحةً بعد حلّ include. ألوانُها **لا تُترجَم "
+                           "هنا** بل وقتَ التركيب، كي يبقى الأصلُ قابلًا للمقارنة بالمنبع.",
+                "tokenColors": toks}, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        print("vendored base-" + variant + ".json -", len(toks), "rules")
+
+
+def _strip_jsonc(s):
+    """سماتُ المنبع JSONC لا JSON. والمرورُ محرفًا محرفًا لا بتعبيرٍ نمطيّ: `//` داخل
+    سلسلةٍ نصّيّة ليس تعليقًا، وتعبيرٌ ساذجٌ يبترها فيُنتج فسادًا يبدو عطبَ منبع."""
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == '"':
+            j = i + 1
+            while j < n:
+                if s[j] == chr(92):
+                    j += 2
+                    continue
+                if s[j] == '"':
+                    break
+                j += 1
+            out.append(s[i:j + 1])
+            i = j + 1
+            continue
+        if c == "/" and i + 1 < n and s[i + 1] == "/":
+            while i < n and s[i] != chr(10):
+                i += 1
+            continue
+        if c == "/" and i + 1 < n and s[i + 1] == "*":
+            k = s.find("*/", i + 2)
+            i = n if k < 0 else k + 2
+            continue
+        out.append(c)
+        i += 1
+    return re.sub(r",(\s*[}\]])", r"\1", "".join(out))
+
+
+def _resolve_upstream(path):
+    """يحلّ سلسلةَ `include` ويُرجِع (القواعدُ مسطَّحةً, سلسلةُ الأسماء)."""
+    with open(path, encoding="utf-8") as f:
+        d = json.loads(_strip_jsonc(f.read()))
+    toks, chain = [], []
+    if d.get("include"):
+        toks, chain = _resolve_upstream(os.path.join(os.path.dirname(path), d["include"]))
+    return list(toks) + list(d.get("tokenColors") or []), chain + [os.path.basename(path)]
+
+
+def sad_token_colors(p):
     """يُخرّط لوحة الرموز على نطاقات sad.tmLanguage.json الفعليّة."""
     return [
         {"name": "تعليق", "scope": [
@@ -208,6 +345,11 @@ def token_colors(p):
     ]
 
 
+def token_colors(p, variant):
+    """الأساسُ المُورَّد أوّلًا ثمّ قواعدُ ص — **الأخيرُ يغلب**، فقواعدُنا فوق المنبع."""
+    return base_tokens(variant, p) + sad_token_colors(p)
+
+
 def semantic(p):
     """رموز LSP الدلاليّة — أنواع من legend خادم ص الفعليّ فقط (لا selfKeyword: غير مُصدَر)."""
     return {
@@ -220,31 +362,55 @@ def semantic(p):
     }
 
 
-def build(name, ttype, palette, wb):
+def build(name, ttype, palette, wb, variant):
     return {
         "$schema": "vscode://schemas/color-theme",
         "name": name, "type": ttype,
         "semanticHighlighting": True,
         "colors": wb,
-        "tokenColors": token_colors(palette),
+        "tokenColors": token_colors(palette, variant),
         "semanticTokenColors": semantic(palette),
     }
 
 
-def main():
+THEME_SET = (
+    ("mihrab-dark-color-theme.json", "محراب الداكنة", "dark", DARK, WB_DARK, "dark"),
+    ("mihrab-light-color-theme.json", "محراب الفاتحة", "light", LIGHT, WB_LIGHT, "light"),
+    ("mihrab-hc-dark-color-theme.json", "محراب الداكنة عالية التباين", "hcDark",
+     HC_DARK, WB_HC_DARK, "hc-dark"),
+    ("mihrab-hc-light-color-theme.json", "محراب الفاتحة عالية التباين", "hcLight",
+     HC_LIGHT, WB_HC_LIGHT, "hc-light"),
+)
+
+
+def main(check=False):
     os.makedirs(OUT, exist_ok=True)
-    for fn, name, ttype, pal, wb in (
-        ("mihrab-dark-color-theme.json", "محراب الداكنة", "dark", DARK, WB_DARK),
-        ("mihrab-light-color-theme.json", "محراب الفاتحة", "light", LIGHT, WB_LIGHT),
-        ("mihrab-hc-dark-color-theme.json", "محراب الداكنة عالية التباين", "hcDark", HC_DARK, WB_HC_DARK),
-        ("mihrab-hc-light-color-theme.json", "محراب الفاتحة عالية التباين", "hcLight", HC_LIGHT, WB_HC_LIGHT),
-    ):
-        data = build(name, ttype, pal, wb)
-        with open(os.path.join(OUT, fn), "w", encoding="utf-8", newline="\n") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+    drift = []
+    for fn, name, ttype, pal, wb, variant in THEME_SET:
+        data = build(name, ttype, pal, wb, variant)
+        text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        path = os.path.join(OUT, fn)
+        if check:
+            # المقارنةُ نصًّا لا كائنًا: تحريرٌ يدويٌّ يغيّر ترتيبًا أو مسافةً انجرافٌ كذلك،
+            # ومن حرّر السمةَ بيده سيفقد تحريرَه في أوّل توليد — فالصمتُ عنه خيانةٌ له.
+            with io.open(path, encoding="utf-8") as f:
+                if f.read() != text:
+                    drift.append(fn)
+            continue
+        with io.open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
         print("wrote", fn, "-", len(data["tokenColors"]), "token rules,", len(wb), "ui colors")
+    if check:
+        if drift:
+            raise SystemExit(
+                "\u274c سماتٌ انجرفت عن مولِّدها (حُرِّرت بيد، أو تغيّر الأساس المُورَّد ولم "
+                "يُعَد التوليد): " + " \u00b7 ".join(drift)
+                + "\n   أعِد: python extensions/mihrab-themes/gen_themes.py")
+        print("themes match generator -", len(THEME_SET), "files")
 
 
 if __name__ == "__main__":
-    main()
+    if "--vendor" in sys.argv:
+        vendor()
+    else:
+        main(check="--check" in sys.argv)

@@ -3537,6 +3537,132 @@ def _fetcher_matches_asset_naming():
 # `node --test`، مكرَّرةً بحجمٍ أكبر.
 #
 # والقياسُ مباشر: تُتعقَّب أسطرُ هذا الملفّ المنفَّذةُ في كلّ فحص، ويُقاطَع الناتجُ بأسطرِ
+@check("رُقَعُ النواة: رأسُ كلّ جزءٍ يطابق عدَّ أسطره (‏@@‎ لا يُحسَب باليد)")
+def _core_patch_hunk_headers_are_consistent():
+    """‏`git apply` يرفض الرقعةَ كلَّها برسالة «corrupt patch at line N» إن كذب الرأس.
+
+    وقد وقع: عُدِّل جزءٌ في `010-editor-text-direction.patch` وحُسِب الرأسُ باليد فزاد
+    سطرًا، فمات البناءُ بعد ثلاث دقائق برسالةٍ تشير إلى **رقمِ سطرٍ في الرقعة** لا إلى
+    الرأس الكاذب. والفحصُ هنا يمسكه في جزءٍ من ثانيةٍ ويسمّي الجزءَ والفرق.
+
+    والعدُّ يتخطّى `\\ No newline at end of file` — سطرُ بيانٍ لا سطرُ محتوى.
+    """
+    core = os.path.join(ROOT, "patches", "core")
+    patches = sorted(f for f in os.listdir(core) if f.endswith(".patch"))
+    assert patches, "لا رُقَعَ نواةٍ في patches/core — الفحصُ يحرس العدم."
+    hunks_seen = 0
+    bad = []
+    for name in patches:
+        lines = _read(os.path.join(core, name)).split("\n")
+        i = 0
+        while i < len(lines):
+            m = re.match(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", lines[i])
+            if not m:
+                i += 1
+                continue
+            hunks_seen += 1
+            want_old = int(m.group(2) or 1)
+            want_new = int(m.group(4) or 1)
+            old = new = 0
+            j = i + 1
+            while j < len(lines):
+                L = lines[j]
+                if L[:2] == "@@" or L[:11] == "diff --git " or L[:6] == "index " \
+                        or L[:4] == "--- " or L[:4] == "+++ ":
+                    break
+                if L[:1] == chr(92):        # ‏\ No newline at end of file
+                    j += 1
+                    continue
+                if L[:1] == "-":
+                    old += 1
+                elif L[:1] == "+":
+                    new += 1
+                elif L[:1] == " ":
+                    old += 1
+                    new += 1
+                else:
+                    break               # سطرٌ فارغٌ في الذيل أو نصٌّ غريب: نهايةُ الجزء
+                j += 1
+            if (old, new) != (want_old, want_new):
+                bad.append(name + " سطر " + str(i + 1) + ": الرأسُ يقول -"
+                           + str(want_old) + " +" + str(want_new) + " والعدُّ -"
+                           + str(old) + " +" + str(new))
+            i = j
+    assert hunks_seen >= 20, (
+        str(hunks_seen) + " جزءًا فقط عُدَّ في " + str(len(patches)) + " رقعة — "
+        "المِسطرةُ لا تقرأ الرُقَع، وكلُّ توكيدٍ بعدها يمرّ على العمى.")
+    assert not bad, ("رؤوسُ أجزاءٍ لا تطابق عدَّ أسطرها ⇒ `git apply` يرفض الرقعةَ "
+                     "كلَّها: " + " · ".join(bad))
+
+
+@check("رقعةُ الاتّجاه: جذرُ المحرّر مثبَّتٌ على ltr **بلا شرط** [DR-07]")
+def _editor_root_direction_is_unconditional():
+    """يمنع عودةَ عطبٍ شُوهد في المشحون: نصٌّ مُصيَّرٌ خارجَ الشاشة.
+
+    النظامُ الإحداثيُّ الداخليُّ للمحرّر يساريٌّ ماديًّا — الأبناءُ المطلقون يوضَعون
+    بإزاحات `left` داخل حاويةٍ عرضُها ‎16777216‎ بكسل. فجذرٌ يُحسَب `direction: rtl`
+    يرسو بهم في أقصى يمين تلك الحاوية: قِيس `‎.view-lines` عند `x = 16776322`،
+    فاختفى كلُّ محرفٍ وبقيت أرقامُ الأسطر وحدَها ظاهرة.
+
+    وكانت القاعدةُ مقصورةً على `.text-direction-rtl`، فبقي المحرّرُ **اليساريّ** داخل
+    مستندٍ يمينيّ (‏`<html dir="rtl">` — وهو حالُ محرابٍ دائمًا) يرث `rtl` ويقع في
+    العطب نفسِه. ويصيب ذلك كلَّ لغةٍ يفرض عليها `mihrab-shell` اتّجاهًا يساريًّا
+    [DR-02] — ‏`html` و`javascript` و`python` و`json`… أي أكثرَ ما يُفتَح.
+    """
+    p = os.path.join(ROOT, "patches", "core", "010-editor-text-direction.patch")
+    assert os.path.isfile(p), "رقعةُ اتّجاه المحرّر مفقودة: " + p
+    body = _read(p)
+    # شاهدُ تفعيلٍ موجَب: المِسطرةُ ترى ورقةَ أنماط المحرّر داخل الرقعة أصلًا.
+    assert "b/src/vs/editor/browser/widget/codeEditor/editor.css" in body, (
+        "لا جزءَ لـeditor.css في رقعة الاتّجاه — التوكيدان بعده يمرّان على العمى.")
+    # ‏**الأخصُّ أوّلًا**: عودةُ الصيغة المشروطة هي الانحدارُ المقصود، ولو سبقها توكيدٌ
+    # عامٌّ لسقط هو أوّلًا برسالةٍ لا تسمّي السبب — ولَما قاس المُصابُ ما زُرع لأجله.
+    assert "+.monaco-editor.text-direction-rtl {" not in body, (
+        "التثبيتُ عاد مقصورًا على `.text-direction-rtl` — وهذا هو العطبُ بعينه: "
+        "المحرّرُ **اليساريّ** داخل مستندٍ يمينيٍّ يبقى بلا تثبيت [DR-07].")
+    assert "+.monaco-editor {" in body and "+	direction: ltr;" in body, (
+        "جذرُ المحرّر غيرُ مثبَّتٍ على ltr في `editor.css` — النصُّ يُدفَع ‎16.7‎ مليون "
+        "بكسل خارجَ الشاشة في كلّ محرّرٍ يساريٍّ داخل واجهةٍ عربيّة [DR-07].")
+
+
+@check("سماتُ محراب مولَّدةٌ لا مكتوبةٌ بيد · وكلُّ لغةٍ تُلوَّن [TH-01]")
+def _themes_are_generated_and_color_every_language():
+    """كانت السماتُ الأربعُ تحمل سبعَ قواعد، ستٌّ منها للغة ص وحدَها.
+
+    فكلُّ ملفٍّ ليس ص يُفتَح بلونٍ واحد — وقِيس على المشحون: ملفُّ HTML من ‎13‎ شظيّةً
+    كلُّها اللونُ الافتراضيّ. والسمةُ **مفروضةٌ افتراضًا**، فلا يختارها المستخدم ليكتشف
+    نقصَها. والفحصُ يرسو على **نطاقاتٍ بالاسم** لا على عددٍ وحدَه: عدٌّ يمرّ على سبعين
+    قاعدةً كلُّها لِـص.
+    """
+    gen_dir = os.path.join(ROOT, "extensions", "mihrab-themes")
+    sys.path.insert(0, gen_dir)
+    import gen_themes as G  # noqa: E402  (لا أثرَ جانبيًّا: التنفيذُ تحت __main__)
+
+    try:
+        G.main(check=True)
+    except SystemExit as e:
+        raise AssertionError(str(e))
+
+    # نطاقاتٌ لا تخصّ ص: وجودُها هو الفرقُ بين سمةٍ للغةٍ واحدةٍ وسمةٍ لمحرِّر.
+    NEEDED = ("markup.heading", "entity.name.tag", "keyword.control",
+              "variable", "entity.name.function")
+    seen = 0
+    for fn, _name, _tt, _pal, _wb, _variant in G.THEME_SET:
+        rules = json.load(open(os.path.join(gen_dir, "themes", fn),
+                               encoding="utf-8"))["tokenColors"]
+        seen += 1
+        blob = json.dumps([r.get("scope") for r in rules], ensure_ascii=False)
+        missing = [n for n in NEEDED if n not in blob]
+        assert not missing, (
+            "‏" + fn + ": نطاقاتٌ غيرُ ملوَّنةٍ ⇒ لغاتٌ كاملةٌ بلا لون: "
+            + " · ".join(missing) + " [TH-01]")
+        # وقواعدُ ص **آخرًا** وإلّا غلبها الأساس، والغلبةُ صامتة.
+        tail = json.dumps(rules[-1].get("scope"), ensure_ascii=False)
+        assert ".sad" in tail, (
+            "‏" + fn + ": آخرُ قاعدةٍ ليست لِـص — الأساسُ يغلب قواعدَنا [TH-01].")
+    assert seen == 4, "‏" + str(seen) + " سمةً فُحصت لا أربعًا — الجردُ ناقص."
+
+
 # `assert`. صفرٌ ⇒ الفحصُ لم يُصدِر حكمًا واحدًا على هذه الشجرة.
 #
 # ‏**ولا يُحتسَب `raise AssertionError` شاهدًا** عمدًا: الفحصُ السالب («لا قاعدةَ تفعل

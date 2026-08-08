@@ -576,20 +576,26 @@ diff --git a/src/vs/editor/browser/widget/codeEditor/editor.css b/src/vs/editor/
 index 638055a0..e559a850 100644
 --- a/src/vs/editor/browser/widget/codeEditor/editor.css
 +++ b/src/vs/editor/browser/widget/codeEditor/editor.css
-@@ -26,6 +26,18 @@
+@@ -26,6 +26,24 @@
  	background-color: var(--vscode-editor-background);
  	overflow-wrap: initial;
  }
 +/*
-+ * `textDirection: 'rtl'`. The internal coordinate system of the editor is physically left-to-right:
-+ * absolutely positioned children (`.view-lines`, the children of `.margin`) are placed with explicit
-+ * `left` offsets inside very wide containers, so flipping the root with `direction: rtl` would anchor
-+ * them to the right of those containers and push the text off screen. The mirrored layout is produced
-+ * by the view parts instead (margin, minimap, content area, rulers, widgets), and the text of each
-+ * line flows right-to-left through the `dir="rtl"` that `ViewLine` sets per line. Hence the root is
-+ * pinned to `ltr`, also when the editor is embedded in a right-to-left document.
++ * The internal coordinate system of the editor is physically left-to-right, whatever
++ * `textDirection` resolves to: absolutely positioned children (`.view-lines`, the children of
++ * `.margin`) are placed with explicit `left` offsets inside containers 16777216px wide, so a root
++ * that resolves to `direction: rtl` anchors them to the right of those containers and pushes the
++ * text off screen entirely. The mirrored layout is produced by the view parts instead (margin,
++ * minimap, content area, rulers, widgets), and the text of each line flows right-to-left through
++ * the `dir="rtl"` that `ViewLine` sets per line.
++ *
++ * Hence the root is pinned unconditionally — an editor does not inherit direction from its host.
++ * Scoping this to `.text-direction-rtl` is not enough and was measured to fail: a *left-to-right*
++ * editor embedded in a right-to-left document (`<html dir="rtl">`) inherits `rtl` on the root and
++ * hits exactly the failure this comment describes — `.view-lines` lands at x≈16776322 and every
++ * character is invisible while the line numbers still render.
 + */
-+.monaco-editor.text-direction-rtl {
++.monaco-editor {
 +	direction: ltr;
 +}
  .monaco-editor-background {
