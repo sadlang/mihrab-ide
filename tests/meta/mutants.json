@@ -181,6 +181,16 @@
       "new": "\"scope\": \"markup.heading.MUTANT\"",
       "expect": "انجرفت عن مولِّدها",
       "why": "السماتُ مولَّدة، وتحريرٌ يدويٌّ فيها يضيع في أوّل توليدٍ لاحق. المُصابُ يحرّر المولَّدَ لا المولِّد، فيقيس ما يدّعيه الحارس: أنّ الملفَّ على القرص هو ناتجُ `gen_themes.py` حرفًا بحرف."
+    },
+    {
+      "id": "terminal-gpu-back-on",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "\"terminal.integrated.gpuAcceleration\": \"off\"",
+      "new": "\"terminal.integrated.gpuAcceleration\": \"auto\"",
+      "expect": "تتقطّع الحروف",
+      "why": "‏`auto` هو افتراضُ المنبع بعينه، وهو ما كان مشحونًا حين بلّغ المستخدمُ عن «الحروف مقطعة». فالمُصابُ يُعيد الحالةَ المعطوبة حرفيًّا لا حالةً مخترعة، ويقيس أنّ سقوطَ المفتاح — وهو سقوطٌ لا يرمي خطأً ولا يكسر بناءً — يُحمِّر شيئًا."
     }
   ],
   "uncovered": [

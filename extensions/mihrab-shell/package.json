@@ -6,8 +6,12 @@
   "version": "0.1.0",
   "publisher": "sadlang",
   "license": "MIT",
-  "engines": { "vscode": "*" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "*"
+  },
+  "categories": [
+    "Other"
+  ],
   "contributes": {
     "configurationDefaults": {
       "workbench.sideBar.location": "right",
@@ -30,6 +34,8 @@
       "_comment_terminal_font_size": "[VA-04] الطرفيّة تتبع المحرّر. حجّة VA-04 خاصّيّة **وجه** لا خاصّيّة محرّر — نطاق الجسم العربيّ 0.828 من x-height اللاتينيّ في Kawkab Mono أينما رُسم. والوجه نفسه مضبوط للطرفيّة (terminal.integrated.fontFamily أعلاه)، فتركها على افتراض المنبع كان يجعل مخرجات ص العربيّة أصغر ممّا قِيس أنّه كافٍ — في السطح الذي يقرأ فيه المستخدم نتيجة برنامجه. وحارس L0 يفرض تساوي الرقمين كي لا ينجرف أحدهما وحده.",
       "terminal.integrated.fontSize": 15,
       "terminal.integrated.fontFamily": "'Kawkab Mono', 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Segoe UI', 'Noto Sans Arabic', monospace",
+      "_comment_terminal_gpu": "[DR-05/ب] الحجّةُ نفسُها التي أقفلت مسارَ المحرّر الرسوميّ — «طبقةُ GPU المنبعيّة بلا أيّ معالجة اتّجاه» — لم تكن مطبَّقةً على الطرفيّة، وهي **السطحُ الذي يقرأ فيه المستخدمُ مخرَجَ برنامجه**. وافتراضُ المنبع `auto` ⇒ WebGL، فقِيس على المشحون: أربعُ لوحاتِ رسمٍ وصفرُ صفوفٍ في DOM. ومسارُ WebGL يرسم **خليّةً خليّةً من أطلسِ رسوم**، فالتشكيلُ السياقيُّ العربيُّ مستحيلٌ بنيويًّا لا ناقص: «مرحبا» تُرسَم ستّةَ حروفٍ منفصلةٍ بأشكالها المعزولة. وبلّغ المستخدمُ عن ذلك بالاسم: «الحروف مقطعة». وبـ`off` يستعمل xterm مسارَ DOM فيضع كلَّ مقطعٍ متجانسِ الأنماط في عنصرٍ واحد، فيتولّاه محرّكُ النصّ في المتصفّح: **يصلُ الحروفَ ويرتّبها**. وقِيس بعد التحويل: «مرحبا بالعالم» في عنصرٍ واحد، وأوّلُ حرفٍ منطقيٍّ عند x=125 وآخرُه عند x=20 — أي يمينيٌّ صحيح. والسطرُ المختلط «النتيجة 42 صحيحة» كذلك في عنصرٍ واحد، فالأرقامُ تبقى يساريّةً داخل جملةٍ يمينيّة كما تقتضي المواصفة. **والثمنُ مُقاسٌ ومقبول**: مسارُ DOM أبطأُ في المخرجات الغزيرة — وبطءٌ في طرفيّةٍ ليست وجهةَ التشغيل الموصى بها أهونُ من حروفٍ لا تُقرأ. **وما لا يُصلحه هذا التحويل يبقى مكتوبًا ولا يُدَّعى**: الصفُّ وحدةُ الترتيب، فسطرٌ عربيٌّ طويلٌ يلتفّ على أكثر من صفٍّ يُرتَّب كلُّ صفٍّ منه وحدَه — قِيس: ثلاثةُ صفوفٍ لجملةٍ واحدة، ينكسر التتابعُ عند حدّ الالتفاف. ولذلك تبقى شارةُ DR-03 قائمةً وقد صِيغ نصُّها من جديدٍ على هذا المقيس بدل «مقلوبة» التي لم تعد صادقة.",
+      "terminal.integrated.gpuAcceleration": "off",
       "_comment_scm_input": "[SC-01] صندوقُ رسالة الالتزام **لا يقرأ خدمةَ الإعدادات أصلًا**: ‏`scmInput.ts:613` يمرّر `isSimpleWidget: true`، و«الودجةُ البسيطة» تبني خياراتِها من كائنٍ مُمرَّرٍ بلا حقن `IConfigurationService` (‏`editorConfiguration.ts:73-88`). فيُعيد `SCMInputWidget` قراءةَ ما يريده بيده في **قائمةِ سماحٍ مغلقة** (‏`scmInput.ts:310`) — وليس فيها `textDirection` ولا `fontLigatures`. أي أنّ أطولَ نصٍّ عربيٍّ متّصلٍ يكتبه المستخدمُ في يومه هو السطحُ الوحيدُ الذي لا تبلغه إعداداتُنا. والمفتاحان هنا هما ما تسمح به القائمةُ فعلًا: `scm.inputFontFamily` بقيمة `editor` تُحيل الصندوقَ إلى وجه المحرّر (‏`scmInput.ts:315-317`) بدل خطّ القشرة (افتراضُ المنبع `default`)، و`scm.inputFontSize` يُساوي المقيسَ في VA-04 بدل ‎13‎ المنبعيّة. سطران يُسقطان بندَين من الخمسة بلا شيفرة. ويبقى ثلاثةٌ **خارجَ يد الطبقة الأولى ويُقالان ولا يُهرَّبان**: الاتّجاهُ (قرارُ تخطيطٍ داخل Monaco لا خاصّيّةُ نمط) والأشكالُ السياقيّة (‏`fontLigatures` ليس في القائمة) وارتفاعُ السطر (‏`scmInput.ts:344` يثبّت `Math.round(fontSize * 1.5)` = ‎1.5em‎، دون أرضيّة الحبر المقيسة ‎1.88‎). عِلاجُها في الطبقة الثانية (قاعدةُ `.scm-editor` في mihrab-rtl.css) وفي المقترح المنبعيّ م-١٧. **وقد سُدَّت الثلاثةُ برقعة النواة 030 — وما فوقها وصفُ حالٍ سبقها ويُبقى لأنّه سببُ وجود هذين المفتاحين.** والمصحَّح: `scmInput.ts:280` يُفرِد `...getSimpleEditorOptions(this.configurationService)` قبل قائمة السماح، فالصندوقُ **يقرأ خدمةَ الإعدادات اليوم**؛ والرقعةُ أضافت `textDirection` و`fontLigatures` إلى تلك الدالّة، و`_getEditorLineHeight` صار يحترم `editor.lineHeight` (قِيس حيًّا: 23px ⇒ 29px = 1.933em، فوق أرضيّة الحبر 1.88). **والقراءةُ هناك بلا overrideIdentifier**: يسري جذرُ configurationDefaults أعلاه (`editor.textDirection: rtl`) وتُهمَل تجاوزاتُ اللغة — ولذلك بلغ الاتّجاهُ الصندوقَ، ولذلك كتلةُ `[scminput]` لو كُتبت لكانت ميّتةً بلا أثر. والباقي المفتوحُ شيءٌ آخرُ يُسمّى: مُرشِّحُ تغيّر الإعدادات (`scmInput.ts:258-270`) لا يذكر هذه المفاتيح، فتُلتقَط عند الإنشاء ولا تتجدّد حيًّا ⇐ م-١٧.",
       "scm.inputFontFamily": "editor",
       "scm.inputFontSize": 15,
@@ -64,29 +70,70 @@
           "﴿": true
         }
       },
-      "[markdown]": { "editor.unicodeHighlight.nonBasicASCII": false },
-      "[plaintext]": { "editor.unicodeHighlight.nonBasicASCII": false },
-      "[git-commit]": { "editor.unicodeHighlight.nonBasicASCII": false },
-      "[git-rebase]": { "editor.unicodeHighlight.nonBasicASCII": false },
-
+      "[markdown]": {
+        "editor.unicodeHighlight.nonBasicASCII": false
+      },
+      "[plaintext]": {
+        "editor.unicodeHighlight.nonBasicASCII": false
+      },
+      "[git-commit]": {
+        "editor.unicodeHighlight.nonBasicASCII": false
+      },
+      "[git-rebase]": {
+        "editor.unicodeHighlight.nonBasicASCII": false
+      },
       "_comment_ltr_scopes": "[DR-02] اتّجاه المحرّر بنطاق لغة لا فرضًا عالميًّا. مطوّر ص لا يكتب ص وحدها: يفتح package.json وtsconfig.json وDockerfile وملفّات YAML — لغاتٍ لاتينيّةً صرفًا بلا حرف عربيّ واحد. وفي كلّ منها يجد مزراب الأرقام يمينًا والخريطة يسارًا ومرساة التمرير الأفقيّ منعكسة: اتّجاهٌ بلا مضمونٍ يبرّره، وكلفةٌ إدراكيّةٌ خالصة. والقدرة موجودة أصلًا في الخيار المنبعيّ الذي كتبناه بأنفسنا (editor.textDirection يقبل auto|ltr|rtl) وكانت غير مستعملة. ولم نستعمل auto: منطقها المكتوب يتبع لغة الواجهة فيردّ RTL في واجهةٍ عربيّةٍ أيًّا كان الملفّ — فالتجاوز باللغة أدقّ. القائمة تشمل ما يُفتَح فعلًا في مشروع ص لا كلّ لغةٍ لاتينيّة.",
-      "[json]": { "editor.textDirection": "ltr" },
-      "[jsonc]": { "editor.textDirection": "ltr" },
-      "[yaml]": { "editor.textDirection": "ltr" },
-      "[xml]": { "editor.textDirection": "ltr" },
-      "[dockerfile]": { "editor.textDirection": "ltr" },
-      "[shellscript]": { "editor.textDirection": "ltr" },
-      "[bat]": { "editor.textDirection": "ltr" },
-      "[powershell]": { "editor.textDirection": "ltr" },
-      "[makefile]": { "editor.textDirection": "ltr" },
-      "[ignore]": { "editor.textDirection": "ltr" },
-      "[properties]": { "editor.textDirection": "ltr" },
-      "[toml]": { "editor.textDirection": "ltr" },
-      "[css]": { "editor.textDirection": "ltr" },
-      "[html]": { "editor.textDirection": "ltr" },
-      "[javascript]": { "editor.textDirection": "ltr" },
-      "[typescript]": { "editor.textDirection": "ltr" },
-      "[python]": { "editor.textDirection": "ltr" }
+      "[json]": {
+        "editor.textDirection": "ltr"
+      },
+      "[jsonc]": {
+        "editor.textDirection": "ltr"
+      },
+      "[yaml]": {
+        "editor.textDirection": "ltr"
+      },
+      "[xml]": {
+        "editor.textDirection": "ltr"
+      },
+      "[dockerfile]": {
+        "editor.textDirection": "ltr"
+      },
+      "[shellscript]": {
+        "editor.textDirection": "ltr"
+      },
+      "[bat]": {
+        "editor.textDirection": "ltr"
+      },
+      "[powershell]": {
+        "editor.textDirection": "ltr"
+      },
+      "[makefile]": {
+        "editor.textDirection": "ltr"
+      },
+      "[ignore]": {
+        "editor.textDirection": "ltr"
+      },
+      "[properties]": {
+        "editor.textDirection": "ltr"
+      },
+      "[toml]": {
+        "editor.textDirection": "ltr"
+      },
+      "[css]": {
+        "editor.textDirection": "ltr"
+      },
+      "[html]": {
+        "editor.textDirection": "ltr"
+      },
+      "[javascript]": {
+        "editor.textDirection": "ltr"
+      },
+      "[typescript]": {
+        "editor.textDirection": "ltr"
+      },
+      "[python]": {
+        "editor.textDirection": "ltr"
+      }
     }
   },
   "repository": {

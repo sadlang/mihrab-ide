@@ -3595,6 +3595,39 @@ def _core_patch_hunk_headers_are_consistent():
                      "كلَّها: " + " · ".join(bad))
 
 
+@check("مسارُ رسم الطرفيّة `off` [DR-05/ب] — ‏WebGL يرسم خليّةً خليّةً فلا تتّصل العربيّة")
+def _terminal_gpu_is_off():
+    """‏`DR-05` أقفل مسارَ **المحرّر** الرسوميّ بحجّة «طبقةُ GPU بلا معالجة اتّجاه».
+
+    والحجّةُ نفسُها لم تكن مطبَّقةً على الطرفيّة — وهي السطحُ الذي يقرأ فيه المستخدمُ
+    مخرَجَ برنامجه. وافتراضُ المنبع `auto` ⇒ WebGL، وقِيس على المشحون: أربعُ لوحاتِ
+    رسمٍ وصفرُ صفوفٍ في DOM. ومسارُ WebGL يرسم من **أطلسِ رسومٍ خليّةً خليّة**، فالوصلُ
+    السياقيُّ العربيُّ مستحيلٌ بنيويًّا: «مرحبا» ستّةُ حروفٍ منفصلة. وبلّغ المستخدمُ عنه
+    بالاسم: «الحروف مقطعة».
+
+    والحارسُ يمنع سقوطَ المفتاح صامتًا: إسقاطُه لا يرمي خطأً ولا يكسر بناءً — تعود
+    الطرفيّةُ إلى WebGL وتتقطّع الحروفُ من جديد، ولا حارسَ حيًّا يبلغ هذا السطح.
+
+    ويُقاس مع `editor.experimentalGpuAcceleration`: الحجّةُ واحدةٌ، فانفرادُ أحدهما
+    بالقفل يعني أنّ الآخرَ سقط بلا قرار.
+    """
+    shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
+    assert os.path.isfile(shell), "‏mihrab-shell/package.json مفقود — الفحصُ يحرس العدم."
+    defaults = json.load(open(shell, encoding="utf-8")).get(
+        "contributes", {}).get("configurationDefaults", {})
+    assert len(defaults) >= 20, (
+        "‏" + str(len(defaults)) + " مفتاحًا فقط في configurationDefaults — الجردُ لا يُقرأ، "
+        "وكلُّ توكيدٍ بعده يمرّ على العمى.")
+    term = defaults.get("terminal.integrated.gpuAcceleration")
+    assert term == "off", (
+        "‏`terminal.integrated.gpuAcceleration` = " + repr(term) + " لا `off` — الطرفيّةُ "
+        "ترسم بـWebGL خليّةً خليّةً من أطلسِ رسوم، فتتقطّع الحروفُ العربيّة [DR-05/ب].")
+    ed = defaults.get("editor.experimentalGpuAcceleration")
+    assert ed == "off", (
+        "‏`editor.experimentalGpuAcceleration` = " + repr(ed) + " لا `off` — الحجّةُ واحدةٌ "
+        "للسطحين، وانفرادُ الطرفيّة بالقفل يعني أنّ المحرّرَ سقط بلا قرار [DR-05].")
+
+
 @check("رقعةُ الاتّجاه: جذرُ المحرّر مثبَّتٌ على ltr **بلا شرط** [DR-07]")
 def _editor_root_direction_is_unconditional():
     """يمنع عودةَ عطبٍ شُوهد في المشحون: نصٌّ مُصيَّرٌ خارجَ الشاشة.
