@@ -3628,6 +3628,53 @@ def _terminal_gpu_is_off():
         "للسطحين، وانفرادُ الطرفيّة بالقفل يعني أنّ المحرّرَ سقط بلا قرار [DR-05].")
 
 
+@check("اتّجاهُ الطرفيّة [DR-08]: الورقةُ ورقعةُ xterm **معًا** — لا واحدةَ بلا أختها")
+def _terminal_direction_sheet_and_patch_are_paired():
+    """أخطرُ حالةٍ هنا ليست غيابَهما بل **وجودُ إحداهما وحدَها**.
+
+    الورقةُ تقلب التخطيطَ، ورقعةُ `patch_xterm_bidi.py` تقلب حسابَ الأعمدة. فإن
+    شُحنت الورقةُ بلا الرقعة رأى المستخدمُ نصًّا عربيًّا صحيحًا **وحدَّد غيرَه** عند
+    النقر (قِيس قبل الرقعة: نقرةٌ عند x=975 ⇒ تحديدٌ عند x=166). وإن شُحنت الرقعةُ
+    بلا الورقة فلا صفَّ يمينيًّا أصلًا، فتقيس شيئًا لا يقع.
+
+    ولذلك الاقترانُ نفسُه هو المفحوص، لا كلٌّ على حدة.
+    """
+    sheet = _read(os.path.join(ROOT, M.CSS_PATCH))
+    # شاهدُ تفعيلٍ موجَب: المِسطرةُ ترى الورقةَ أصلًا قبل أيّ تأكيدٍ عليها.
+    assert sheet.count("monaco-workbench[dir=") >= 10, (
+        "ورقةُ الاتّجاه لا تُقرأ كما يُتوقَّع — كلُّ توكيدٍ بعدها يمرّ على العمى.")
+
+    parts = {
+        "direction: rtl على الشاشة": ".monaco-workbench[dir=\"rtl\"] .xterm-screen,",
+        "unicode-bidi: plaintext للصفّ": "unicode-bidi: plaintext;",
+        "display: inline للعناصر": ".monaco-workbench[dir=\"rtl\"] .xterm-rows span {",
+    }
+    have_sheet = [k for k, v in parts.items() if v in sheet]
+    assert "direction: ltr;" not in sheet.split(".xterm-screen,")[1][:200], (
+        "ورقةُ الاتّجاه عادت تفرض `direction: ltr` على الطرفيّة — وهي الحجّةُ التي "
+        "سقطت بعد ترقيع حساب الأعمدة [DR-08].")
+
+    patcher = os.path.join(BUILD, "patch_xterm_bidi.py")
+    have_patch = os.path.isfile(patcher)
+    wired = "patch_xterm_bidi.py" in _read(os.path.join(BUILD, "build.sh"))
+
+    if len(have_sheet) == 3 and have_patch and wired:
+        # والرقعةُ مقيّدةٌ بإصدارٍ مثبَّت: المُصغِّرُ يبدّل الأسماءَ بين النسخ.
+        body = _read(patcher)
+        assert 'SUPPORTED_VERSION = "' in body, (
+            "رقعةُ xterm بلا حارسِ إصدار — ترقيعُ نصٍّ مصغَّرٍ بلا تثبيتِ نسخةٍ مقامرة.")
+        assert "لا مرّةً واحدة" in body, (
+            "رقعةُ xterm لا تشترط وقوعَ كلّ مِرساةٍ مرّةً واحدة — قد تُرقّع موضعًا لم يُقرأ.")
+        return
+
+    missing = [k for k in parts if k not in have_sheet]
+    raise AssertionError(
+        "اقترانُ [DR-08] مكسور — والنصفُ أسوأُ من العدم: "
+        + ("ناقصٌ من الورقة: " + " · ".join(missing) + ". " if missing else "")
+        + ("والمُرقِّع `build/patch_xterm_bidi.py` مفقود. " if not have_patch else "")
+        + ("وغيرُ موصولٍ بـbuild.sh. " if not wired else ""))
+
+
 @check("رقعةُ الاتّجاه: جذرُ المحرّر مثبَّتٌ على ltr **بلا شرط** [DR-07]")
 def _editor_root_direction_is_unconditional():
     """يمنع عودةَ عطبٍ شُوهد في المشحون: نصٌّ مُصيَّرٌ خارجَ الشاشة.

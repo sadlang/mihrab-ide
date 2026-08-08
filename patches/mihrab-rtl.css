@@ -24,12 +24,34 @@
 /* ── 1) أُسقِطت — صارت **أصيلة في المنبع**: رُقعة `patches/core/010-editor-text-direction.patch`
    (خيار `editor.textDirection`، المقترح م-٢). حاويةُ المحرّر تُثبَّت LTR من ورقة المنبع تحت الصنف `.monaco-editor.text-direction-rtl`.
    الرقمُ محفوظٌ عمدًا: القواعدُ مرقَّمةٌ ومُشارٌ إليها في الوثائق والحرّاس. ── */
-/* ── 2) حماية الطرفيّة (xterm يفترض LTR صارمًا) ── */
+/* ── 2) اتّجاهُ الطرفيّة: لكلّ سطرٍ اتّجاهُ محتواه [DR-08] ──
+   كانت هذه القاعدةُ تفرض `direction: ltr` بحجّة «xterm يفترض LTR صارمًا» — وهي حجّةٌ
+   صحيحةٌ في **الحساب** لا في **التخطيط**. والحسابُ عولج برقعة `patch_xterm_bidi.py`
+   على الحزمة المشحونة (الطبقة الثالثة)، فسقط سببُ فرضِ اليساريّة هنا.
+
+   والثلاثةُ أدناه تُقاس معًا ولا يصحّ فصلُ أحدها:
+     • `direction: rtl` على الشاشة ⇒ الفقرةُ الأمُّ يمينيّة، فتُرسى السطورُ يمينًا.
+     • `unicode-bidi: plaintext` على الصفّ ⇒ القرارُ يعود إلى **أوّل محرفٍ قويٍّ في
+       السطر نفسِه**: اللاتينيُّ يبقى يساريًّا سليمًا (المِحثّ كما هو، وجدولُ `dir`
+       أعمدتُه متراصّة)، والعربيُّ وحدَه ينقلب.
+     • `display: inline` على العناصر ⇒ xterm يجعلها `inline-block`، أي صناديقَ ذرّيّةً
+       **يعاملها محرّكُ الاتّجاه كتلًا تُعاد ترتيبُها** بدل أن يقرأ نصَّها متّصلًا. وهو
+       بعينه ما كان يقطع `PS` إلى `P` و`S C:…`، ويقلب `-a----` إلى `a-----`. مقيسٌ.
+
+   وفصلُ ورقةِ الأنماط عن رقعة xterm يُنتج **الأسوأ**: نصٌّ يُقرأ صحيحًا ويُحدَّد
+   خطأً. فحارسٌ ساكنٌ يمنع وجودَ إحداهما بلا الأخرى. ── */
 .monaco-workbench[dir="rtl"] .terminal,
 .monaco-workbench[dir="rtl"] .xterm,
 .monaco-workbench[dir="rtl"] .xterm-screen,
+.monaco-workbench[dir="rtl"] .xterm-rows,
 .monaco-workbench[dir="rtl"] .integrated-terminal {
-	direction: ltr;
+	direction: rtl;
+}
+.monaco-workbench[dir="rtl"] .xterm-rows > div {
+	unicode-bidi: plaintext;
+}
+.monaco-workbench[dir="rtl"] .xterm-rows span {
+	display: inline;
 }
 
 /* ── 3) عرض الفرق (Diff): الجزآن جنبًا لجنب يبقيان بمنطق LTR داخليًّا لاصطفاف الأسطر.
