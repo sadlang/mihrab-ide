@@ -130,8 +130,38 @@ test("لا شيءَ ⇒ رسالةُ سلامةٍ ومخرجٌ إلى الإعد
   const f = fakeVscode({}, { answer: 0 });
   assert.strictEqual(await G.resetCommand(f.vscode, fakeMemento()), 0);
   assert.deepStrictEqual(f.updates, []);
-  assert.deepStrictEqual(f.shown.info, [G.COPY.clean]);
+  assert.deepStrictEqual(f.shown.info, [G.COPY.clean(null, true)]);
   assert.deepStrictEqual(f.executed, [[G.OPEN_SETTINGS_CMD, G.SECTION]]);
+});
+
+// رسالةُ «لا إعداد» كانت جملةً ثابتةً تنفي السببَ وتقترح تغييرَ خطّ — وكلاهما كاذبٌ في
+// ملفّ `.yaml`، وهو عينُ الملفّ الذي جاء منه بلاغُ المربّعات الصفراء [AR-05]. فصارت
+// دالّةً في (لغةِ الملفّ، ثقةِ المساحة)، وهذه الأذرعُ الثلاث هي ما تجعلها صادقة.
+test("رسالةُ «لا إعداد»: غيرُ الموثوقة تُسمّي السببَ وتقترح الثقة لا الخطّ", () => {
+  const m = G.COPY.clean("yaml", false);
+  assert.match(m, /غيرُ موثوقة/);
+  assert.match(m, /yaml/);
+  assert.doesNotMatch(m, /لم أجد إعدادًا يسبّب/);
+});
+
+test("رسالةُ «لا إعداد»: الموثوقةُ تنسب الباقيَ إلى خلط الكتابتَين ولا تَعِد بإزالته", () => {
+  const m = G.COPY.clean("yaml", true);
+  assert.match(m, /تخلط كتابتَين/);
+  assert.match(m, /خارجَ إعفاء ملفّات ص/);   // ‏[sad] وحدَها تحمل قائمةَ الإعفاء
+  assert.doesNotMatch(m, /غيرُ موثوقة/);      // لا يُقال ما ليس واقعًا
+});
+
+test("رسالةُ «لا إعداد»: لغةٌ مُعفاةٌ لا تُلام على إعفاءٍ لا ينقصها", () => {
+  const m = G.COPY.clean("sad", true);
+  assert.match(m, /تخلط كتابتَين/);
+  assert.doesNotMatch(m, /خارجَ إعفاء/);
+  // وحتّى في مساحةٍ غيرِ موثوقة: `nonBasicASCII: false` مُسهَمٌ لـ«ص» فلا سببَ يُنسَب إليها.
+  assert.doesNotMatch(G.COPY.clean("sad", false), /غيرُ موثوقة/);
+});
+
+test("رسالةُ «تمّ» لا تَعِد بما لا يملكه الأمر", () => {
+  assert.doesNotMatch(G.COPY.done("س"), /لن تُحاط/);
+  assert.match(G.COPY.done("س"), /إن بقي إطارٌ/);
 });
 
 test("المسحُ يبلغ كلَّ نطاقٍ بهدفه، وبـoverrideInLanguage حين يلزم", async () => {
