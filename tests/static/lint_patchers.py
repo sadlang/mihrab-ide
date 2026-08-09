@@ -3628,6 +3628,123 @@ def _terminal_gpu_is_off():
         "للسطحين، وانفرادُ الطرفيّة بالقفل يعني أنّ المحرّرَ سقط بلا قرار [DR-05].")
 
 
+@check("خلطُ الكتابتَين [AR-05]: الرقعةُ تُحاكى فتُقاس — لا يكفي وجودُها")
+def _unicode_script_mixing_patch_behaves():
+    """يشتقّ مُسنَدَ «هذا خلطُ كتابتَين» **من نصّ الرقعة** ثمّ يشغّله على عيّناتٍ مسمّاة.
+
+    **لماذا محاكاةٌ لا تفتيشُ نصّ.** رقعةٌ تُطبَّق بنجاحٍ وشكلُها سليمٌ قد تكون قد قلبت
+    المعنى: توسيعُ المُسنَد يُعفي الكلمةَ المختلطةَ حقًّا فيسقط كشفُ الانتحال — وهو **أخضرُ
+    كاذبٌ** لا يمسكه إلّا عدُّ الاتّجاهين معًا. ولذلك التوكيداتُ هنا **من الطرفين**:
+    ‏`حقل_اسم` يجب أن يصير صفرًا، و`exampاe` يجب أن **يبقى** واحدًا.
+
+    والمُسنَدُ لا يُكتَب هنا بل يُنتزَع من الأسطر المضافة في الرقعة، فمُصابٌ يبدّل
+    `isLowerAsciiLetter` بـ`isBasicASCII` يغيّر خرجَ المحاكاة لا شكلَها.
+
+    وجدولُ الالتباس يُشتقّ من `strings.ts` في المنبع المثبَّت لا يُكتَب بالحدس: لو أضاف
+    المنبعُ نقطةً عربيّةً جديدةً إلى `_common` تغيّرت الأرقامُ هنا صوتًا لا صمتًا.
+    """
+    patch = os.path.join(ROOT, "patches", "core",
+                         "033-unicode-word-script-mixing.patch")
+    if not os.path.isfile(patch):
+        raise AssertionError(
+            "لا رقعةَ `033-unicode-word-script-mixing.patch` — يعود المستطيلُ الأصفرُ حول "
+            "كلّ ألفٍ وهاءٍ في معرّفات ص خارجَ `[sad]` (‏622 مرسومًا في مفردات.yaml) [AR-05]")
+    body = _read(patch)
+
+    # (أ) المِرساةُ المنبعيّة: الرقعةُ تمسّ السطرَ المقصودَ بعينه لا سطرًا يشبهه.
+    assert "-\t\t\t\thasBasicASCIICharacters = hasBasicASCIICharacters || isBasicASCII;" in body, (
+        "الرقعةُ لا تحذف سطرَ `hasBasicASCIICharacters || isBasicASCII` — انجرف المنبعُ أو "
+        "رُقِّع موضعٌ آخر، فما يلي من محاكاةٍ يقيس شيئًا لا يقع [AR-05]")
+
+    # (ب) انتزاعُ المُسنَد من الأسطر المضافة — لا يُكتَب هنا فيُقاس نفسَه.
+    m = re.search(r"\+\s*hasBasicASCIILetters = hasBasicASCIILetters(.*?);",
+                  body, re.S)
+    assert m, ("لا إسنادَ لـ`hasBasicASCIILetters` في الأسطر المضافة — تغيّر شكلُ الرقعة "
+               "فعمِيَ الانتزاع، والمحاكاةُ بلا مُسنَدٍ منتزَعٍ حارسٌ يقيس نفسَه [AR-05]")
+    expr = re.sub(r"[\r\n+\t ]", "", m.group(1))
+    TOKENS = {
+        "||strings.isLowerAsciiLetter(codePoint)": lambda c: "a" <= c <= "z",
+        "||strings.isUpperAsciiLetter(codePoint)": lambda c: "A" <= c <= "Z",
+        "||strings.isAsciiDigit(codePoint)": lambda c: "0" <= c <= "9",
+        "||isBasicASCII": lambda c: ord(c) < 128,
+        "||false": lambda c: False,
+        "||true": lambda c: True,
+    }
+    preds, rest = [], expr
+    while rest:
+        for tok, fn in TOKENS.items():
+            if rest.startswith(tok):
+                preds.append(fn)
+                rest = rest[len(tok):]
+                break
+        else:
+            raise AssertionError(
+                f"جزءٌ من مُسنَد خلط الكتابتَين لم يُقرأ: «{rest}» — لا يُحاكى ما لا يُفهَم، "
+                "والفشلُ هنا أسلمُ من نجاحٍ يقيس غيرَ المشحون [AR-05]")
+    assert preds, "مُسنَدٌ فارغ [AR-05]"
+
+    def mixes(word):
+        return any(p(c) for c in word for p in preds)
+
+    # (ج) جدولُ الالتباس من مصدره — وشاهدُ تفعيلٍ موجَبٌ قبل أيّ توكيدٍ سالب.
+    st = os.path.join(ROOT, ".upstream", "vscode", "src", "vs", "base", "common",
+                      "strings.ts")
+    if not os.path.isfile(st):
+        return                      # لا منبعَ مثبَّتًا: يُفحَص الشكلُ ولا يُدَّعى القياس
+    src = _read(st)
+    i = src.find('\'{\\"_common\\"')
+    j = src.find("]}'", i)
+    assert i > 0 and j > i, "تعذّر انتزاعُ جدول الالتباس من strings.ts [AR-05]"
+    data = json.loads(src[i + 1:j + 2].replace('\\"', '"'))
+    amb = set()
+    for key in ("_common", "_default"):
+        arr = data[key]
+        amb.update(chr(arr[k]) for k in range(0, len(arr), 2))
+    assert "ا" in amb and "ه" in amb, (
+        "الألفُ والهاءُ ليستا في جدول الالتباس المنبعيّ — إمّا أُصلح المنبعُ (فتسقط الرقعةُ "
+        "كلُّها) أو عمِيَ الانتزاع. كلُّ توكيدٍ بعد هذا يمرّ على العمى [AR-05]")
+
+    SEP = set("`~!@#$%^&*()-=+[{]}" + chr(92) + "|;:'\",.<>/?،؛؟٪۔؞؍٭«»﴿﴾") | set(" \t\r\n")
+
+    def sim(text):
+        """قاعدةُ المنبع كما هي، بمُسنَدِ الخلط المنتزَع من الرقعة."""
+        n, w = 0, []
+        for ch in list(text) + [" "]:
+            if ch in SEP:
+                if w:
+                    word = "".join(w)
+                    weird = any(ord(c) > 127 and c not in amb for c in word)
+                    if not (not mixes(word) and weird):
+                        n += sum(1 for c in word if ord(c) > 127 and c in amb)
+                w = []
+            else:
+                w.append(ch)
+        return n
+
+    # (د) الطرفُ الأوّل: معرّفاتُ ص تُعفى. (العَرَضُ الذي بلّغ عنه مستخدم.)
+    for word in ("حقل_اسم", "خط_مائل", "نصاب_الفضة", "40_تعابير", "اكتب_ذاكرة"):
+        assert sim(word) == 0, (
+            f"«{word}» ما زال يُبرَز — الشَرطةُ السفليّةُ والأرقامُ غِراءُ معرّفاتٍ لا خلطَ "
+            "كتابتَين، والرقعةُ لم تُسقِط المستطيلَ الأصفر [AR-05]")
+
+    # (هـ) الطرفُ الثاني — **وهو ما يمنع الأخضرَ الكاذب**: الخلطُ الحقيقيُّ يبقى مكشوفًا.
+    for word, why in (("exampاe", "ألفٌ عربيّةٌ في معرّفٍ لاتينيّ"),
+                      ("faiا", "الحيلةُ نفسُها أقصر"),
+                      ("contro١", "رقمٌ عربيٌّ يشبه l"),
+                      ("pаssword", "«а» سيريليّة"),
+                      ("pcb_ديناميّ", "لاتينيٌّ وعربيٌّ في معرّفٍ واحد"),
+                      ("صادx", "عربيٌّ ولاتينيٌّ ملتصقان")):
+        assert sim(word) >= 1, (
+            f"«{word}» لم يعد يُشخَّص ({why}) — وُسِّع المُسنَدُ فأُعفيت الكلمةُ المختلطةُ "
+            "حقًّا. هذا **إسقاطُ حمايةٍ** لا إسكاتَ ضجيج [AR-05]")
+
+    # (و) حدُّ الرقعة مكتوبٌ توكيدًا لا نثرًا: كلمةٌ كلُّها ملتبسٌ لا يطالها بندُ الهروب
+    # بأيّ صياغة، فتبقى مُشخَّصةً خارج `[sad]`. تثبيتُه هنا يمنع ادّعاءً أوسعَ من المُنجَز.
+    assert sim("٥٥") == 2, (
+        "تغيّر سلوكُ «٥٥» — حدُّ الرقعة المُعلَن أنّها لا تطال الأرقامَ العربيّةَ المفردة "
+        "في النثر. تغيُّرُه يعني أنّ الوثيقةَ صارت تكذب [AR-05]")
+
+
 @check("اتّجاهُ الطرفيّة [DR-08]: الورقةُ ورقعةُ xterm **معًا** — لا واحدةَ بلا أختها")
 def _terminal_direction_sheet_and_patch_are_paired():
     """أخطرُ حالةٍ هنا ليست غيابَهما بل **وجودُ إحداهما وحدَها**.

@@ -211,6 +211,26 @@
       "new": "python \"$ROOT/build/patch_xterm_bidi_MUTANT.py\" \"$APP_DIR\"",
       "expect": "اقترانُ [DR-08] مكسور",
       "why": "أخطرُ حالةٍ في DR-08 ليست غيابَ الطرفين بل **وجودَ الورقة بلا الرقعة**: نصٌّ يُقرأ صحيحًا ويُحدَّد خطأً. فالمُصابُ يفصل الرقعةَ عن البناء ويُبقي الورقة."
+    },
+    {
+      "id": "unicode-script-mixing-reverted",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/core/033-unicode-word-script-mixing.patch",
+      "old": "|| strings.isLowerAsciiLetter(codePoint)",
+      "new": "|| isBasicASCII",
+      "expect": "«حقل_اسم» ما زال يُبرَز",
+      "why": "نكوصٌ يُبقي الرقعةَ موجودةً وموصولةً وشكلَها سليمًا ويُعيد العطبَ نفسَه — لا يمسكُه إلّا فحصٌ يُحاكي القاعدةَ بمُسنَدٍ منتزَعٍ من نصّ الرقعة."
+    },
+    {
+      "id": "unicode-script-mixing-overreach",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/core/033-unicode-word-script-mixing.patch",
+      "old": "|| strings.isLowerAsciiLetter(codePoint)",
+      "new": "|| false",
+      "expect": "pcb_",
+      "why": "الاتّجاهُ المعاكس: توسيعٌ يُعفي الكلمةَ المختلطةَ حقًّا (`pcb_ديناميّ`) فيسقط كشفُ الانتحال. أخضرٌ كاذبٌ لو كان الفحصُ يعدّ الصفرَ وحدَه."
     }
   ],
   "uncovered": [

@@ -45,4 +45,9 @@ public static class MihrabRM {
 }
 "@
 try { Add-Type -TypeDefinition $src -Language CSharp -ErrorAction Stop } catch { exit 0 }
+# UTF-8 on the way out. Measured: the app name comes back from Restart Manager as
+# real Unicode, then the console codepage (cp1255 here) turns every Arabic letter
+# into "?" before bash ever sees it - so the caller printed "PID 18352 - ?????".
+# A message whose whole purpose is to NAME the holder must not lose the name.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
 try { [MihrabRM]::Who($Path) | ForEach-Object { $_ } } catch { }

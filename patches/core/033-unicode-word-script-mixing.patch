@@ -1,0 +1,38 @@
+diff --git a/src/vs/editor/common/services/unicodeTextModelHighlighter.ts b/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
+index d9e86c3e..2c93087e 100644
+--- a/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
++++ b/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
+@@ -195,13 +195,22 @@ class CodePointHighlighter {
+ 			return SimpleHighlightReason.NonBasicASCII;
+ 		}
+ 
+-		let hasBasicASCIICharacters = false;
++		let hasBasicASCIILetters = false;
+ 		let hasNonConfusableNonBasicAsciiCharacter = false;
+ 		if (wordContext) {
+ 			for (const char of wordContext) {
+ 				const codePoint = char.codePointAt(0)!;
+ 				const isBasicASCII = strings.isBasicASCII(char);
+-				hasBasicASCIICharacters = hasBasicASCIICharacters || isBasicASCII;
++				// Only ASCII *letters* make a word script-mixed. Digits, `_`, `-` and the
++				// rest of ASCII punctuation are script-neutral: every script uses them as
++				// identifier glue. Counting them made a single-script identifier such as
++				// `حقل_اسم` look like Latin mixed with Arabic, so every confusable letter
++				// in it was highlighted - 622 highlights in one 71 KB file, none of them a
++				// real impersonation. Words that genuinely mix scripts (`exampاe`, `faiا`,
++				// `pcb_ديناميّ`) still contain ASCII letters and are still highlighted.
++				hasBasicASCIILetters = hasBasicASCIILetters
++					|| strings.isLowerAsciiLetter(codePoint)
++					|| strings.isUpperAsciiLetter(codePoint);
+ 
+ 				if (
+ 					!isBasicASCII &&
+@@ -214,7 +223,7 @@ class CodePointHighlighter {
+ 		}
+ 
+ 		if (
+-			/* Don't allow mixing weird looking characters with ASCII */ !hasBasicASCIICharacters &&
++			/* Don't allow mixing weird looking characters with ASCII letters */ !hasBasicASCIILetters &&
+ 			/* Is there an obviously weird looking character? */ hasNonConfusableNonBasicAsciiCharacter
+ 		) {
+ 			return SimpleHighlightReason.None;

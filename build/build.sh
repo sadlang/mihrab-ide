@@ -407,6 +407,12 @@ fi
 # السطر تُلتقَط عند الإنشاء ولا تتبع تغيُّرَ الإعداد. تعديلٌ منبعيٌّ بحتٌ بلا مفتاحٍ جديد:
 # ‏`affectsConfiguration` للثلاثة، ودفعُ مفتاحَين في حمولة `updateOptions`. يسقط يومَ يُدمَج.
 [[ -f "$ROOT/patches/core/032-scm-input-live-options.patch" ]] && cp -f "$ROOT/patches/core/032-scm-input-live-options.patch" "$UP/.mihrab-scm-input-live-options.patch"
+# خلطُ الكتابتَين في إبراز يونيكود [AR-05 · م-١٣/ب]: المنبع يسأل «أفي الكلمة محرفُ
+# ASCII؟» ويقصد «أتخلط كتابتَين؟» — والشَرطةُ السفليّةُ والأرقامُ ليست كتابةً بل غِراءُ
+# معرّفاتٍ في كلّ كتابة. فمعرّفُ ص `حقل_اسم` كان يُقرأ خلطًا فتُصنَّد كلُّ ألفٍ فيه:
+# ‏622 إبرازًا مرسومًا في ملفٍّ واحد، ولا واحدَ منها انتحال. تعديلٌ منبعيٌّ لا رقعةُ
+# هويّة: يسقط يومَ يُدمَج م-١٣/ب. فشلٌ قاتلٌ كسابقاتها.
+[[ -f "$ROOT/patches/core/033-unicode-word-script-mixing.patch" ]] && cp -f "$ROOT/patches/core/033-unicode-word-script-mixing.patch" "$UP/.mihrab-unicode-word-script-mixing.patch"
 [[ -f "$ROOT/build/patch_welcome_rtl.py" ]] && cp -f "$ROOT/build/patch_welcome_rtl.py" "$UP/.mihrab-patch-welcome-rtl.py"
 [[ -f "$ROOT/build/patch_walkthrough_dir.py" ]] && cp -f "$ROOT/build/patch_walkthrough_dir.py" "$UP/.mihrab-patch-walkthrough-dir.py"
 [[ -f "$ROOT/build/patch_walkthroughs_drop.py" ]] && cp -f "$ROOT/build/patch_walkthroughs_drop.py" "$UP/.mihrab-patch-walkthroughs-drop.py"
