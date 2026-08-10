@@ -261,6 +261,76 @@
       "new": "return \"لم أجد إعدادًا يسبّب الإطاراتِ الصفراء. إن كنتَ ما زلتَ ترى مربّعاتٍ فقد تكون فراغاتِ خطٍّ لا يعرض العربيّة، لا إعدادًا.\";",
       "expect": "غيرُ موثوقة",
       "why": "عودةُ الجملة التي كانت تكذب على صاحب البلاغ: تنفي سببًا **قائمًا وموثَّقًا عندنا** وتوجّهه إلى تغيير خطٍّ لا يغيّر شيئًا. وهي مُصابٌ لا يمسكه أيُّ فحصٍ شكليّ — الدالّةُ تبقى دالّةً وتعيد نصًّا عربيًّا سليمًا. لا يمسكه إلّا توكيدٌ على **مضمون** الفرع: أن تُسمَّى المساحةُ غيرُ الموثوقة حين تكون كذلك."
+    },
+    {
+      "id": "editor-direction-root-back-to-rtl",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "      \"editor.textDirection\": \"ltr\",\n",
+      "new": "      \"editor.textDirection\": \"rtl\",\n",
+      "expect": "والمطلوب 'ltr'",
+      "why": "هذه هي **الحالُ التي كانت قائمةً** لا مُصابٌ مخترَع: فرضُ rtl في الجذر واستثناءُ اللغات اسمًا اسمًا. وقِيس ثمنُها على المشحون: المنبعُ يشحن ‎٧٥‎ معرِّفَ لغةٍ وكانت القائمةُ تغطّي ‎١٨‎ — ‏‎٥٣‎ لغةً تُصيَّر يمينًا بلا حرفٍ عربيٍّ واحد. والحارسُ القديم كان **أخضرَ فوقها كلِّها** لأنّه يفحص سبعةَ أسماءٍ من القائمة نفسِها [DR-02]."
+    },
+    {
+      "id": "editor-direction-root-auto",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "      \"editor.textDirection\": \"ltr\",\n",
+      "new": "      \"editor.textDirection\": \"auto\",\n",
+      "expect": "تتبع لغةَ الواجهة",
+      "why": "**أخطرُ قيمةٍ ممكنةٍ لأنّها تبدو حيادًا.** `EffectiveTextDirection.compute` تردّ `isRtlLanguage(platform.language)` — أي لغةَ **الواجهة** لا المستند — فـ`auto` في محرابٍ عربيٍّ **هي rtl حرفًا**، وتُنتج العطبَ نفسَه بلا اسمِه. والحارسُ القديم كان يمرّرها صامتًا (`!= \"rtl\": return`)، والمشروعُ يعرف الحسابَ ومكتوبٌ عنده: `scm_input.live.mjs` يستثني تجربةَ `rtl ⇄ auto` لهذا السبب بعينه [DR-02]."
+    },
+    {
+      "id": "editor-direction-root-removed",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "      \"editor.textDirection\": \"ltr\",\n",
+      "new": "",
+      "expect": "غائبٌ عن جذر",
+      "why": "حذفُ المفتاح لا يعني «لا رأيَ لنا» بل تسليمًا لافتراض المنبع. والحارسُ القديم كان **يخضرّ فراغًا** عليه: `defaults.get(...) != \"rtl\" ⇒ return`. فالتوكيدُ يسبق الشرطَ عمدًا [DR-02]."
+    },
+    {
+      "id": "editor-direction-sad-loses-rtl",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "\"[sad]\": {\n        \"editor.textDirection\": \"rtl\",",
+      "new": "\"[sad]\": {\n        \"editor.textDirection\": \"ltr\",",
+      "expect": "لغاتُ المضمون العربيّ بلا",
+      "why": "قلبُ الافتراض بلا منحٍ صريحٍ يسلب العربيّةَ اتّجاهَها — وهو الانحدارُ الذي يقابل العطبَ الأصليّ. سقوطُ كتلةٍ واحدةٍ من القائمة المغلقة يجب أن يحمرّ [DR-02]."
+    },
+    {
+      "id": "editor-direction-exception-list-regrows",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "extensions/mihrab-shell/package.json",
+      "old": "      \"[scminput]\": {",
+      "new": "      \"[rust]\": {\n        \"editor.textDirection\": \"ltr\"\n      },\n      \"[scminput]\": {",
+      "expect": "خارج القائمة المغلقة",
+      "why": "**العطبُ الحاملُ كان الشكلَ لا الأسماء.** فلو عادت القائمةُ تنمو استثناءً بعد استثناءٍ لعاد الإغفالُ يفشل نحو الخطأ. الحارسُ يمنع الشكلَ لا يطاردُ الأسماء [DR-02]."
+    },
+    {
+      "id": "simple-editor-reads-global-direction",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/core/030-simple-editor-rtl-input.patch",
+      "old": "'editor.textDirection', overrideIdentifier ? { overrideIdentifier } : undefined)",
+      "new": "'editor.textDirection')",
+      "expect": "بلا `overrideIdentifier`",
+      "why": "**القلبُ والتمريرُ صفقةٌ واحدة.** الصناديقُ البسيطة «ودجاتٌ» تقرأ الجذرَ مباشرةً، فبلا معرِّفٍ يسري `ltr` على صندوق الالتزام وحقل الدردشة — أي يُدفَع ثمنُ إصلاحِ ملفّات `.cpp` من أطولِ نصٍّ عربيٍّ متّصلٍ يكتبه المستخدم [SC-01 · DR-02]."
+    },
+    {
+      "id": "scm-input-loses-override-identifier",
+      "guardFile": "tests/static/lint_patchers.py",
+      "guard": "python tests/static/lint_patchers.py",
+      "file": "patches/core/030-simple-editor-rtl-input.patch",
+      "old": "getSimpleEditorOptions(this.configurationService, 'scminput')",
+      "new": "getSimpleEditorOptions(this.configurationService)",
+      "expect": "لا يمرّر معرِّفَه",
+      "why": "بلا تمريرِ المعرِّف يسقط الصندوقُ إلى `plaintext` الافتراضيّ، فتصير كتلةُ `[scminput]` **ميّتةً بلا أثر** — وأوّلُ من يكتبها يصدّق أنّها تعمل. وهذا صنفُ الأخضر الكاذب المؤجَّل [SC-01 · DR-02]."
     }
   ],
   "uncovered": [

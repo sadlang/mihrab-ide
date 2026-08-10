@@ -2153,42 +2153,111 @@ def _font_size_measured():
         "بصمةُ الوجه المقيس ناقصة — رقمٌ بلا وجهٍ يُنسَب إليه رقمٌ معلَّق [VA-04]")
 
 
-@check("اتّجاه المحرّر بنطاق لغة [DR-02]: rtl عالميًّا ⇐ تجاوز ltr للغات اللاتينيّة الصرفة")
-def _editor_direction_scoped():
-    """يحرس DR-02 — كلفةٌ إدراكيّةٌ خالصةٌ يدفعها المستخدمُ يوميًّا.
+@check("اتّجاه المحرّر [DR-02]: الافتراضُ ltr ⇐ rtl تُمنَح صراحةً للغات المضمون العربيّ")
+def _editor_direction_defaults_to_ltr():
+    """يحرس **شكلَ** الإعداد لا محتواه: الافتراضُ يفشل نحو الأمان لا نحو الخطأ.
 
-    مطوّرُ ص لا يكتب ص وحدَها: يفتح `package.json` و`tsconfig.json` و`.yml` و`Dockerfile` —
-    ملفّاتٍ لاتينيّةً صرفًا بلا حرفٍ عربيٍّ واحد. وفي كلٍّ منها يجد مزرابَ الأرقام يمينًا
-    والخريطةَ يسارًا ومرساةَ التمرير الأفقيّ منعكسة: **اتّجاهٌ بلا مضمونٍ يبرّره**.
+    كان هذا الحارسُ نفسُه يفحص قائمةَ استثناءٍ من فرضٍ عالميٍّ `rtl` — ‏سبعةَ أسماءٍ من
+    ثمانيةَ عشر — و**كان أخضرَ فوق ‎٥٣‎ لغةً مشحونةً تُصيَّر يمينًا بلا حرفٍ عربيٍّ واحد**
+    (‏rust · go · java · csharp · sql · lua · ruby · php · swift · dart · ini · diff · latex
+    وسائرُها). وكان فيه أخضرانِ كاذبانِ فوق ذلك: `!= "rtl": return` يجعل **حذفَ المفتاح**
+    يُخضِره فراغًا، ويجعل `"auto"` تمرّ صامتة — و`auto` تحت واجهةٍ عربيّةٍ **هي rtl حرفًا**
+    (‏`editorOptions.ts`: `isRtlLanguage(platform.language)`)، أي أنّ أخطرَ قيمةٍ ممكنةٍ كانت
+    تُنتج العطبَ نفسَه بلا صوت. والمشروعُ يعرف ذلك ومكتوبٌ عنده: `scm_input.live.mjs` يستثني
+    تجربةَ `rtl ⇄ auto` لهذا السبب بالذات.
 
-    والحارسُ **مشروط**: من أزال الفرضَ العالميّ لا يلزمه تجاوز. أمّا من أبقاه فيلزمه.
+    فالحارسُ اليوم **توكيدٌ لا شرط**: لا `return` مبكرًا إلّا شاهدُ تفعيلٍ موجَب (وجودُ
+    القشرة)، وخمسةُ توكيداتٍ تمسك الشكلَ كلَّه — لا أسماءً في قائمةٍ تطول.
     """
     shell = os.path.join(ROOT, "extensions", "mihrab-shell", "package.json")
-    if not os.path.isfile(shell):
-        return  # لا قشرة في هذا الفرع — تخطٍّ
+    assert os.path.isfile(shell), (
+        "قشرةُ محراب مفقودة — ولا حارسَ بلا محروس [DR-02]")
     defaults = json.load(open(shell, encoding="utf-8")).get("contributes", {}).get(
         "configurationDefaults", {})
-    if defaults.get("editor.textDirection") != "rtl":
-        return  # لا فرضَ عالميّ ⇒ لا حاجةَ لتجاوز
-    # اللغاتُ التي **تُفتَح فعلًا** في مشروع ص ولا حرفَ عربيَّ فيها. ليست كلَّ لغةٍ لاتينيّة:
-    # القائمةُ تُقاس بما يفتحه المستخدمُ لا بما يوجد في العالم.
-    #
-    # و`c`/`cpp` أُضيفتا بعد بلاغٍ حيّ: فُتِح `alif/Alif/source/FreezeModule/FreezeModule.cpp`
-    # فصُيِّر من اليمين. وقياسُ الشجرة يقول لماذا كان الإغفالُ فادحًا: ‎.h‎ ‎٢٣٩‎ · ‎.cpp‎ ‎١٢٩‎ ·
-    # ‎.c‎ ‎٢٣‎ = ‎٣٩١‎ ملفًّا، أكبرُ حصّةِ مصدرٍ في شجرة العمل — وهي مصدرُ مُفسِّر ص نفسِه.
-    # فالحارسُ كان أخضرَ فوق أكثرِ ما يُفتَح.
-    #
-    # وحدُّ هذا الحارسِ يُقال صراحةً: هو يفحص أسماءً معدودةً في قائمةِ استثناءٍ من فرضٍ عالميّ،
-    # فكلُّ لغةٍ لم تُذكَر — هنا وهناك — تُصيَّر يمينًا بالافتراض. أي أنّ الإغفالَ **يفشل نحو
-    # الخطأ لا نحو الأمان**، ولا حارسَ يمسك ما لم يُسَمَّ. عِلاجُه قلبُ الافتراض لا إطالةُ
-    # القائمة [DR-02].
-    REQUIRED = ("json", "yaml", "dockerfile", "shellscript", "properties", "c", "cpp")
-    missing = [lang for lang in REQUIRED
-               if (defaults.get(f"[{lang}]") or {}).get("editor.textDirection") != "ltr"]
+
+    # (١) المفتاحُ موجودٌ في الجذر. غيابُه ليس «لا رأيَ لنا» بل تسليمٌ لافتراض المنبع —
+    #     وهو ما كان الحارسُ القديم يقبله صامتًا.
+    assert "editor.textDirection" in defaults, (
+        "‏`editor.textDirection` غائبٌ عن جذر `configurationDefaults` — "
+        "والصمتُ هنا تسليمٌ لافتراضِ المنبع لا حيادٌ [DR-02]")
+
+    # (٢) وقيمتُه `ltr` **توكيدًا**. و`auto` مرفوضةٌ بالاسم: منطقُها المكتوب يتبع لغةَ
+    #     الواجهة لا المستند، فتردّ rtl في محرابٍ عربيٍّ أيًّا كان الملفّ.
+    root = defaults["editor.textDirection"]
+    assert root == "ltr", (
+        f"‏جذرُ `editor.textDirection` = {root!r} والمطلوب 'ltr'. "
+        "و'auto' ليست مَخرجًا: هي تتبع لغةَ الواجهة (isRtlLanguage(platform.language)) "
+        "فتساوي 'rtl' في واجهةٍ عربيّة — وهي أخطرُ من rtl لأنّها تبدو حيادًا [DR-02]")
+
+    # (٣) و`rtl` تُمنَح صراحةً — قائمةٌ **مغلقةٌ** لسطوحِ المضمون العربيّ في هذا المشروع.
+    RTL_CONTENT = ("sad", "markdown", "plaintext", "git-commit", "git-rebase", "scminput")
+    missing = [lang for lang in RTL_CONTENT
+               if (defaults.get(f"[{lang}]") or {}).get("editor.textDirection") != "rtl"]
     assert not missing, (
-        "‏`editor.textDirection: rtl` مفروضٌ عالميًّا بلا تجاوز `ltr` بنطاق لغةٍ لـ: "
-        + " · ".join(missing) +
-        " — مزرابٌ يمينيٌّ في ملفٍّ بلا حرفٍ عربيٍّ واحد [DR-02]")
+        "لغاتُ المضمون العربيّ بلا `rtl` بنطاق لغة: " + " · ".join(missing) +
+        " — قلبُ الافتراض بلا منحٍ صريحٍ يسلب العربيّةَ اتّجاهَها [DR-02]")
+
+    # (٤) ولا يعود الاتّجاهُ الجانبيُّ ينمو استثناءاتٍ من جديد: كلُّ كتلةٍ تحمل
+    #     `editor.textDirection` يجب أن تكون من القائمة المغلقة وبقيمة `rtl`.
+    strays = sorted(
+        k[1:-1] for k, v in defaults.items()
+        if k.startswith("[") and k.endswith("]") and isinstance(v, dict)
+        and "editor.textDirection" in v
+        and (k[1:-1] not in RTL_CONTENT or v["editor.textDirection"] != "rtl"))
+    assert not strays, (
+        "كتلُ اتّجاهٍ خارج القائمة المغلقة: " + " · ".join(strays) +
+        " — القائمةُ لا تطول باسمٍ بعد اسم، وذاك هو العطبُ الذي قُلِب الافتراضُ لأجله [DR-02]")
+
+    # (٥) وكلُّ اسمٍ في القائمة **معرِّفُ لغةٍ مشحونٌ فعلًا** — فالكتلةُ المطبعيّةُ ميّتةٌ
+    #     بلا أثرٍ ومَن يكتبها يصدّق أنّها تعمل. يُقرأ المشحونُ من امتدادات المنبع،
+    #     ويُضاف المضمَّنان في النواة بعد إثباتِ وجودِهما في المصدر لا بالثقة.
+    up = os.path.join(ROOT, ".upstream", "vscode")
+    ext_dir = os.path.join(up, "extensions")
+    if os.path.isdir(ext_dir):
+        shipped = set()
+        for name in os.listdir(ext_dir):
+            pkg = os.path.join(ext_dir, name, "package.json")
+            if not os.path.isfile(pkg):
+                continue
+            try:
+                data = json.load(open(pkg, encoding="utf-8"))
+            except (ValueError, OSError):
+                continue
+            for lang in (data.get("contributes") or {}).get("languages") or []:
+                if lang.get("id"):
+                    shipped.add(lang["id"])
+        builtins = {
+            "plaintext": os.path.join(
+                up, "src", "vs", "editor", "common", "languages", "modesRegistry.ts"),
+            "scminput": os.path.join(
+                up, "src", "vs", "workbench", "contrib", "scm", "browser", "scmInput.ts"),
+        }
+        for lang, src in builtins.items():
+            if os.path.isfile(src) and f"'{lang}'" in open(src, encoding="utf-8").read():
+                shipped.add(lang)
+        assert shipped, "لم يُقرأ معرِّفُ لغةٍ واحدٍ من المنبع — الفحصُ نفسُه معطوب [DR-02]"
+        ghosts = [lang for lang in RTL_CONTENT if lang not in shipped]
+        assert not ghosts, (
+            "أسماءٌ في قائمة rtl ليست معرِّفاتِ لغةٍ مشحونة: " + " · ".join(ghosts) +
+            " — كتلةٌ ميّتةٌ تُقرأ عاملةً [DR-02]")
+
+    # (٦) والاقترانُ الذي بدونه يصير القلبُ انحدارًا: الصناديقُ البسيطة «ودجاتٌ» تقرأ
+    #     الجذرَ مباشرةً، فلولا `overrideIdentifier` لسلبها قلبُ الجذرِ اتّجاهَها —
+    #     صندوقُ الالتزام أوّلَها [SC-01]. الشاهدُ في الرقعة نفسِها.
+    patch = os.path.join(ROOT, "patches", "core", "030-simple-editor-rtl-input.patch")
+    if os.path.isfile(patch):
+        body = open(patch, encoding="utf-8").read()
+        reads = [ln for ln in body.splitlines()
+                 if ln.startswith("+") and "'editor.textDirection'" in ln]
+        assert reads, (
+            "رقعةُ ٠٣٠ لا تقرأ `editor.textDirection` للصناديق البسيطة [SC-01 · DR-02]")
+        assert all("overrideIdentifier" in ln for ln in reads), (
+            "‏`getSimpleEditorOptions` يقرأ `editor.textDirection` بلا `overrideIdentifier` — "
+            "فيسري الجذرُ (ltr) وتُهمَل تجاوزاتُ اللغة، ويصير قلبُ الافتراض سَلبًا "
+            "لصندوق الالتزام ولحقل الدردشة [SC-01 · DR-02]")
+        assert "getSimpleEditorOptions(this.configurationService, 'scminput')" in body, (
+            "صندوقُ الالتزام لا يمرّر معرِّفَه — فكتلةُ `[scminput]` ميّتةٌ بلا أثر "
+            "[SC-01 · DR-02]")
 
 
 @check("روابط لوح الحالة [DR-01]: كلّ رابط نسبيّ في milestones.md يحلّ إلى ملفٍّ موجود")

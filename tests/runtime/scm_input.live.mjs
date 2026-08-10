@@ -15,9 +15,19 @@
 // صار خطأً فيهما يُقال هنا صراحةً: ‏`scmInput.ts:280` يُفرِد `...getSimpleEditorOptions(this.configurationService)`
 // **قبل** قائمةِ السماح، وقائمةُ السماح تُطبَّق فوقها ولا تنقضها؛ ورقعةُ ‎030‎ أضافت
 // ‏`textDirection` و`fontLigatures` إلى تلك الدالّة (‏`simpleEditorOptions.ts:67`). فالصندوقُ
-// **يقرأ خدمةَ الإعدادات اليوم**. والقراءةُ هناك **بلا `overrideIdentifier`** ⇒ يسري جذرُ
-// ‏`configurationDefaults` وتُهمَل تجاوزاتُ اللغة — ولذلك بالضبط وصلَه الاتّجاه، ولذلك
-// كتلةُ `[scminput]` كانت ستكون ميّتةً لو كُتبت.
+// **يقرأ خدمةَ الإعدادات اليوم**.
+//
+// ## وما نُقِض مرّةً ثانية — بعد قلب الافتراض [DR-02]
+// كان مكتوبًا هنا أنّ القراءةَ **بلا `overrideIdentifier`** فيسري جذرُ
+// ‏`configurationDefaults` وتُهمَل تجاوزاتُ اللغة، «ولذلك بالضبط وصلَه الاتّجاه، ولذلك كتلةُ
+// ‏`[scminput]` كانت ستكون ميّتةً لو كُتبت». وكان صحيحًا يومَه، **وصار هو نفسُه العطب**:
+// يومَ قُلِب الجذرُ إلى `ltr` (لأنّ فرضَ `rtl` عالميًّا كان يُصيَّر ‎٥٣‎ لغةً مشحونةً يمينًا
+// بلا حرفٍ عربيٍّ واحد) كان الصندوقُ سيفقد اتّجاهَه في اللحظة نفسِها — انحدارٌ يسلب
+// **أطولَ نصٍّ عربيٍّ متّصلٍ يكتبه المستخدم** اتّجاهَه ثمنًا لإصلاحِ ملفّات `.cpp`.
+// فمُرِّر المعرِّفُ في الرقعة نفسِها: ‏`getSimpleEditorOptions(this.configurationService,
+// 'scminput')`، وأُحييت كتلةُ `[scminput]` في قشرة محراب. والقلبُ والتمريرُ **صفقةٌ واحدة**:
+// أيُّهما بلا الآخر انحدار — ولذلك يحرسهما توكيدٌ واحدٌ في
+// ‏`lint_patchers.py::_editor_direction_defaults_to_ltr`.
 //
 // **والدَّينُ الباقي غيرُ الاتّجاه**: مرشِّحُ تغيُّر الإعدادات (‏`scmInput.ts:258-270`) وحمولةُ
 // ‏`updateOptions` (‏`:298-311`) لا تذكران أيًّا من الثلاثة — فالقيمُ تُلتقَط **عند الإنشاء
@@ -382,9 +392,10 @@ try {
       ok(m.dirAttr === "rtl", "SC-01/الاتّجاه: الصندوقُ يُصيَّر من اليمين",
         `سمةُ dir على السطر = ${m.dirAttr === null ? "غائبة" : `«${m.dirAttr}»`}؛ والمطلوب «rtl». ` +
         `‏viewLine.ts:181-195 لا يكتبها إلّا عند textDirection === RTL، ويكتب «ltr» عند ` +
-        `عربيّةٍ بلا اتّجاهٍ مضبوط — فهي تفرز الحالتين. المسارُ: getSimpleEditorOptions ` +
-        `يقرأ editor.textDirection (رقعةُ النواة 030) بلا نطاقِ لغة، فيسري جذرُ ` +
-        `configurationDefaults عندنا = rtl.`);
+        `عربيّةٍ بلا اتّجاهٍ مضبوط — فهي تفرز الحالتين. المسارُ بعد [DR-02]: ` +
+        `getSimpleEditorOptions يقرأ editor.textDirection بمعرِّف 'scminput' (رقعةُ النواة 030)، ` +
+        `فتسري كتلةُ [scminput] من configurationDefaults = rtl. والجذرُ اليوم ltr، ` +
+        `فهذا التوكيدُ يفشل إن سقط المعرِّفُ أو سقطت الكتلة — وهو ضابطُ صفقةِ القلب.`);
 
       // (٢) ارتفاعُ السطر — **هامشٌ لا انعدامُ قصّ**، بأرضيّة الحبر المقيسة.
       ok(m.lineHeightEm >= INK_FLOOR_EM,
@@ -479,9 +490,16 @@ try {
       // يُقاس الحال، ثمّ يُكتب مفتاحٌ **واحد**، ثمّ يُنتظَر انقلابُ المقيس.
       //
       // وثلاثةُ شروطٍ تجعل الانتقالَ فارزًا، سقوطُ أيٍّ منها يُعيده إلى «أخضرَ في الحالتين»:
-      //   (أ) **مفتاحٌ واحدٌ في كلّ كتابة.** المرشِّحُ القائمُ في المنبع يذكر `editor.fontFamily`
-      //       و`scm.inputFontSize` وغيرَهما؛ فتغييرُ مفتاحَين معًا يُنعِش الصندوقَ بالمفتاح
+      //   (أ) **إعدادٌ واحدٌ في كلّ كتابة.** المرشِّحُ القائمُ في المنبع يذكر `editor.fontFamily`
+      //       و`scm.inputFontSize` وغيرَهما؛ فتغييرُ إعدادَين معًا يُنعِش الصندوقَ بالإعداد
       //       **القديم** فيُقرأ تجدُّدًا وليس به.
+      //       ⚠️ وبعد [DR-02] صارت كتابةُ الاتّجاه **مفتاحَين نصًّا وإعدادًا واحدًا معنًى**:
+      //       ‏`[sad]` و`[scminput]`، وكلاهما `editor.textDirection`. والشرطُ يحرس
+      //       ‏`affectsConfiguration(<إعداد>)` لا عددَ المفاتيح المكتوبة، وهو لا يُخرَق هنا:
+      //       المُرشِّحُ يرى الإعدادَ نفسَه من الكتابتين. وسببُ لزومِهما أنّ الجذرَ لم يعد
+      //       يبلغ أيًّا من السطحين: الصندوقُ يقرأ بمعرِّف `scminput`، والضابطُ ملفُّ
+      //       ‏`ثانٍ.ص` يقرأ بمعرِّف `sad` — وكلٌّ منهما له كتلةُ `rtl` في القشرة تغلب
+      //       جذرَ إعدادات المستخدم (تجاوزُ اللغة يُطبَّق فوق المدمَج، لا تحته).
       //   (ب) **ضابطُ وصول.** بعد كلّ كتابةٍ يُقاس المحرّرُ الرئيس: هو يقرأ المفاتيحَ الثلاثةَ
       //       اليوم بلا رقعة. فإن لم يتحرّك، فالكتابةُ لم تبلغ التطبيقَ ⇒ فجوةٌ معلَنةٌ لا فشل.
       //   (ج) **لا إعادةَ تحميل، ولا نومٌ ثابت**: استطلاعٌ بمهلة، ونفادُها يُقال فجوةً.
@@ -490,8 +508,8 @@ try {
       // (‏`EffectiveTextDirection.compute` ⇒ `isRtlLanguage(platform.language)`)، فالتجربةُ
       // **تنجح فارغة**. المُميِّزُ هو `ltr` صراحةً.
       const settingsPath = SETTINGS_PATH;
-      const writeOne = (key, value) => writeFileSync(settingsPath,
-        JSON.stringify({ ...BASE_SETTINGS, [key]: value }, null, 2), "utf8");
+      const writeOne = (patch) => writeFileSync(settingsPath,
+        JSON.stringify({ ...BASE_SETTINGS, ...patch }, null, 2), "utf8");
       /** يستطلع القياسَ حتّى يتحقّق الشرطُ أو تنفد المهلة. يُعيد آخرَ قراءةٍ دائمًا. */
       const settle = async (pred, ms = 12000) => {
         const t0 = Date.now();
@@ -506,20 +524,25 @@ try {
 
       for (const t of [
         {
-          name: "الاتّجاه", key: "editor.textDirection", value: "ltr",
+          name: "الاتّجاه",
+          patch: {
+            "[scminput]": { "editor.textDirection": "ltr" },
+            "[sad]": { "editor.textDirection": "ltr" },
+          },
           read: (x) => x.dirAttr, control: (x) => x.editorDirAttr,
-          // الأساسُ `rtl` من `configurationDefaults`، والقيمةُ المكتوبةُ `ltr` تغلبه.
+          // الأساسُ `rtl` من كتلتَي `[scminput]` و`[sad]` في `configurationDefaults`،
+          // وكتلتا المستخدمِ تغلبانهما (تجاوزُ لغةٍ فوق تجاوزِ لغة، أعلى نطاقًا يفوز).
           // و`viewLine.ts` يكتب `dir="ltr"` صراحةً على عربيّةٍ في فقرةٍ LTR — فالقيمةُ
           // ثلاثيّةٌ (rtl · ltr · غائبة) ولا تُختصَر إلى «موجودة».
           want: "ltr",
         },
         {
-          name: "ارتفاعُ السطر", key: "editor.lineHeight", value: 40,
+          name: "ارتفاعُ السطر", patch: { "editor.lineHeight": 40 },
           read: (x) => x.lineHeightPx, control: (x) => x.editorLineHeightPx,
           want: 40,
         },
         {
-          name: "الأشكالُ السياقيّة", key: "editor.fontLigatures", value: false,
+          name: "الأشكالُ السياقيّة", patch: { "editor.fontLigatures": false },
           read: (x) => x.features, control: (x) => x.editorFeatures,
           want: null, // لا قيمةَ متوقَّعةٌ بعينها — المطلوبُ **تغيُّرٌ** عن الأساس
         },
@@ -533,7 +556,7 @@ try {
           gap(`SC-01/د: ${t.name}`, `الأساسُ يساوي الهدفَ سلفًا (${b}) — لا انتقالَ يُقاس`);
           continue;
         }
-        writeOne(t.key, t.value);
+        writeOne(t.patch);
         const after = await settle((x) => t.read(x) !== b && t.control(x) !== bc);
         const a = t.read(after), ac = t.control(after);
         if (ac === bc) {

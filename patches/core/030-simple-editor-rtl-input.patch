@@ -1,8 +1,33 @@
 diff --git a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
-index 88d469a..4c776d9 100644
+index 88d469a..2e13f3e 100644
 --- a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
 +++ b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
-@@ -46,6 +46,26 @@ export function getSimpleEditorOptions(configurationService: IConfigurationServi
+@@ -17,7 +17,23 @@ import { registerThemingParticipant } from '../../../../platform/theme/common/th
+ import { IDisposable } from '../../../../base/common/lifecycle.js';
+ import { selectionBackground, inputBackground, inputForeground, editorSelectionBackground } from '../../../../platform/theme/common/colorRegistry.js';
+ 
+-export function getSimpleEditorOptions(configurationService: IConfigurationService): IEditorOptions {
++// Simple editors read `editor.*` settings straight off the configuration service, which
++// means they read the *global* value and miss every language-scoped `[langId]` override.
++// That is wrong in both directions for a setting like `editor.textDirection`:
++//
++//  - These widgets have no document language to scope by. A commit message, a chat prompt
++//    and an accessible-view buffer are prose typed by the user, so the sensible scope is
++//    the one plain text already has — hence the `plaintext` default below, which keeps
++//    today's behaviour for every existing call site.
++//  - The one widget that does have a language identifier of its own is the SCM input box.
++//    `scmInput.ts` already reads `editor.rulers` and `editor.wordWrap` with
++//    `{ overrideIdentifier: 'scminput' }`; it could not do the same for this setting,
++//    because this setting arrives from here. Without the identifier, a `[scminput]`
++//    block in the user's settings is silently inert.
++//
++// Callers that host *code* rather than prose (chat code blocks, notebook cell inputs) can
++// pass the language they render, or `''` for the global value.
++export function getSimpleEditorOptions(configurationService: IConfigurationService, overrideIdentifier: string = 'plaintext'): IEditorOptions {
+ 	return {
+ 		wordWrap: 'on',
+ 		overviewRulerLanes: 0,
+@@ -46,6 +62,26 @@ export function getSimpleEditorOptions(configurationService: IConfigurationServi
  			indentation: false
  		},
  		wordSegmenterLocales: configurationService.getValue<string | string[]>('editor.wordSegmenterLocales'),
@@ -24,13 +49,13 @@ index 88d469a..4c776d9 100644
 +		// selects initial/medial/final letter forms: with it off the script stops joining and
 +		// renders as disconnected letters. The setting is opt-in, so a user who enables it
 +		// for the editor is silently denied it exactly where they type the most prose.
-+		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection'),
++		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection', overrideIdentifier ? { overrideIdentifier } : undefined),
 +		fontLigatures: configurationService.getValue<boolean | string>('editor.fontLigatures'),
  		accessibilitySupport: configurationService.getValue<'auto' | 'off' | 'on'>('editor.accessibilitySupport'),
  		cursorBlinking: configurationService.getValue<'blink' | 'smooth' | 'phase' | 'expand' | 'solid'>('editor.cursorBlinking'),
  		editContext: configurationService.getValue<boolean>('editor.editContext'),
 diff --git a/src/vs/workbench/contrib/scm/browser/scmInput.ts b/src/vs/workbench/contrib/scm/browser/scmInput.ts
-index 38a6d42..126baa3 100644
+index 6adf03c..99440ff 100644
 --- a/src/vs/workbench/contrib/scm/browser/scmInput.ts
 +++ b/src/vs/workbench/contrib/scm/browser/scmInput.ts
 @@ -54,6 +54,7 @@ import { InlineCompletionsController } from '../../../../editor/contrib/inlineCo
@@ -41,6 +66,15 @@ index 38a6d42..126baa3 100644
  import { EditOperation } from '../../../../editor/common/core/editOperation.js';
  import { HiddenItemStrategy, IMenuWorkbenchToolBarOptions, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
  import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
+@@ -276,7 +277,7 @@ class SCMInputWidgetEditorOptions {
+ 
+ 	getEditorConstructionOptions(): IEditorConstructionOptions {
+ 		return {
+-			...getSimpleEditorOptions(this.configurationService),
++			...getSimpleEditorOptions(this.configurationService, 'scminput'),
+ 			...this.getEditorOptions(),
+ 			dragAndDrop: true,
+ 			dropIntoEditor: { enabled: true },
 @@ -341,6 +342,20 @@ class SCMInputWidgetEditorOptions {
  	}
  

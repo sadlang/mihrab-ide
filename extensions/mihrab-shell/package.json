@@ -15,7 +15,7 @@
   "contributes": {
     "configurationDefaults": {
       "workbench.sideBar.location": "right",
-      "editor.textDirection": "rtl",
+      "editor.textDirection": "ltr",
       "_comment_ligatures": "[TY-04] تثبيت الأشكال السياقيّة صراحةً — لا يُترَك للوراثة. هنا سوء فهم خطِر يُنتظَر: في اللاتينيّة «الروابط» (ligatures) زخرفة اختياريّة (‏=> تصير سهمًا)، وكلّ دليل إعداد برمجيّ ينصح بإطفائها. أمّا في العربيّة فالأشكال السياقيّة (init/medi/fina) و‏calt ليست زخرفة بل شرطُ قراءة: بإطفائها تتفكّك الكلمة إلى حروف منفصلة — «محراب» تصير «م ح ر ا ب». فأوّل مستخدم ينسخ وصفة من الشابكة يكسر عربيّته بيده. والقيمة الصريحة وحدها لا تكفي: القرار الموثَّق يمنع النصيحة الضارّة أكثر ممّا تمنعها القيمة الصامتة — ولذلك هذا التعليق.",
       "editor.fontLigatures": true,
       "editor.bracketPairColorization.enabled": true,
@@ -46,7 +46,9 @@
       "_comment_word_boundaries": "[IN-01] حدُّ الكلمة العربيّة كان يُقاس بمِسطرةٍ لاتينيّة. وما يقع للإنسان: ينقر نقرتين على كلمةٍ في تعليقٍ عربيٍّ ليستبدلها فتُنتقى معها الفاصلةُ العربيّة «،» — لأنّ `USUAL_WORD_SEPARATORS` (‏`wordHelper.ts:10`) فيها `,` اللاتينيّةُ وحدَها ولا محرفَ عربيٌّ واحد — فيكتب فوقها ويمحوها ولا ينتبه إلّا بعد سطرين. ويضغط Ctrl+← فيقفز الجملةَ كلَّها. وهو **عطبٌ صامت**: لا رسالةَ ولا شيءَ يبدو مكسورًا، فيبدو أنّ المستخدمَ أخطأ النقر ولا يبلّغ عنه أحد. والنقرُ المزدوجُ يمرّ بهذه المِسطرة نفسِها لا بـ`wordPattern` الخاصّ بإعداد اللغة (‏`coreCommands.ts:1658` ⇐ `cursorWordOperations.ts:741-742`) — فالسطحان يُصابان معًا. **والقيمةُ ليست إضافةً بل نسخُ الافتراض المنبعيّ حرفًا ثمّ زيادةٌ عليه**، لأنّ `editor.wordSeparators` سُلَّميّةٌ من نوع string فتجاوزُها يستبدل الافتراضَ ولا يُضيف إليه (‏`editorOptions.ts:6763`): كتابةُ «،؛؟» وحدَها كانت ستُسقِط الواحدَ والثلاثين محرفًا اللاتينيّةَ فيلتقط النقرُ على `اطبع(نص)` السطرَ كلَّه. ولذلك حارسُ L0 يشتقّ البادئةَ من اللقطة (`REFERENCE_FILES`) ولا يكتبها بالحدس. والاثنا عشرَ محرفًا المزيدةُ **قِيس كلٌّ منها وحدَه**: كلُّه يُحصِّل مكسبًا ولا يمسّ مُعرِّفًا. واستُثنيت «٫» U+066B و«٬» U+066C عمدًا: هما فاصلا **عدد** لا علامتا ترقيم، فإضافتُهما تشقّ ‎٣٫١٤‎ إلى ‎٣‎ بلا مكسبٍ مقابل.",
       "_comment_word_segmenter_rejected": "[IN-01] و**لم يُشحَن** `editor.wordSegmenterLocales`. الآليّةُ موجودةٌ في المنبع ومطفأة (‏`wordCharacterClassifier.ts:25-31` يبني `Intl.Segmenter` فقط إن كانت القائمةُ غيرَ فارغة)، ورُفضت بعد قياسٍ لا بحدس. ثلاثةُ أسبابٍ مقيسة: (١) قيمةُ «ar» **عديمةُ الأثر بذاتها** — قِيست مقابل «en» ومقابل الجذر على أربعَ عشرةَ سلسلةً فتطابقت حرفًا، لأنّ تجزئةَ ICU تتبع UAX#29 المحايدةَ للغة ولا تُستدعى المعاجمُ إلّا لـth/lo/km/my/ja/zh؛ فالمفتاحُ «شغّل UAX#29» لا «شغّل تجزئةً عربيّة»، وأيُّ توثيقٍ يسمّيه مِسطرةً عربيّةً يكذب. (٢) وهو **لا يُحصِّل شيئًا زائدًا**: الحالاتُ الستُّ التي يكسبها هي الستُّ نفسُها التي تكسبها الفواصل. (٣) وله ثمنٌ لا يقابله مكسب: النقطةُ `MidNumLet` في UAX#29 فتصل ما حولها، ‏فيصير النقرُ على ‎3.14‎ ملتقِطًا ‎3.14‎ وعلى `don't` ملتقِطًا `don't` — تغيُّرٌ في نحوٍ لاتينيٍّ نفتحه بلا حاجة. والخطرُ الذي عُلِّق البندُ عليه أصلًا — أن تشقّ ICU `نصاب_الفضة` — **مُكذَّبٌ قياسًا**: U+005F مصنَّفٌ ExtendNumLet والقاعدتان WB13a/13b تمنعان الكسرَ عنده؛ قِيس في ICU 77.1 (نود) وICU 74.2 (إلكترون المشحون) فاتّفقتا.",
       "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?،؛؟٪۔؞؍٭«»﴿﴾",
+      "_comment_text_direction": "[DR-02] الاتّجاه بنطاق لغة — والافتراضُ ltr لا rtl. كان الجذرُ يفرض rtl ثمّ تُستثنى اللغاتُ اللاتينيّةُ واحدةً واحدة، وهو شكلٌ **يفشل نحو الخطأ**: كلُّ لغةٍ لم يذكرها أحدٌ تُصيَّر يمينًا. وقِيس ثمنُه على المشحون لا بالحدس: المنبعُ يشحن ‎٧٥‎ معرِّفَ لغة، وقائمةُ الاستثناء كانت تغطّي ‎١٨‎ منها فعّالةً — أي أنّ ‎٥٣‎ لغةً كانت تُصيَّر يمينًا بلا حرفٍ عربيٍّ واحدٍ فيها: rust · go · java · csharp · sql · lua · ruby · php · swift · dart · ini · diff · latex وسائرُها. وبلغَنا العطبُ من الميدان بلاغًا بعد بلاغ (آخرُها ‎.cpp‎)، وكلُّ مرّةٍ كان الجوابُ اسمًا يُضاف إلى قائمة — عِلاجُ عَرَضٍ لا عِلَّة. فقُلِب الافتراض. وrtl تُمنَح صراحةً لسطوحٍ مضمونُها عربيٌّ بطبعه في هذا المشروع: ص نفسُها، وmarkdown وplaintext (توثيقُ محرابٍ كلُّه عربيّ)، وgit-commit وgit-rebase (رسائلُ الالتزام تُكتَب عربيّةً هنا)، وscminput. والقائمةُ مغلقةٌ عمدًا: كلُّ لغةٍ تأتي غدًا — من المنبع أو من إضافةِ طرفٍ ثالث — تبدأ يسارًا، فالإغفالُ صار **يفشل نحو الأمان**. **وscminput حيٌّ لا زخرفة**: صندوقُ الالتزام «ودجةٌ بسيطة» كانت تقرأ الجذرَ بلا overrideIdentifier فتُهمَل تجاوزاتُ اللغة — وكانت الكتلةُ لو كُتبت ميّتةً بلا أثر (كما يقول سندُ SC-01 أعلاه). فمُرِّر المعرِّفُ في رقعة ٠٣٠، ولولاه لكان قلبُ الجذرِ يسلب الصندوقَ اتّجاهَه. وسائرُ الصناديق البسيطة (الدردشةُ · لوحُ الوصول · حقولُ البحث) تقرأ بمعرِّف plaintext افتراضًا من الدالّة نفسِها، فبقيت يمينيّةً كما كانت بلا انحدار. **وحدُّ القرار يُقال**: هو باللغة لا بالمضمون — فملفُّ ‎.py‎ كلُّه تعليقاتٌ عربيّةٌ يبقى يساريًّا، وعِلاجُه ضبطُ المستخدم لا الافتراض؛ ولا يمسّ هذا محرّرَ الفرق [DR-04] ولا الطرفيّة [DR-03]. والحارس: tests/static/lint_patchers.py::_editor_direction_defaults_to_ltr.",
       "[sad]": {
+        "editor.textDirection": "rtl",
         "editor.unicodeHighlight.nonBasicASCII": false,
         "editor.unicodeHighlight.allowedCharacters": {
           "۔": true,
@@ -71,74 +73,23 @@
         }
       },
       "[markdown]": {
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.textDirection": "rtl"
       },
       "[plaintext]": {
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.textDirection": "rtl"
       },
       "[git-commit]": {
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.textDirection": "rtl"
       },
       "[git-rebase]": {
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.textDirection": "rtl"
       },
-      "_comment_ltr_scopes": "[DR-02] اتّجاه المحرّر بنطاق لغة لا فرضًا عالميًّا. مطوّر ص لا يكتب ص وحدها: يفتح package.json وtsconfig.json وDockerfile وملفّات YAML — لغاتٍ لاتينيّةً صرفًا بلا حرف عربيّ واحد. وفي كلّ منها يجد مزراب الأرقام يمينًا والخريطة يسارًا ومرساة التمرير الأفقيّ منعكسة: اتّجاهٌ بلا مضمونٍ يبرّره، وكلفةٌ إدراكيّةٌ خالصة. والقدرة موجودة أصلًا في الخيار المنبعيّ الذي كتبناه بأنفسنا (editor.textDirection يقبل auto|ltr|rtl) وكانت غير مستعملة. ولم نستعمل auto: منطقها المكتوب يتبع لغة الواجهة فيردّ RTL في واجهةٍ عربيّةٍ أيًّا كان الملفّ — فالتجاوز باللغة أدقّ. القائمة تشمل ما يُفتَح فعلًا في مشروع ص لا كلّ لغةٍ لاتينيّة. وقيست القائمة على شجرة العمل نفسِها فسقطت أكبرُ حصّةٍ فيها: ‎.h‎ ‎٢٣٩‎ و‎.cpp‎ ‎١٢٩‎ و‎.c‎ ‎٢٣‎ = ‎٣٩١‎ ملفًّا — وهي مصدرُ مُفسِّر ص نفسِه (‏alif/Alif). فأُضيف c وcpp. والعطبُ الحاملُ ليس نقصَ اسمٍ في قائمة: القائمةُ استثناءٌ من فرضٍ عالميّ، فكلُّ لغةٍ لم تُذكَر تُصيَّر يمينًا بالافتراض — أي أنّ الإغفالَ يفشل نحو الخطأ لا نحو الأمان. عِلاجُه البنيويُّ قلبُ الافتراض (ltr عالميًّا وrtl للغاتِ المضمون العربيّ) وهو قرارٌ لم يُتَّخذ بعد.",
-      "[json]": {
-        "editor.textDirection": "ltr"
-      },
-      "[jsonc]": {
-        "editor.textDirection": "ltr"
-      },
-      "[yaml]": {
-        "editor.textDirection": "ltr"
-      },
-      "[xml]": {
-        "editor.textDirection": "ltr"
-      },
-      "[dockerfile]": {
-        "editor.textDirection": "ltr"
-      },
-      "[shellscript]": {
-        "editor.textDirection": "ltr"
-      },
-      "[bat]": {
-        "editor.textDirection": "ltr"
-      },
-      "[powershell]": {
-        "editor.textDirection": "ltr"
-      },
-      "[makefile]": {
-        "editor.textDirection": "ltr"
-      },
-      "[ignore]": {
-        "editor.textDirection": "ltr"
-      },
-      "[properties]": {
-        "editor.textDirection": "ltr"
-      },
-      "[toml]": {
-        "editor.textDirection": "ltr"
-      },
-      "[css]": {
-        "editor.textDirection": "ltr"
-      },
-      "[html]": {
-        "editor.textDirection": "ltr"
-      },
-      "[javascript]": {
-        "editor.textDirection": "ltr"
-      },
-      "[typescript]": {
-        "editor.textDirection": "ltr"
-      },
-      "[python]": {
-        "editor.textDirection": "ltr"
-      },
-      "[c]": {
-        "editor.textDirection": "ltr"
-      },
-      "[cpp]": {
-        "editor.textDirection": "ltr"
+      "[scminput]": {
+        "editor.textDirection": "rtl"
       }
     }
   },
