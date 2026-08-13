@@ -49,7 +49,7 @@ index 88d469a..2e13f3e 100644
 +		// selects initial/medial/final letter forms: with it off the script stops joining and
 +		// renders as disconnected letters. The setting is opt-in, so a user who enables it
 +		// for the editor is silently denied it exactly where they type the most prose.
-+		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection', overrideIdentifier ? { overrideIdentifier } : undefined),
++		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection', { overrideIdentifier }),
 +		fontLigatures: configurationService.getValue<boolean | string>('editor.fontLigatures'),
  		accessibilitySupport: configurationService.getValue<'auto' | 'off' | 'on'>('editor.accessibilitySupport'),
  		cursorBlinking: configurationService.getValue<'blink' | 'smooth' | 'phase' | 'expand' | 'solid'>('editor.cursorBlinking'),

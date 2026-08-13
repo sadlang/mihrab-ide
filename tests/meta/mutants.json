@@ -317,7 +317,7 @@
       "guardFile": "tests/static/lint_patchers.py",
       "guard": "python tests/static/lint_patchers.py",
       "file": "patches/core/030-simple-editor-rtl-input.patch",
-      "old": "'editor.textDirection', overrideIdentifier ? { overrideIdentifier } : undefined)",
+      "old": "'editor.textDirection', { overrideIdentifier })",
       "new": "'editor.textDirection')",
       "expect": "بلا `overrideIdentifier`",
       "why": "**القلبُ والتمريرُ صفقةٌ واحدة.** الصناديقُ البسيطة «ودجاتٌ» تقرأ الجذرَ مباشرةً، فبلا معرِّفٍ يسري `ltr` على صندوق الالتزام وحقل الدردشة — أي يُدفَع ثمنُ إصلاحِ ملفّات `.cpp` من أطولِ نصٍّ عربيٍّ متّصلٍ يكتبه المستخدم [SC-01 · DR-02]."
