@@ -195,6 +195,16 @@ BUNDLE_MARKERS = [
      "[dir=rtl] .zone-widget .peekview-title .dirname", 1),
     ("CSS31: bidi متن رسالة المُشخِّص", CSS,
      "[dir=rtl] .zone-widget .descriptioncontainer .message div", 1),
+    # القاعدة 39: مرآةُ **داخل** ودجة البحث [VA-03]. ثلاثُ علاماتٍ لا واحدة، لأنّ العطبَ
+    # كان يُقاوَم على ثلاث طبقات: قلبُ الصفّ، ثمّ نقلُ الحاوية المُطلَقة، ثمّ **قلبُ العوامة**
+    # (‏`float:left` لا يبالي بالاتّجاه — وهو ما أبقى المقابضَ الثلاثة صاعدةً بعد أوّل قاعدتين).
+    # كلُّ سلسلةٍ منها معدومةٌ في المنبع بالبادئة RTL: ‎0‎ قبل الحقن، ‎1‎ بعده.
+    ("CSS39: مرآة صفّ ودجة البحث", CSS,
+     "[dir=rtl] .monaco-editor .find-widget>.find-part", 1),
+    ("CSS39: زرّ فتح الاستبدال إلى اليمين", CSS,
+     "[dir=rtl] .monaco-editor .find-widget .button.toggle", 1),
+    ("CSS39: قلبُ عوامة مقابض الحقل", CSS,
+     "[dir=rtl] .monaco-editor .find-widget .monaco-findInput>.controls .monaco-custom-toggle", 1),
     # القاعدة 32: محاذاة صفحة الترحيب والجولة. `text-align:start` **معدومٌ في الحزمة كلِّها
     # قبل حقننا** (قِسناه: ‎0‎) — المنبع يكتب المحاذاة فيزيائيّةً دائمًا، وهو عين العطب.
     # وشارةُ «مميَّزة» علامةٌ ثانية على الجزء الفيزيائيّ من القاعدة (‏`.featured-badge`
@@ -494,7 +504,7 @@ def _shell_defaults_shipped():
             f"أوّلُ فرق: {_first_diff(want, got)} [AR-04]")
 
 
-@check("خطّ AR-02: @font-face بـdata:URI في CSS المشحون (مشروط بتوريد الخطّ)")
+@check("خطّ AR-02: @font-face بملفٍّ مجاور في CSS المشحون (مشروط بتوريد الخطّ)")
 def _arabic_font_shipped():
     # الحقن مشروط بتوريد بايتات الخطّ (سقوط رشيق)؛ لا يمكن جعله غير مشروط وإلّا فشل حين لا خطّ.
     # الإشارة: الملفّ المُجهَّز في .upstream/ (ما نسخه build.sh فعلًا حين وُجد المصدر).
@@ -506,9 +516,21 @@ def _arabic_font_shipped():
         print("  ⏭️  خطّ Kawkab Mono غير مورَّد — @font-face غير محقون (سقوط رشيق مقصود؛ L0 يضمن الوصل).")
         return
     css = _readtext(CSS)
-    # الخطّ مورَّد ⇒ يجب أن يكون الحقن زمن البناء وصل CSS المشحون: @font-face + data:font/woff2 + العائلة.
-    assert "@font-face" in css and "data:font/woff2" in css and "Kawkab Mono" in css, \
-        "الخطّ مورَّد لكن @font-face/data:font/woff2 غائب عن CSS المشحون (فشل الحقن زمن البناء؟)"
+    # **المصدرُ ملفٌّ مجاورٌ لا data: — تصحيحُ عطبٍ مقيسٍ لا تفضيلُ صياغة.** الحقنُ زمنَ
+    # البناء (patch_bundle_extensions.py) يكتب data:font/woff2 لأنّ esbuild بلا مُحمِّلٍ
+    # لـ.woff2؛ وسياسةُ أمانِ محتوى القشرة لا تسمح بـdata: في font-src — فكان الوجهُ
+    # **يُعلَن ولا يُحمَّل** (قِيس حيًّا: document.fonts تردّ «Kawkab Mono:error» و
+    # securitypolicyviolation تقول «font-src data»). فصار build/patch_workbench_font.py
+    # يكتب الوجهَ ملفًّا بجانب CSS ويعيد كتابة القاعدة ⇒ المصدرُ self بلا توسيعِ CSP [م-٢٥].
+    assert "@font-face" in css and "Kawkab Mono" in css, (
+        "الخطّ مورَّد لكن @font-face/Kawkab Mono غائب عن CSS المشحون (فشل الحقن زمن البناء؟)")
+    assert "kawkab-mono.woff2" in css, (
+        "قاعدةُ @font-face لا تشير إلى الملفّ المجاور — لم يعمل patch_workbench_font.py [م-٢٥]")
+    assert "data:font/woff2" not in css, (
+        "بقي مصدرُ data: في CSS المشحون — تحجبه سياسةُ أمان المحتوى فلا يُحمَّل الوجه [م-٢٥]")
+    side = os.path.join(os.path.dirname(CSS), "kawkab-mono.woff2")
+    assert os.path.isfile(side) and open(side, "rb").read(4) == b"wOF2", (
+        f"لا ملفَّ خطٍّ صالحًا بجانب CSS المشحون: {side} [م-٢٥]")
 
 
 @check("product.json المبنيّ: عربيّ افتراضيّ (defaultLocale=ar)")

@@ -629,6 +629,20 @@ else
   echo "❌ لا حزمةَ xterm في المشحون ($APP_DIR/node_modules/@xterm/xterm)." >&2; exit 1
 fi
 
+# ── (ط-0أ3) الخطُّ العربيُّ المحزوم يُحمَّل فعلًا [AR-02] ──
+# القاعدةُ تُحقَن قبل التحزيم بمصدر `data:` (لأنّ esbuild بلا مُحمِّل .woff2)، و
+# ‏`font-src` في workbench.html لا يذكر `data:` ⇒ المتصفّحُ يحجب الخطَّ **صامتًا**
+# (قِيس حيًّا: "Kawkab Mono:error" و securitypolicyviolation "font-src data").
+# بعد الحزم لا esbuild، فيُنسَخ الملفُّ ويُوصَل بـurl() نسبيّ يغطّيه 'self'.
+# لا يُجهض البناء: بلا هذا يسقط العرضُ لبقيّة المكدّس — نقصُ جودةٍ لا عطبٌ صامتٌ ضارّ.
+if [[ -f "$APP_DIR/out/vs/workbench/workbench.desktop.main.css" ]]; then
+  log "وصلُ الخطّ العربيّ المحزوم بملفٍّ مجاور (بدل data: المحجوبة)"
+  python "$ROOT/build/patch_workbench_font.py" "$APP_DIR" || {
+    echo "❌ فشل وصلُ الخطّ العربيّ — راجع أعلاه." >&2; exit 1; }
+else
+  log "تخطّي وصلِ الخطّ: لا workbench.desktop.main.css في $APP_DIR"
+fi
+
 # ── (ط-0ب) خبز الواجهة العربيّة + رفع نسخة حزمة اللغة (يشمل بصمة i18n المحقونة أعلاه) ──
 if [[ -f "$APP_DIR/out/nls.messages.json" ]]; then
   log "خبز الواجهة العربيّة في nls.messages.json"
