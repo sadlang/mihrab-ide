@@ -46,7 +46,7 @@
 // الاستعمال: node tests/runtime/scm_input.live.mjs [--keep]
 // خرج 0 = القياسُ تمّ (نجاحًا أو بفجوةٍ **معلَنة**) · 1 = تأكيدٌ فشل · 2 = خطأ تشغيليّ.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,10 @@ const KEEP = process.argv.includes("--keep");
 
 /** المقيسُ في VA-04 و TY-02 — يُقرآن هنا **للمقارنة** لا لإعادة اشتقاقهما. */
 const EDITOR_FONT_SIZE = 15;
-const INK_FLOOR_EM = 1.88;
+// ‏[TY-02] الأرضيّةُ من المصدر الواحد المقيس، لا رقمًا منسوخًا (كان ‎1.88‎ مشتقًّا من
+// ‏كونتوراتٍ منفردةٍ لا تركّب علامةً على قاعدة — أنقصَ الحقيقةَ بـ‎0.885em‎).
+const INK_FLOOR_EM = JSON.parse(readFileSync(
+  new URL("../dx/arabic_ink.measured.json", import.meta.url), "utf8")).composedInkEm;
 
 const log = m => console.log(`▶ ${m}`);
 let failed = 0;

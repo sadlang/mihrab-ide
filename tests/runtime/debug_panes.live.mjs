@@ -41,7 +41,10 @@ const KEEP = process.argv.includes("--keep");
 /** المقيسُ في VA-04 — يُقرأ هنا **للمقارنة** لا لإعادة اشتقاقه. */
 const EDITOR_FONT_SIZE = 15;
 /** أرضيّةُ ارتفاع السطر المشتقّةُ من مقاييس Kawkab Mono ‏[TY-02]. */
-const INK_FLOOR_EM = 1.88;
+// ‏[TY-02] الأرضيّةُ من المصدر الواحد المقيس، لا رقمًا منسوخًا (كان ‎1.88‎ مشتقًّا من
+// ‏كونتوراتٍ منفردةٍ لا تركّب علامةً على قاعدة — أنقصَ الحقيقةَ بـ‎0.885em‎).
+const INK_FLOOR_EM = JSON.parse(readFileSync(
+  new URL("../dx/arabic_ink.measured.json", import.meta.url), "utf8")).composedInkEm;
 /** الشاهدُ الفريد: سلسلةٌ لا ينتجها سطحٌ فارغٌ ولا حالةٌ بائتة. */
 const SENTINEL = "مِجَسّ-٧٣١";
 
