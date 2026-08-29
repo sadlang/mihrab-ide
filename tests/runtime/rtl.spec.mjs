@@ -56,11 +56,18 @@ export function geometryAssertions(geo) {
     : skip("أرقام الأسطر يمينًا", "لا عنصر أرقام مرئيّ"));
 
   // الشريط العموديّ يمينًا بجانب الأرقام (تعديل المستخدم م5)
-  out.push(geo.scrollbarV
-    ? (geo.scrollbarV.l > mid
-      ? pass("الشريط العموديّ يمينًا", `[${geo.scrollbarV.l},${geo.scrollbarV.r}]`)
-      : fail("الشريط العموديّ يمينًا", `left=${geo.scrollbarV.l} (متوقَّع يمينًا)`))
-    : skip("الشريط العموديّ يمينًا", "غير مرئيّ (لا تمرير عموديّ)"));
+  //
+  // **عرضُ صفرٍ ليس موضعًا.** كان الفحصُ يتخطّى حين **يغيب** العنصرُ من DOM وحدَها، وVS Code
+  // لا يحذفه: يُبقيه ويجعل عرضَه ‎0‎ ما دام المحتوى لا يفيض عموديًّا. وعنصرٌ بعرض صفرٍ
+  // رقعتُه عند **أصل** الصندوق القابل للتمرير — أي عند حافّته اليسرى — فيُقرأ «الشريطُ
+  // يسارًا» ويُبلَّغ انحدارًا لا وجودَ له. قِسناه: `left=369` و`عرض=0` والصندوق يبدأ عند
+  // ‎369‎ بالضبط؛ وحين يفيض المحتوى فعلًا يُقاس `[1044,1058]` — يمينًا كما طُلب في م5.
+  // فالتخطّي هنا هو ما نواه كاتبُ الفحص، ورسالتُه مكتوبةٌ منذ البداية ولم تكن تُبلَغ.
+  out.push(!geo.scrollbarV || !geo.scrollbarV.w
+    ? skip("الشريط العموديّ يمينًا", "غير مرئيّ (لا تمرير عموديّ)")
+    : (geo.scrollbarV.l > mid
+      ? pass("الشريط العموديّ يمينًا", `[${geo.scrollbarV.l},${geo.scrollbarV.r}] عرض ${geo.scrollbarV.w}`)
+      : fail("الشريط العموديّ يمينًا", `left=${geo.scrollbarV.l} عرض=${geo.scrollbarV.w} (متوقَّع يمينًا) · الأسطر تنتهي عند ${geo.linesRight} · الصندوق ${JSON.stringify(geo.scrollableBox)}`)));
 
   // مسطرة النظرة يسارًا (م2، CSS13)
   out.push(geo.overviewRuler
@@ -177,7 +184,7 @@ export async function interactionAssertions(cdp) {
     if (!s || !s.visible) out.push(skip("فجوة الاقتراحات = صفر", "لم تظهر الودجة (لا إكمالات؟)", true));
     else if (s.caretLeft == null) out.push(skip("فجوة الاقتراحات = صفر", "الودجة غير مُجاورة للمؤشّر (إدخال CDP هشّ) — مضمونة أيضًا بعلامة L2", true));
     else if (Math.abs(s.gap) <= GAP_TOL) out.push(pass("فجوة الاقتراحات = صفر", `يمين الودجة ${s.widgetRight} = المؤشّر ${s.caretLeft} (فجوة ${s.gap})`));
-    else out.push(fail("فجوة الاقتراحات = صفر", `فجوة ${s.gap}px (يمين ${s.widgetRight} ≠ مؤشّر ${s.caretLeft}) — انحدار!`));
+    else out.push(fail("فجوة الاقتراحات = صفر", `فجوة ${s.gap}px (يمين ${s.widgetRight} ≠ مؤشّر ${s.caretLeft}) — انحدار! · يسار الودجة ${s.widgetLeft} · الصندوق ${JSON.stringify((await editorGeometry(cdp)).scrollableBox)}`));
   } catch (e) { out.push(skip("فجوة الاقتراحات = صفر", "تعذّر: " + e.message, true)); }
 
   // ودجة البحث لأعلى-اليسار (مرآة rtl20)
@@ -301,9 +308,14 @@ export async function designAssertions(cdp) {
     const m = await editorInkMetrics(cdp);
     if (!m || !m.present) out.push(skip("TY-02: حبر العربيّة داخل سطر المحرّر", "لا سطرَ محرّرٍ ظاهر", true));
     else {
-      // ‏MARGIN **مشتقٌّ لا مختار**: الاشتقاق يعطي مدى الحبر ‎1.798em‎ في سطرٍ ‎1.95em‎ ⇒
-      // هامشٌ نظريٌّ ‎7.8٪‎. ونصفُه عتبةً يترك متّسعًا لتفاوت التنعيم بين المنصّات دون أن
-      // يقبل قيمةً تقترب من القصّ. (رقمٌ من القياس، لا من الذوق.)
+      // ‏MARGIN **بدلُ تفاوتِ المنصّات لا نصفُ هامشٍ نظريّ**. كان تعليلُه: «مدى الحبر
+      // ‏‎1.798em‎ في سطرٍ ‎1.95em‎ ⇒ هامشٌ ‎7.8٪‎، ونصفُه عتبةً» — وذلك سندٌ ساقط: ‎1.798‎
+      // قِيست من كونتوراتٍ منفردةٍ لا تركّب علامةً على قاعدة، والمركَّبُ المقيسُ حيًّا
+      // ‏‎2.683em‎ (‏`tests/dx/arabic_ink.measured.json`). فبقيت العتبةُ ‎3.9٪‎ **بمعنًى
+      // آخر**: مقدارُ ما نسمح به لتفاوت التنعيم والتقريب بين المنصّات — وهو نفسُه المقسومُ
+      // عليه في اشتقاق ‎2.8‎: ‏`2.683 ÷ 0.961 = 41.88 ⇒ 42px ⇒ 42/15 = 2.8`.
+      // ‏**والقياسُ بالأسوأ لا بالمتوسّط**: `tashkeel` أصغرُ بـ‎14٪‎ من `extremes`، ولا
+      // يُشتقُّ منه شيء — «مَبدأٌ» كلمةٌ عاديّةٌ والكسرتانِ عاديّة، وسطرٌ يسعُهما معًا.
       const MARGIN = 0.039;
       const ratio = Math.max(m.extremesRatio, m.tashkeelRatio);
       const margin = 1 - ratio;
@@ -312,11 +324,11 @@ export async function designAssertions(cdp) {
         `، كلفة التشكيل +${m.tashkeelExtraPx}px)`;
       if (ratio > 1) {
         out.push(fail("TY-02: حبر العربيّة داخل سطر المحرّر",
-          d + " — يتجاوز السطر ⇒ اقتطاعٌ واقع. ارفع editor.lineHeight (الأرضيّة المشتقّة 1.88em)"));
+          d + " — يتجاوز السطر ⇒ اقتطاعٌ واقع. ارفع editor.lineHeight (الأرضيّة المقيسة 2.683em)"));
       } else if (margin < MARGIN) {
         out.push(fail("TY-02: حبر العربيّة داخل سطر المحرّر",
           d + ` — الهامش دون ${(MARGIN * 100).toFixed(1)}٪: القصُّ لم يقع بعدُ ويقع بأوّل محرفٍ أطول.` +
-          " ارفع editor.lineHeight في mihrab-shell (الأرضيّة المشتقّة 1.88em)"));
+          " ارفع editor.lineHeight في mihrab-shell (الأرضيّة المقيسة 2.683em)"));
       } else out.push(pass("TY-02: حبر العربيّة داخل سطر المحرّر", d));
     }
   } catch (e) { out.push(skip("TY-02: حبر العربيّة داخل سطر المحرّر", "تعذّر: " + e.message, true)); }
@@ -822,7 +834,7 @@ export async function panelAssertions(cdp) {
     // **آخرُ ثلاثِ حلقاتٍ من السلسلة لا واحدة.** الورقةُ وحدها (`span.monaco-highlighted-label`)
     // تتكرّر في عشرات الأسطح فلا تدلّ على قاعدةٍ تُكتَب؛ وسلسلةُ الآباء هي ما يُحدّد المحدِّد.
     offenders.slice(0, 5).map(o =>
-      `[${o.surface}] ${o.path.split(" > ").slice(-3).join(" > ")}«${o.text}»`).join(" | ") +
+      `[${o.surface}] ${o.path.split(" > ").slice(-3).join(" > ")}«${o.text}» (bidi=${o.bidi} انقلاب=${o.reordered} قصّ=${o.clipped} رتابة=${o.monoDiag})`).join(" | ") +
     (notOpened.length ? ` · لم تنفتح: ${notOpened.join("، ")}` : "")));
   else out.push(pass("محايدات اللوحات (القاعدة 24)",
     `${opened}/${PANELS.length} أسطح مسحت، 0 ورقة معرَّضة` +

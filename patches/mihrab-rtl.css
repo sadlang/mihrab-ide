@@ -981,3 +981,81 @@
 	margin-inline-start: auto;
 	margin-inline-end: 8px;
 }
+
+/* ── 39. ودجةُ البحث في المحرّر: مرآةُ **داخلٍ** بعد مرآةِ **موضعٍ** [VA-03] ──
+   موضعُ الودجة معكوسٌ منذ القاعدة 20 (أعلى-اليسار بدل أعلى-اليمين)، **وداخلُها بقي
+   يسارًا-يمينًا**. والعطبُ الذي أظهره القياسُ ليس بصريًّا وحدَه: حارسُ ترتيبِ التركيز
+   ‏(‏`focusOrder` في L3) يقيس تسلسلَ Tab — وهو ترتيبُ DOM — على المواضع الأفقيّة، فقاس:
+
+   | العنصر | ‏x |
+   |---|---|
+   | زرُّ فتح الاستبدال (أوّلُ DOM) | ‎411‎ |
+   | حقلُ البحث | ‎499‎ |
+   | مطابقةُ حالة الأحرف | ‎585‎ |
+   | مطابقةُ الكلمة بالكامل | ‎607‎ |
+
+   أي أنّ التركيزَ يمشي **يسارًا ⇒ يمينًا** داخل ودجةٍ كلُّ تسمياتها عربيّة، في قشرةٍ
+   يمشي فيها كلُّ شيءٍ آخرَ يمينًا ⇒ يسارًا. فمستخدمُ لوحةِ المفاتيح يقفز عكسَ بصرِه.
+
+   **والعلاجُ `row-reverse` لا `direction: rtl`.** الفرقُ ليس ذوقًا: `direction` على
+   الودجة يورَث إلى **حقلَي الإدخال** فيقلب اتّجاهَ فقرةِ نصِّ البحث نفسِه — وهو نمطٌ
+   يكتبه المستخدم لا واجهة. و`row-reverse` يقلب ترتيبَ عناصرِ الصفّ وحدَه، فيصير أوّلُ
+   عنصرٍ في DOM أوّلَ عنصرٍ **يمينًا** ⇒ يتطابق التركيزُ مع البصر بلا مساسٍ بالنصّ.
+
+   والهوامشُ الفيزيائيّةُ الأربعةُ تُقلَب معه وإلّا انفتحت الفجوةُ في الجهة الخطأ
+   (‏قِيست من الحزمة: `padding:0 4px 0 9px` للودجة · `margin:3px 25px 0 17px` للجزأين ·
+   ‏`margin-left:3px` للأزرار · `margin:4px 0 4px 5px` لِـ`.button.left` · وعدّادُ
+   النتائج `margin:0 0 0 3px` و`padding:2px 0 0 2px`). وزرُّ الاستبدال **مُطلَقُ الموضع**
+   ‏(‏`position:absolute; left:0`) فلا يبلغه قلبُ الصفّ: يُنقَل بيده إلى `right:0`، وهو
+   أوّلُ DOM فيصير أوّلَ ما يُلامَس يمينًا. ── */
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget {
+	padding: 0 9px 0 4px;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .find-part,
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .replace-part {
+	flex-direction: row-reverse;
+	margin: 3px 17px 0 25px;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .find-part .find-actions,
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .replace-part .replace-actions {
+	flex-direction: row-reverse;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .button {
+	margin-left: 0;
+	margin-right: 3px;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .button.left {
+	margin: 4px 5px 4px 0;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .button.toggle {
+	left: auto;
+	right: 0;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .matchesCount {
+	margin: 0 3px 0 0;
+	padding: 2px 2px 0 0;
+}
+/* ‏**ومقابضُ الحقل نفسِه** — لم تكفِ مرآةُ الصفّ: `.controls` (حالةُ الأحرف · الكلمة
+   الكاملة · التعبير النمطيّ) **مُطلَقةُ الموضع** داخل صندوق الإدخال (`right: 2px` في
+   ‏`monaco-findInput`)، فلا يبلغها `row-reverse`. قِيس بعد المرآة الأولى: الحقلُ عند
+   ‏‎648‎ ومقابضُه عند ‎734‎ و‎756‎ و‎778‎ — أي بقيت الثلاثةُ يمينَ الحقل وبقي التركيزُ
+   يمشي يسارًا ⇒ يمينًا. تُنقَل إلى الحافّة التابعة (اليسرى)، فيصير أوّلُ DOM أيمنَ. */
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .monaco-findInput > .controls,
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .replace-part > .monaco-findInput > .controls {
+	right: auto;
+	left: 2px;
+}
+/* ‏**ونقلُ الحاوية لا يرتّب ما فيها — ولا يرتّبها `direction`.** بعد نقلِها قِيست الثلاثةُ
+   عند ‎586‎ و‎608‎ و‎630‎ صاعدةً كما كانت، ثمّ جرّبنا `direction: rtl` فلم تتحرّك بكسلًا
+   واحدًا. والسببُ في الحزمة: `.monaco-custom-toggle { float: left }` — **والعائمُ لا يبالي
+   بالاتّجاه**، يلزَم الحافّةَ الفيزيائيّةَ المذكورةَ فيه. فتُقلَب العوامةُ نفسُها وهامشُها،
+   فيصير أوّلُ مقبضٍ في DOM أيمنَها ⇒ يتطابق التركيزُ مع البصر. */
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget .monaco-findInput > .controls .monaco-custom-toggle {
+	float: right;
+	margin-left: 0;
+	margin-right: 2px;
+}
+.monaco-workbench[dir="rtl"] .monaco-editor .find-widget > .replace-part .monaco-inputbox > .ibwrapper > .mirror {
+	padding-right: 0;
+	padding-left: 22px;
+}

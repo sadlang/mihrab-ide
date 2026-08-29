@@ -339,6 +339,9 @@ export async function editorGeometry(cdp) {
       gutter: q('.monaco-editor .margin'),
       lineNumbers: q('.monaco-editor .line-numbers'),
       scrollbarV: q('.monaco-editor .monaco-scrollable-element > .scrollbar.vertical'),
+      // تشخيصٌ مؤقّت: عرضُ الشريط وحافّةُ الأسطر — يميّز «مخفيٌّ عند الأصل» من «يسارًا فعلًا».
+      linesRight: (() => { const l = document.querySelector('.monaco-editor .view-lines'); return l ? Math.round(l.getBoundingClientRect().right) : null; })(),
+      scrollableBox: (() => { const e = document.querySelector('.monaco-editor .monaco-scrollable-element.editor-scrollable'); if (!e) return null; const b = e.getBoundingClientRect(); return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width) }; })(),
       overviewRuler: q('.monaco-editor .decorationsOverviewRuler'),
       activityBar: q('.monaco-workbench .activitybar'),
       firstLineDir: (() => { const l = document.querySelector('.monaco-editor .view-line'); return l ? getComputedStyle(l).direction : null; })(),
@@ -1332,7 +1335,23 @@ export async function bidiPanels(cdp) {
     // ‎LTR‎. فالماسح الأوّل كان **يُبرّئ العنصر زورًا** لمجرّد وجود القاعدة على سلفه.
     // فنمشي صعودًا ونتوقّف عند أوّل عازلٍ يعترض الطريق.
     const ISOLATORS = ["isolate", "isolate-override", "bidi-override"];
+    // **علاجٌ ثانٍ لم يكن الماسحُ يراه: العزلُ في النصّ نفسِه.** رقعةُ معجم العناوين
+    // (‏mihrabSettingsLexicon.ts) تلفّ كلَّ مقطعٍ من تسمية الإعداد وفئته بـFSI…PDI في
+    // **المحتوى**، لأنّ النصَّ يبلغ ‏aria-label‏ حيث لا تصله قاعدةُ نمط؛ ولذلك أُعطي
+    // الصنفان ‏unicode-bidi: isolate‏ لا ‏plaintext‏ (القاعدة 35: ‏plaintext‏ بعد عزلٍ
+    // كاملٍ تقلب P2/P3 فتُلحِق ضررًا). فكان الماسحُ يبلّغ «معرَّضة» عن أشدّ أسطحنا
+    // معالجةً — قِسناه: «⁨حجم الخطّ⁩» رمزُ أوّلِ محرفٍ فيها ‎U+2068‎ وحالُها ‏isolate‏.
+    // فالشرطُ هنا **مزدوجٌ لا متساهل**: نصٌّ يحمل محرفَ عزلٍ صريحًا **و** عنصرٌ معزولٌ
+    // عمّا حوله. مجرّدُ ‏isolate‏ موروثٍ لا يكفي — وتلك بالضبط الثغرةُ التي أُغلقت أوّلًا
+    // (‏‏.monaco-highlighted-label‏ تعزل نفسها بلا أن تعالج شيئًا، ونصُّها بلا FSI).
+    // محارفُ العزل غيرُ مرئيّة، فتُفحَص **برموزها** لا بكتابتها: محرفٌ غيرُ مرئيٍّ
+    // في مصدرٍ لا يُرى ولا يُراجَع.
+    const isIsolateMark = c => c >= 0x2066 && c <= 0x2069;
+    const carriesOwnIsolation = el =>
+      [...(el.textContent || "")].some(ch => isIsolateMark(ch.codePointAt(0))) &&
+      ISOLATORS.includes(getComputedStyle(el).unicodeBidi);
     const handled = el => {
+      if (carriesOwnIsolation(el)) return true;
       for (let n = el; n && n !== document.body; n = n.parentElement) {
         const b = getComputedStyle(n).unicodeBidi;
         if (b === "plaintext") return true;
@@ -1495,13 +1514,21 @@ export async function bidiPanels(cdp) {
       // فنحكم بالفرق لا بالاتّجاه: نقيس رتبةَ المحارف كما هي، ثمّ نفرض ‎plaintext‎ آنيًّا
       // ونعيد القياس ونستعيد النمط **في المهمّة نفسها** (لا رسمَ بينهما). اختلافُ الرتبة
       // يعني أنّ التصيير الحاليّ غيرُ ما تُنتجه فقرةٌ يشتقّ اتّجاهُها من نصّها = انقلاب.
-      let reordered = false;
+      let reordered = false, monoDiag = null;
       const oneText = t.length <= 60 && el.childNodes.length === 1
         && el.firstChild && el.firstChild.nodeType === 3;
       if (oneText && (startsLTR || (startsRTL && cs.direction !== "rtl"))) {
         const n = el.firstChild, s = n.textContent, g = document.createRange();
+        // **محارفُ التحكّم الاتّجاهيّ لا حبرَ لها، ورقعتُها ليست موضعَ نصّ.** قِسنا
+        // «⁨Default Formatter⁩»: ‎19‎ صندوقًا لسبعةَ عشرَ حرفًا — الزائدان FSI وPDI،
+        // ويقعان عند طرفَي الفقرة لا عند طرفَي الكلمة، فيكسران الرتابةَ ويُدينان
+        // تصييرًا سليمًا. (الرقمُ ‎19‎ هو ما كشفها؛ قبله كان الحكمُ صحيحَ الشكل باطلَ
+        // المُدخَل.) فتُستبعَد من القياس: ‎U+200E/200F‎ و‎U+202A–202E‎ و‎U+2066–2069‎.
+        const isBidiControl = c => c === 0x200e || c === 0x200f
+          || (c >= 0x202a && c <= 0x202e) || (c >= 0x2066 && c <= 0x2069);
         const xs = () => { const a = []; let top = null;
           for (let i = 0; i < s.length; i++) {
+            if (isBidiControl(s.charCodeAt(i))) continue;
             g.setStart(n, i); g.setEnd(n, i + 1);
             const b = g.getBoundingClientRect();
             if (!b.width && !b.height) continue;
@@ -1532,6 +1559,24 @@ export async function bidiPanels(cdp) {
           const alt = xs();
           el.style.unicodeBidi = before;
           if (alt && alt.length === now.length && rank(alt) !== rank(now)) reordered = true;
+          // **ومعيارٌ مطلَقٌ يعلو النسبيَّ في الحالة التي لا لبسَ فيها.** المقارنةُ بـplaintext
+          // مقياسٌ **نسبيّ**: تقول «يختلف عن مرجع» لا «مقلوب». وهي لا تصلح مرجعًا لما
+          // عولج بالعزل النصّيّ: القاعدة 35 تُعطي تسمياتِ الإعدادات unicode-bidi: isolate
+          // عمدًا لأنّ محتواها ملفوفٌ بـFSI…PDI، وplaintext بعدها تقلب P2/P3 فتضرّ. فكان
+          // الماسحُ يُدين «⁨Default Formatter⁩» (قِيس: bidi=isolate · انقلاب=true) وهي
+          // مُعالَجةٌ بأشدّ ما عالجنا به سطحًا.
+          // فحين يكون النصُّ **أُحاديَّ الكتابة** — لاتينيٌّ خالصٌ أو عربيٌّ خالص — يكون
+          // الصوابُ مطلقًا لا نسبيًّا: محارفُه تمشي في اتّجاه كتابته. فإن مشت، فالتصييرُ
+          // صحيحٌ مهما قال plaintext، ولا إدانة. والمختلطُ يبقى على المقياس النسبيّ.
+          if (reordered && now.length > 1) {
+            const onlyLat = LAT.test(t) && !AR.test(t);
+            const onlyAr = AR.test(t) && !LAT.test(t);
+            const nonDecreasing = now.every((v, i) => i === 0 || v >= now[i - 1]);
+            const nonIncreasing = now.every((v, i) => i === 0 || v <= now[i - 1]);
+            if ((onlyLat && nonDecreasing) || (onlyAr && nonIncreasing)) reordered = false;
+            monoDiag = (onlyLat ? "lat" : onlyAr ? "ar" : "mix") +
+              "/" + (nonDecreasing ? "↑" : nonIncreasing ? "↓" : "≠") + "/" + now.length;
+          }
         }
       }
       // قياسُ المحاذاة — مستقلٌّ عن حكم الانقلاب أعلاه (بُعدان لا يتداخلان).
@@ -1592,7 +1637,7 @@ export async function bidiPanels(cdp) {
       if (!reordered && (!risky || handled(el))) continue;
       const k = path(el);
       if (seen.has(k)) continue; seen.add(k);
-      out.push({ path: k, bidi: cs.unicodeBidi, clipped, reordered, text: t.slice(0, 46) });
+      out.push({ path: k, bidi: cs.unicodeBidi, clipped, reordered, monoDiag, text: t.slice(0, 46) });
     }
     // ‏‎scanned‎ ليس زينة: بدونه كان «‎0 معرَّضة» يعني أحد أمرين لا يُفرَّق بينهما — سطحٌ
     // نظيف، أو سطحٌ **لم يُفتَح أصلًا** فمُسِح فراغ. اختصارُ مفتاحٍ يبتلعه المحرّر يكفي

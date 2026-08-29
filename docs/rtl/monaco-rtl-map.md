@@ -76,10 +76,10 @@ overviewRuler.right (3011) = 0   // دائمًا يمينًا
 |------|-----------|---------------|
 | **مسطرة النظرة** | `viewParts/overviewRuler/overviewRuler.ts:94-96` | `setRight`→`setLeft` (والحساب 3011 `right:0`→`left:0`) |
 | **الخريطة المصغّرة** | `editorOptions.ts:2858` + `minimap.ts:1402` | عكس جهة `minimapLeft` حسب rtl |
-| **شريط التمرير العموديّ** | mihrab-rtl.css قاعدة 13 | **يمينًا بجانب الأرقام** (طلب المستخدم م5): يبقى `right:0` الافتراضيّ ⇒ حافّته على الحدّ الداخليّ للمزراب. عُكِس يسارًا في م2 ثمّ أُعيد يمينًا. مُتحقَّق بصريًّا |
+| **شريط التمرير العموديّ** | رقعة النواة ‎010‎ (‏`editorScrollbar.ts`) | **يمينًا بجانب الأرقام** (طلب المستخدم م5). وقد **عاد يُعكَس يسارًا** حين أضافت الرقعةُ خيارَ `verticalScrollbarSide` وأعطته `'rtl' ? 'left'`؛ فثُبِّت على `'right'` بلا شرط ‎2026-08-29‎. والأسطرُ تُزيح حافّتها القائدة بعرضِ الشريط أصلًا، فمرآتُه كانت تحجز جهةً وترسم في الأخرى. **مقيسٌ لا بصريّ**: ‏`[1044,1058]` عرض ‎14‎ |
 | **التمرير الأفقيّ (كشف)** | `viewParts/viewLines/viewLines.ts:676,784-835` | `setLeft(-scrollLeft)` واتّجاه الكشف؛ حشو `HORIZONTAL_EXTRA_PX:101` |
 | **hit-test الفأرة** | `controller/mouseTarget.ts:408-414,700-730,760-795` | `mouseContentHorizontalOffset` ومنطق الهوامش (فيه `isRtl()` جزئيّ:370) |
-| **ودجات المحتوى** | `viewParts/contentWidgets/contentWidgets.ts:376,581` | موضع أفقيّ نسبةً لـcontentLeft |
+| **ودجات المحتوى** | `viewParts/contentWidgets/contentWidgets.ts:376,581` | موضع أفقيّ نسبةً لـcontentLeft. و`contentLeft` في RTL = `minimapWidth + verticalScrollbarWidth` لا `minimapWidth` وحدَه: الأسطرُ مُزاحةٌ من حافّتها القائدة بعرضِ الشريط والودجاتُ لم تكن، فكانت ودجةُ الاقتراحات تقف ‎14px‎ يسارَ المؤشّر. **مقيسٌ**: بعد التصحيح `يمين الودجة = المؤشّر` بالضبط. وحدُّه المُعلَن: `layoutInfo.verticalScrollbarWidth` لا يتبع `editor.scrollbar.verticalScrollbarSize` (قِيس: يبقى ‎14‎ والشريطُ ‎30‎) فيظهر باقٍ عند تغيير ذلك الإعداد |
 | **المسطرات (rulers)** | `viewParts/rulers/rulers.ts:96` (mihrab-rtl-rulers) | ✅ `ctx.scrollWidth − column*w` من يمين صندوق المحتوى + `onScrollChanged` يشمل scrollWidthChanged. مُتحقَّق حيًّا (CDP): عمود 20 عند حافّة المحتوى اليمنى−20حرفًا بالضبط، بلا إزاحة |
 | **زخارف الكتل** | `viewParts/blockDecorations/blockDecorations.ts:107` | جهة |
 
