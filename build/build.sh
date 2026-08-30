@@ -273,7 +273,27 @@ for ext in "$ROOT"/extensions/*/; do
   find "$_dst" -type f \( -name '*.test.js' -o -name '*.test.mjs' -o -name '*.test.cjs' \) -delete 2>/dev/null || true
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
-shopt -u nullglob
+
+# ── (ز-2ب-1ب) إضافاتٌ إضافيّةٌ لبناءِ المعاينة (خارجَ extensions/): ──
+#         بناءُ محرابٍ العاديُّ لا يحمل لغةً من خارجِ الدار — اللغةُ إضافةٌ تُثبَّت من
+#         السوق، وشحنُها داخلَ المنتجِ يجعل المنصّةَ تُبارك لغةً بعينها. لكنّ بناءَ
+#         معاينةٍ يُعطى لمطوّري لغةٍ ليجرّبوا محرابًا بلا خطوةِ تثبيتٍ حالةٌ أخرى:
+#         الغرضُ عرضٌ لا توزيع، والمتغيّرُ يبقى فارغًا في كلّ بناءٍ عاديّ.
+#         المسارات مفصولةٌ بنقطتين رأسيّتين، وكلُّ مسارٍ مجلّدُ إضافةٍ فيه package.json.
+if [[ -n "${MIHRAB_EXTRA_EXT_DIRS:-}" ]]; then
+  IFS=':' read -r -a _extra_dirs <<< "$MIHRAB_EXTRA_EXT_DIRS"
+  for _extra in "${_extra_dirs[@]}"; do
+    [[ -n "$_extra" ]] || continue
+    _extra="${_extra%/}"
+    # فشلٌ صريحٌ لا تخطٍّ صامت: مسارٌ خاطئٌ هنا يُنتج بناءَ معاينةٍ بلا اللغةِ التي
+    # صُنع لأجلها — وهو أسوأُ من فشلِ بناءٍ لأنّه يُكتشَف عند المُجرِّب لا عندنا.
+    [[ -f "$_extra/package.json" ]] || { echo "❌ MIHRAB_EXTRA_EXT_DIRS: لا package.json في $_extra" >&2; exit 1; }
+    _dst="$STAGE_EXT/$(basename "$_extra")"
+    [[ ! -e "$_dst" ]] || { echo "❌ MIHRAB_EXTRA_EXT_DIRS: $(basename "$_extra") يصادم إضافةً مدمجة" >&2; exit 1; }
+    cp -r "$_extra" "$_dst"
+    log "إضافةُ معاينةٍ مُجهَّزة: $(basename "$_extra")"
+  done
+fi
 
 # ── (ز-2ب-2) حزم سلسلة أدوات ص المدمجة (الخيار ١): احقن sad-run.exe في bin/ داخل
 #         نسخة mihrab-welcome المُجهَّزة كي يعمل «شغّل ملفّ ص» فورًا دون تثبيت. المصدر:

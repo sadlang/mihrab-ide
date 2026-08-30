@@ -48,3 +48,6 @@ __pycache__/
 # مخرَج مولّد موقع التوثيق — يُبنى في CI عند كلّ نشر، فلا يُلتزَم
 site/public/
 /tests/perf/.runs/
+
+# مخرَجُ build/fetch_alif_extension.sh — إضافةٌ مجلوبةٌ لبناءِ المعاينة، لا تُودَع.
+.preview-extensions/

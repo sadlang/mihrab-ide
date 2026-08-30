@@ -17,7 +17,11 @@ set -euo pipefail
 # ⚠️ لا مضيفَ افتراضيًّا في مستودعٍ عامّ — انظر التعليل في deploy_site.sh.
 HOST="${MIHRAB_SITE_HOST:?عيّن MIHRAB_SITE_HOST (مثال: user@host)}"
 PORT="${MIHRAB_SITE_PORT:-22}"
-DL="${MIHRAB_SITE_ROOT:-/opt/sad-website}/${MIHRAB_SITE_SUBDIR:-mihrab}/dl"
+# قناةٌ فرعيّةٌ داخل dl/ لبناءٍ ليس إصدارًا (معاينةٌ للتجريب مثلًا): تُعزَل
+# ملفّاتُها ومانيفستُها عن الإصدار المنشور، فلا يلتقط جدولُ التنزيلِ الرئيس
+# بناءً تجريبيًّا، ولا يمسح رفعُ معاينةٍ مانيفستَ الإصدار.
+DL="${MIHRAB_SITE_ROOT:-/opt/sad-website}/${MIHRAB_SITE_SUBDIR:-mihrab}/dl${MIHRAB_DL_CHANNEL:+/$MIHRAB_DL_CHANNEL}"
+BASE="${MIHRAB_DL_BASE:-dl/}"
 ORIGIN="${MIHRAB_SITE_ORIGIN:-https://sad-lang.org/mihrab/}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -57,12 +61,12 @@ done
 
 TODAY=$(date +%F)
 JOINED=$(IFS=,; echo "${ENTRIES[*]}")
-MANIFEST="{\"version\":\"$VERSION\",\"date\":\"$TODAY\",\"origin\":\"$ORIGIN\",\"base\":\"dl/\",\"notes_url\":\"https://github.com/sadlang/mihrab-ide/releases\",\"assets\":[$JOINED]}"
+MANIFEST="{\"version\":\"$VERSION\",\"date\":\"$TODAY\",\"origin\":\"$ORIGIN\",\"base\":\"$BASE\",\"notes_url\":\"https://github.com/sadlang/mihrab-ide/releases\",\"assets\":[$JOINED]}"
 
 echo "▶ كتابةُ المانيفست…"
 printf '%s' "$MANIFEST" | "${SSH[@]}" "$HOST" "cat > '$DL/.releases.json.new' && mv '$DL/.releases.json.new' '$DL/releases.json'"
 
-echo "✅ الإصدار $VERSION منشور: https://sad-lang.org/mihrab/download/"
+echo "✅ الإصدار $VERSION منشور في $DL"
 echo
 echo "   لتُثبِت الحالةَ في المستودع (كي تصدق المرآةُ وحالةُ انقطاع الشبكة):"
 echo "   انسخ المانيفست أعلاه إلى site/data/releases.json ثمّ ادفعه."
