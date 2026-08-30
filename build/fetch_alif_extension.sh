@@ -10,8 +10,8 @@
 # فبلا بصمةٍ نبني ما لا نعرفه. البصمةُ تُثبَّت هنا وتُقاس قبل الفكّ لا بعده.
 set -euo pipefail
 
-ALIF_VERSION="${ALIF_EXT_VERSION:-0.1.0}"
-ALIF_SHA256="${ALIF_EXT_SHA256:-fc813f2ded315de080186a36522c44a7ffaa9b73e32b518fc8ad4f8d75e5a55d}"
+ALIF_VERSION="${ALIF_EXT_VERSION:-0.1.1}"
+ALIF_SHA256="${ALIF_EXT_SHA256:-c4a4561d4d13e5df95fdf8d7006c33bae96e7b3b1cbd983db9bd6a81d8b44fc5}"
 ALIF_URL="https://github.com/SalehKadah/alif-vscode/releases/download/v${ALIF_VERSION}/alif-lang-${ALIF_VERSION}.vsix"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
