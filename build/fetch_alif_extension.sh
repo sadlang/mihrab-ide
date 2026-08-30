@@ -22,7 +22,15 @@ mkdir -p "$(dirname "$TMP")"
 echo "▶ جلبُ إضافة لغة ألف $ALIF_VERSION …"
 curl -fsSL -o "$TMP" "$ALIF_URL"
 
-got=$(sha256sum "$TMP" | cut -d' ' -f1)
+# لا sha256sum في macOS — والقياسُ لا يجوز أن يعتمد على أداةٍ قد تغيب، وإلّا
+# سقط الحارسُ في المنصّة التي لا تملكها.
+if command -v sha256sum >/dev/null 2>&1; then
+  got=$(sha256sum "$TMP" | cut -d' ' -f1)
+elif command -v shasum >/dev/null 2>&1; then
+  got=$(shasum -a 256 "$TMP" | cut -d' ' -f1)
+else
+  got=$(python -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$TMP")
+fi
 if [[ "$got" != "$ALIF_SHA256" ]]; then
   echo "❌ بصمةُ الإضافةِ لا تطابق المثبَّتة." >&2
   echo "   المتوقَّع: $ALIF_SHA256" >&2
