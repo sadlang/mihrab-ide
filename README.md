@@ -8,7 +8,8 @@
 
 - **الحالة:** م3 (اتّجاه RTL) **مُغلَق**؛ م6 (الحرف والوصول والأمن) **جارٍ**.
   التفصيل ولوح الحالة الوحيد: [`docs/milestones.md`](docs/milestones.md) — يُشار إليه ولا يُنسَخ.
-- **الرؤية:** خاصّ مبدئيًّا حتى نضوج م0–م1، ثم يُفتح (قلب مفتوح، MIT).
+- **الرؤية:** مفتوح الآن (MIT) — منصّة عربيّة تقبل لغات أخرى عبر سوق Open VSX،
+  وتُشحن بلغة ص كمثال مرجعيّ لا كلغة مفضّلة.
 - **مصدر حقيقة التخطيط:** [`sadlang-planning/projects/mihrab-editor/`](https://github.com/sadlang/sadlang-planning/tree/main/projects/mihrab-editor)
 - **المقترح (RFC):** [`sadlang/rfcs#21`](https://github.com/sadlang/rfcs/pull/21) (`tools/mihrab`).
 - **المعلم الفيدراليّ:** `M-mihrab-1.0` (المرحلة الثالثة).
