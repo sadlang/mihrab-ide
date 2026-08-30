@@ -14,6 +14,10 @@ echo "╔══════════════════ اختبارات
 
 "$PY" "$HERE/static/lint_patchers.py" || rc=1
 echo
+
+# حراسُ بناءِ المعاينة: تفكيكُ مسارات الإضافات، وسلسلةُ البصمة، وفكُّ vsix.
+bash "$HERE/static/check_extra_ext_dirs.sh" || rc=1
+echo
 "$PY" "$HERE/apply/check_anchors.py" || rc=1
 echo
 "$PY" "$HERE/bundle/check_injected.py" || rc=1

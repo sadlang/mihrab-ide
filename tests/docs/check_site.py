@@ -161,6 +161,25 @@ def main():
         if not os.path.isfile(target):
             bad("product.json:%s يشير إلى صفحةٍ لا تُبنى: %s" % (key, url))
 
+    # ── ٧) تثبيتُ إضافةِ ألف: الجالبُ وصفحةُ المعاينة يقولان الشيءَ نفسَه ──
+    # الإصدارُ والبصمةُ مكتوبان في مكانين: `build/fetch_alif_extension.sh` (ما يُبنى
+    # به) و`site/data/releases-alif.json` (ما تُعلنه الصفحة). ترقيةُ أحدِهما وحدَه
+    # تجعل الصفحةَ تُملي على الزائر بصمةً يقارن بها شيئًا لم يُبنَ منها.
+    fetch = os.path.join(ROOT, "build", "fetch_alif_extension.sh")
+    alif_json = os.path.join(SITE, "data", "releases-alif.json")
+    if os.path.isfile(fetch) and os.path.isfile(alif_json):
+        with open(fetch, encoding="utf-8") as f:
+            src = f.read()
+        with open(alif_json, encoding="utf-8") as f:
+            declared = (json.load(f).get("alif_extension") or {})
+        for var, key in (("ALIF_EXT_VERSION", "version"), ("ALIF_EXT_SHA256", "sha256")):
+            m = re.search(r"\$\{%s:-([^}]*)\}" % var, src)
+            if not m:
+                bad("لم أجد تثبيتَ %s في fetch_alif_extension.sh" % var)
+            elif m.group(1) != declared.get(key):
+                bad("تثبيتُ ألف منجرف: الجالبُ %s=%r وصفحةُ المعاينة %r"
+                    % (key, m.group(1), declared.get(key)))
+
     report()
     return 1 if fails else 0
 

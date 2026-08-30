@@ -21,7 +21,14 @@ PORT="${MIHRAB_SITE_PORT:-22}"
 # ملفّاتُها ومانيفستُها عن الإصدار المنشور، فلا يلتقط جدولُ التنزيلِ الرئيس
 # بناءً تجريبيًّا، ولا يمسح رفعُ معاينةٍ مانيفستَ الإصدار.
 DL="${MIHRAB_SITE_ROOT:-/opt/sad-website}/${MIHRAB_SITE_SUBDIR:-mihrab}/dl${MIHRAB_DL_CHANNEL:+/$MIHRAB_DL_CHANNEL}"
-BASE="${MIHRAB_DL_BASE:-dl/}"
+# قاعدةُ الروابط في المانيفست مربوطةٌ بالقناة، لا متغيّرٌ مستقلٌّ يُنسى: من رفع
+# بقناةٍ ونسي القاعدةَ كتب في مانيفست المعاينة `"base":"dl/"` — فتُعرَض الصفحةُ
+# كاملةً وكلُّ زرِّ تنزيلٍ فيها 404. وفشلٌ صريحٌ هنا أرخصُ من جدولٍ يبدو سليمًا.
+if [[ -n "${MIHRAB_DL_CHANNEL:-}" ]]; then
+  BASE="${MIHRAB_DL_BASE:?قناةٌ بلا قاعدةِ روابط: عيّن MIHRAB_DL_BASE (مثال: ../../dl/$MIHRAB_DL_CHANNEL/)}"
+else
+  BASE="${MIHRAB_DL_BASE:-dl/}"
+fi
 ORIGIN="${MIHRAB_SITE_ORIGIN:-https://sad-lang.org/mihrab/}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

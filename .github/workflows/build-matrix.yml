@@ -52,9 +52,15 @@ jobs:
 
       - name: صياغةُ سكربتات البناء
         run: |
-          for f in build/build.sh build/prepare.sh build/deploy_site.sh build/publish_release.sh; do
+          for f in build/*.sh build/lib/*.sh; do
             bash -n "$f" && echo "✅ $f"
           done
+
+      # حراسُ بناءِ المعاينة (L0): العطبان اللذان أسقطا بناءَ المعاينةِ الأوّلَ في
+      # منصّتين — أداةُ بصمةٍ غائبةٌ وفاصلٌ يقطع مسارَ ويندوز — يُمسَكان هنا في ثانية
+      # بدل ساعةِ بناءٍ في كلّ منصّة.
+      - name: حراسُ بناءِ المعاينة
+        run: bash tests/static/check_extra_ext_dirs.sh
 
       - name: صياغةُ المرقِّعات
         run: python -m compileall -q build/ tests/ site/ && echo "✅ بايثون سليمة"
@@ -174,6 +180,16 @@ jobs:
           # بـ403 بعد ١٠ محاولات، بينما نجح لينكس في نفس اللحظة: عطبٌ يبدو
           # «خاصًّا بالمنصّة» وليس منها في شيء. والرمزُ يرفع الحدَّ إلى ١٠٠٠.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── بوّابةُ إضافةِ المعاينة ──
+      # «مُجهَّزة» في سجلّ البناء ليست «وصلت الحزمة»: بينهما حلقةُ الحقن وجمعُ gulp
+      # وشجرةُ منبعٍ قد تكون مرقَّعةً سلفًا. وبلا هذه البوّابة يُنتَج بناءٌ اسمُه
+      # ‏«-alif» وليس فيه ألف، وسيرٌ أخضر، ويكتشفه مطوّرُ ألف لا نحن.
+      - name: بوّابةُ إضافةِ ألف
+        if: inputs.preview_alif
+        run: python tests/bundle/check_preview_ext.py ".upstream/${{ matrix.out }}"
+        env:
+          MIHRAB_EXTRA_EXT_DIRS: ${{ format('{0}/.preview-extensions/alif-lang', github.workspace) }}
 
       # ── بوّابةُ أدوات ص ──
       # ما جُلب من الإصدار الرسميّ يجب أن يصل الحزمةَ **ببصمته**. اسمٌ مطابقٌ من مصدرٍ

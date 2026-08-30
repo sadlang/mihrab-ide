@@ -255,6 +255,19 @@ fi
 #         جهّزها في .mihrab-* (تنجو من git reset في وضع -s) ورقّع build.sh المنبع
 #         ليحقنها بعد cd vscode (لا قبل dev/build.sh لأنّ «git add . ; git reset
 #         --hard» يحذف غير المتعقَّب). يشمل التعريب (إضافة لغة عربيّة + لغة افتراضيّة). ──
+# جرّد مصنوعات التوليد غير الوقتيّة من نسخةٍ مشحونةٍ من إضافة (cp -r لا يحترم
+# .vscodeignore): سكربتات مولِّدات السمات/الأيقونات (*.py) و__pycache__ ليست جزءًا من
+# المنتج. و[PF-01] وكذلك الاختبارات: كان هذا غائبًا فشُحن **اثنان وعشرون** ملفَّ
+# `*.test.js` داخل التوزيعة — صغيرةٌ حجمًا (‏0.23 م.ب) لكنّها سطحُ شيفرةٍ لا يخصّ
+# المستخدم، ومؤشّرُ خللٍ في التجريد لا في حجمه. أمسكها حارسُ `tests/perf/size.mjs`.
+# ودالّةٌ لا سطورٌ مكرّرة: إضافةُ المعاينة تمرّ من هنا أيضًا، وتجريدٌ يُطبَّق على
+# إضافاتِ الدار وحدَها يجعل إضافةً من خارجها تُسقط حارسَ الحجم بتشخيصٍ مضلّلٍ لا يخصّها.
+strip_ext_artifacts() {
+  find "$1" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$1" -type f -name '*.py' -delete 2>/dev/null || true
+  find "$1" -type f \( -name '*.test.js' -o -name '*.test.mjs' -o -name '*.test.cjs' \) -delete 2>/dev/null || true
+}
+
 STAGE_EXT="$UP/.mihrab-extensions"
 rm -rf "$STAGE_EXT"; mkdir -p "$STAGE_EXT"
 shopt -s nullglob
@@ -262,15 +275,7 @@ for ext in "$ROOT"/extensions/*/; do
   [[ -f "${ext}package.json" ]] || continue
   _dst="$STAGE_EXT/$(basename "$ext")"
   cp -r "$ext" "$_dst"
-  # جرّد مصنوعات التوليد غير الوقتيّة من النسخة المشحونة (cp -r لا يحترم .vscodeignore):
-  # سكربتات مولِّدات السمات/الأيقونات (*.py) و__pycache__ ليست جزءًا من المنتج.
-  find "$_dst" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
-  find "$_dst" -type f -name '*.py' -delete 2>/dev/null || true
-  # [PF-01] وكذلك الاختبارات. كان هذا السطرُ غائبًا فشُحن **اثنان وعشرون** ملفَّ `*.test.js`
-  # داخل التوزيعة — صغيرةٌ حجمًا (‏0.23 م.ب) لكنّها سطحُ شيفرةٍ لا يخصّ المستخدم، ومؤشّرُ
-  # خللٍ في التجريد لا في حجمه. أمسكها حارسُ `tests/perf/size.mjs` (القائمةُ الممنوعة)،
-  # وهو الذي يمنعها من العودة مع أوّل امتدادٍ جديد: تجريدٌ بلا حارسٍ يرتدّ صامتًا.
-  find "$_dst" -type f \( -name '*.test.js' -o -name '*.test.mjs' -o -name '*.test.cjs' \) -delete 2>/dev/null || true
+  strip_ext_artifacts "$_dst"
   log "إضافة مدمجة مُجهَّزة: $(basename "$ext")"
 done
 
@@ -281,6 +286,8 @@ done
 #         الغرضُ عرضٌ لا توزيع، والمتغيّرُ يبقى فارغًا في كلّ بناءٍ عاديّ.
 #         المسارات مفصولةٌ بأسطر، لا بنقطتين: مسارُ ويندوز يبدأ بحرفِ سواقةٍ ونقطتين
 #         (D:\…) فالفصلُ بالنقطتين يقطعه نصفين ويُفشِل البناءَ على ويندوز وحده.
+# <<EXTRA_EXT_DIRS_BLOCK — سياجٌ يقرأ منه tests/static/check_extra_ext_dirs.sh هذه
+# الكتلةَ **نفسَها** ليختبرها. نسخةٌ ثانيةٌ من المنطق في الاختبار تنجرف صامتةً.
 if [[ -n "${MIHRAB_EXTRA_EXT_DIRS:-}" ]]; then
   while IFS= read -r _extra; do
     [[ -n "$_extra" ]] || continue
@@ -291,9 +298,14 @@ if [[ -n "${MIHRAB_EXTRA_EXT_DIRS:-}" ]]; then
     _dst="$STAGE_EXT/$(basename "$_extra")"
     [[ ! -e "$_dst" ]] || { echo "❌ MIHRAB_EXTRA_EXT_DIRS: $(basename "$_extra") يصادم إضافةً مدمجة" >&2; exit 1; }
     cp -r "$_extra" "$_dst"
+    strip_ext_artifacts "$_dst"
     log "إضافةُ معاينةٍ مُجهَّزة: $(basename "$_extra")"
   done <<< "$MIHRAB_EXTRA_EXT_DIRS"
 fi
+# EXTRA_EXT_DIRS_BLOCK>>
+# استعادةُ nullglob: كتلةُ المعاينة حلّت محلَّ `shopt -u` فبقي مفعَّلًا إلى آخرِ الملفّ،
+# وحلقةٌ على مجلّدٍ فارغٍ صارت تمرّ صامتةً بدل أن تُفشِل البناء (حمولةُ ص أدناه).
+shopt -u nullglob
 
 # ── (ز-2ب-2) حزم سلسلة أدوات ص المدمجة (الخيار ١): احقن sad-run.exe في bin/ داخل
 #         نسخة mihrab-welcome المُجهَّزة كي يعمل «شغّل ملفّ ص» فورًا دون تثبيت. المصدر:
