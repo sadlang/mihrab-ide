@@ -1,7 +1,7 @@
 {
   "_comment": "مانيفستُ بناءِ المعاينة الحامل لإضافة لغة ألف — النسخةُ المخبوزة (احتياط). النسخةُ الحيّة تعيش على الخادم في `dl/preview-alif/releases.json` بجوار الحزم، وتجلبها صفحةُ المعاينة عند فتحها.\n\nوهذا بناءٌ مؤقّتٌ للتجريب لا إصدارٌ منشور: لا يُذكر في صفحة التنزيل الرئيسة، ولا يُوصَل إليه من الملاحة، ولا يحمل رقمَ إصدارٍ خاصًّا به. غايتُه أن يفتح مطوّرُ ألفٍ محرابًا فيجد لغتَه تعمل بلا خطوةِ تثبيت.\n\nالحقلُ assets فارغٌ حتّى يُبنى ويُرفَع أوّلُ بناءِ معاينة؛ والصفحةُ تقول ذلك صراحةً بدل أن تعرض جدولًا فارغًا بلا تفسير.",
-  "version": "1.121.05820",
-  "date": "2026-08-30",
+  "version": "1.121.05825",
+  "date": "2026-08-31",
   "origin": "https://sad-lang.org/mihrab/preview/alif/",
   "base": "../../dl/preview-alif/",
   "alif_extension": {
@@ -12,21 +12,21 @@
   "assets": [
     {
       "id": "win-x64-zip",
-      "file": "Mihrab-1.121.05820-alif-win-x64-zip.zip",
-      "size": 203121806,
-      "sha256": "4a013c243e6472b62557c0083456ae73718a7d109907de72a8cdad521307375d"
+      "file": "Mihrab-1.121.05825-alif-win-x64-zip.zip",
+      "size": 203123167,
+      "sha256": "4b9be51ef0b0d0fa6c404499897da196f38c3929305513a9c1e6d57612cbc097"
     },
     {
       "id": "linux-x64-tar",
-      "file": "Mihrab-1.121.05820-alif-linux-x64-tar.tar.gz",
-      "size": 183464398,
-      "sha256": "61c57fe44296c44208f1d35b473f2748d3814713c6a5d503919a7c4a49a52e25"
+      "file": "Mihrab-1.121.05825-alif-linux-x64-tar.tar.gz",
+      "size": 183464075,
+      "sha256": "48bccfaee26c2d405808214bb98dc3875721fae8f9ff97c021ed1fc694086a7f"
     },
     {
       "id": "mac-arm64",
-      "file": "Mihrab-1.121.05820-alif-mac-arm64.zip",
-      "size": 183329188,
-      "sha256": "10ea44b740edfc8947bd213795db28e121a87fb639d41caaa41188d7a45da753"
+      "file": "Mihrab-1.121.05825-alif-mac-arm64.zip",
+      "size": 183330290,
+      "sha256": "80d2fc37d374fd62a1d28fed1c6a8b4fb529f83fb9af7c1669e522962cdece32"
     }
   ]
 }
