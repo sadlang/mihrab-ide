@@ -948,6 +948,7 @@ a{color:var(--accent)}
 """
 
     ext = baked.get("alif_extension", {})
+    rt = baked.get("alif_runtime", {})
     body = """<div class="wrap">
 <header>
   <span class="tag">بناءُ معاينةٍ مؤقّت</span>
@@ -975,10 +976,11 @@ a{color:var(--accent)}
     <li class="yes">فهرسةُ رموز المشروع: الذهابُ إلى التعريف والبحثُ عبر الملفّات</li>
     <li class="yes">تنبيهٌ على كلمات ألف 5 المتغيّرة (مثل <code>لاجل</code> ← <code>لكل</code>) بإصلاحٍ سريع</li>
   </ul>
-  <p>واثنان يحتاجان ما هو خارجَ محراب:</p>
+  <p>وواحدٌ يحتاج ما هو خارجَ محراب:</p>
   <ul>
-    <li><b>تشغيلُ البرنامج</b> يحتاج مفسّرَ ألف في مسار النظام، أو مسارًا صريحًا
-    في الإعداد <code>alif.executablePath</code>.</li>
+    <li class="yes"><b>تشغيلُ البرنامج</b> — مفسّرُ ألف مشحونٌ في هذا البناء، فيعمل
+    <code>تشغيل ملفّ ألف</code> بلا تنزيلٍ ولا إعداد. ومن أراد مفسّرَه فالإعدادُ
+    <code>alif.executablePath</code> أسبقُ من المشحون، وكذلك ثنائيٌّ في مشروعك.</li>
     <li><b>خادمُ ألف اللغويّ الخارجيّ</b> مطفأٌ افتراضيًّا
     (<code>alif.lsp.enabled</code>) — والمحلّلُ المدمج يعمل بدونه.</li>
   </ul>
@@ -997,6 +999,8 @@ a{color:var(--accent)}
   <p>إضافةُ لغة ألف من <a href="{src}">{src_short}</a> بترخيص MIT، مأخوذةٌ في هذا
   البناء من الإصدار {ver} وبصمتُه مثبَّتةٌ في شفرةِ بنائنا:
   <span class="sha">{sha}</span></p>
+  <p>ومفسّرُ ألف من <a href="{rt_src}">{rt_src_short}</a>، الإصدار {rt_ver}،
+  مشحونٌ في <code>bin/</code> داخل الإضافة وبصمةُ حزمةِ كلِّ منصّةٍ مثبَّتةٌ كذلك.</p>
   <p>محراب — منصّةُ تطويرٍ عربيّةٌ مفتوحةُ المصدر (MIT) ·
   <a href="https://github.com/sadlang/mihrab-ide">المستودع</a></p>
 </footer>
@@ -1004,7 +1008,10 @@ a{color:var(--accent)}
         src=html.escape(ext.get("source", "")),
         src_short=html.escape(ext.get("source", "").replace("https://github.com/", "")),
         ver=html.escape(ext.get("version", "")),
-        sha=html.escape(ext.get("sha256", "")))
+        sha=html.escape(ext.get("sha256", "")),
+        rt_src=html.escape(rt.get("source", "")),
+        rt_src_short=html.escape(rt.get("source", "").replace("https://github.com/", "")),
+        rt_ver=html.escape(rt.get("version", "")))
 
     return (
         "<!doctype html>"

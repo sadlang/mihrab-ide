@@ -180,6 +180,28 @@ def main():
                 bad("تثبيتُ ألف منجرف: الجالبُ %s=%r وصفحةُ المعاينة %r"
                     % (key, m.group(1), declared.get(key)))
 
+        # والمفسّرُ مثلُها: إصدارٌ واحدٌ وثلاثُ بصماتٍ لثلاث منصّات. وبصمةُ منصّةٍ
+        # تُرقّى وحدَها في الجالبِ دون الصفحةِ تجعل مطوّرَ تلك المنصّةِ يقارن بصمةً
+        # لا تخصّ ما نزّله — وهو أسوأُ من ألّا نعلن بصمةً أصلًا.
+        runtime = (json.load(open(alif_json, encoding="utf-8")).get("alif_runtime") or {})
+        m = re.search(r'ALIF_RUNTIME_VERSION:-([^}]*)\}', src)
+        if not m:
+            bad("لم أجد تثبيتَ ALIF_RUNTIME_VERSION في fetch_alif_extension.sh")
+        elif m.group(1) != runtime.get("version"):
+            bad("تثبيتُ مفسّر ألف منجرف: الجالبُ version=%r وصفحةُ المعاينة %r"
+                % (m.group(1), runtime.get("version")))
+        pinned = dict(re.findall(
+            r'RT_ASSET="([^"]+)"\s*\n\s*RT_SHA="\$\{ALIF_RUNTIME_SHA256:-([0-9a-f]{64})\}"', src))
+        declared_assets = runtime.get("assets") or {}
+        if not pinned:
+            bad("لم أجد بصماتِ حزمِ المفسّر في fetch_alif_extension.sh")
+        for asset, sha in sorted(pinned.items()):
+            if declared_assets.get(asset) != sha:
+                bad("بصمةُ %s منجرفة: الجالبُ %r وصفحةُ المعاينة %r"
+                    % (asset, sha, declared_assets.get(asset)))
+        for asset in sorted(set(declared_assets) - set(pinned)):
+            bad("صفحةُ المعاينة تُعلن حزمةً لا يجلبها الجالب: %s" % asset)
+
     report()
     return 1 if fails else 0
 

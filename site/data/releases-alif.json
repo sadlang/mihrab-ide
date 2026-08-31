@@ -5,9 +5,18 @@
   "origin": "https://sad-lang.org/mihrab/preview/alif/",
   "base": "../../dl/preview-alif/",
   "alif_extension": {
-    "version": "0.1.1",
+    "version": "0.1.2",
     "source": "https://github.com/SalehKadah/alif-vscode",
-    "sha256": "c4a4561d4d13e5df95fdf8d7006c33bae96e7b3b1cbd983db9bd6a81d8b44fc5"
+    "sha256": "917510b0931b9362097c238f34da7b942c56c626ac9bc994e625aa80f8afa38f"
+  },
+  "alif_runtime": {
+    "version": "v5.2.0-ar.2",
+    "source": "https://github.com/SalehKadah/Alif",
+    "assets": {
+      "alif-windows-x64.zip": "0dd3a9257d56f317de94209c26b6e97b7a115a4d1c7f2c7b522f5e2dffbf5b70",
+      "alif-linux-x64.tar.gz": "40ceb5e5ab49abe346b8d685197444fd8166a1fc598010435e8bf9faae058ab2",
+      "alif-macos-universal.tar.gz": "afc25cfa30755cfe2f1254bd2ba04f6c1e66b6af7b8053816ccd6908a425aeae"
+    }
   },
   "assets": [
     {

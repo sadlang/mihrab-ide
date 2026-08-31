@@ -127,6 +127,80 @@ MAKE
   fi
 fi
 
+
+# ═══ ٤) فكُّ حزمةِ المفسّر: لا خروجَ من الوجهة، ولا وصلات، وبتُّ التنفيذ يصل ═══
+RT=$(sed -n '/# <<RUNTIME_EXTRACT/,/# RUNTIME_EXTRACT>>/p' "$ROOT/build/fetch_alif_extension.sh")
+if [[ -z "$RT" ]]; then
+  no "لم أجد كتلةَ فكّ المفسّر (سياجٌ مفقود؟)"
+elif ! command -v python >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  echo "  ⏭️  لا بايثون — تخطّي حراس فكّ المفسّر"
+else
+  PY=python; command -v python >/dev/null 2>&1 || PY=python3
+  { echo 'RT_TMP="$1"; DEST="$2"'; echo "$RT"; } > "$TMP/rt.sh"
+
+  # يبني الحزمَ الخبيثةَ والسليمة. الحزمُ الحقيقيّةُ تلفّ محتواها في مجلّدٍ أعلى
+  # واحدٍ يُسقَط عند الفكّ، فكلُّ اسمٍ ههنا يبدأ به كي يُقاس الفكُّ كما يجري فعلًا.
+  "$PY" - "$TMP" <<'MAKERT'
+import os, sys, tarfile, zipfile, io
+d = sys.argv[1]
+
+with zipfile.ZipFile(os.path.join(d, "evil.zip"), "w") as z:
+    z.writestr("pkg/../../pwned-zip.txt", "x")
+
+with zipfile.ZipFile(os.path.join(d, "good.zip"), "w") as z:
+    info = zipfile.ZipInfo("pkg/alif")
+    info.external_attr = 0o755 << 16
+    z.writestr(info, "#!/bin/sh\n")
+
+with tarfile.open(os.path.join(d, "evil.tar.gz"), "w:gz") as t:
+    data = b"x"
+    m = tarfile.TarInfo("pkg/../../pwned-tar.txt"); m.size = len(data)
+    t.addfile(m, io.BytesIO(data))
+
+with tarfile.open(os.path.join(d, "link.tar.gz"), "w:gz") as t:
+    m = tarfile.TarInfo("pkg/alif"); m.type = tarfile.SYMTYPE; m.linkname = "/etc/passwd"
+    t.addfile(m)
+
+with tarfile.open(os.path.join(d, "good.tar.gz"), "w:gz") as t:
+    data = b"#!/bin/sh\n"
+    m = tarfile.TarInfo("pkg/alif"); m.size = len(data); m.mode = 0o755
+    t.addfile(m, io.BytesIO(data))
+MAKERT
+
+  rt_rejects () { # اسمُ الحالة، الأرشيف، الملفُّ الذي كان سيُكتب
+    rm -rf "$TMP/rt"; mkdir -p "$TMP/rt/bin"
+    out=$(cd "$TMP/rt" && bash "$TMP/rt.sh" "$2" "$TMP/rt" 2>&1); rc=$?
+    if (( rc != 0 )) && [[ ! -e "$TMP/$3" && ! -e "$TMP/rt/$3" ]]; then
+      ok "$1"
+    else
+      no "$1 — rc=$rc · $out"
+    fi
+  }
+
+  rt_rejects "zip يخرج من الوجهة يُرفَض"  "$TMP/evil.zip"     "pwned-zip.txt"
+  rt_rejects "tar يخرج من الوجهة يُرفَض"  "$TMP/evil.tar.gz"  "pwned-tar.txt"
+  rt_rejects "وصلةٌ رمزيّةٌ في tar تُرفَض" "$TMP/link.tar.gz"  "rt/bin/alif"
+
+  # والسليمُ يمرّ: المجلّدُ الأعلى يُسقَط، وبتُّ التنفيذ ينجو.
+  for arch in good.zip good.tar.gz; do
+    rm -rf "$TMP/rt"; mkdir -p "$TMP/rt/bin"
+    out=$(bash "$TMP/rt.sh" "$TMP/$arch" "$TMP/rt" 2>&1); rc=$?
+    if (( rc == 0 )) && [[ -f "$TMP/rt/bin/alif" ]]; then
+      ok "$arch: المجلّدُ الأعلى يُسقَط والملفُّ يصل"
+    else
+      no "$arch: rc=$rc · $out"
+      continue
+    fi
+    if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || "$OSTYPE" == win32 ]]; then
+      echo "  ⏭️  ويندوز لا يحمل بتَّ تنفيذٍ — تخطّي فحصَه لـ$arch"
+    elif [[ -x "$TMP/rt/bin/alif" ]]; then
+      ok "$arch: بتُّ التنفيذ نجا الفكّ"
+    else
+      no "$arch: بتُّ التنفيذ سقط في الفكّ — مفسّرٌ موجودٌ لا يعمل"
+    fi
+  done
+fi
+
 if (( fails )); then
   echo "❌ $fails فحصًا ساقطًا في حراس بناءِ المعاينة."
   exit 1

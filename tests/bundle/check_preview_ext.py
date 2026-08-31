@@ -54,6 +54,21 @@ def referenced_paths(pkg):
     return out
 
 
+BINARIES = ("alif.exe", "alif")
+
+
+def staged_binary(src):
+    """‏(اسمٌ، حجمٌ) لمفسّرٍ مشحونٍ في `bin/` بالمصدر، أو None إن لم يُشحن.
+
+    التوقّعُ يُشتقّ من المُجهَّز لا يُفترَض: إضافةٌ بلا مفسّرٍ مشحونٍ حالةٌ مشروعة،
+    وما يُشحن فيجب أن يصل. ولو ثبّتنا الاسمَ لصار كلُّ إضافةٍ أخرى ساقطةً."""
+    for name in BINARIES:
+        candidate = os.path.join(src, "bin", name)
+        if os.path.isfile(candidate):
+            return name, os.path.getsize(candidate)
+    return None
+
+
 def verify(dist, staged_dirs):
     """يعيد (رمزَ الخروج، أسطرَ التقرير). منطقٌ واحدٌ يستدعيه CI والمطوّر."""
     lines = []
@@ -94,8 +109,26 @@ def verify(dist, staged_dirs):
             failed += 1
             lines.append("❌ %s: ملفّاتٌ يَعِد بها package.json ولم تصل: %s"
                          % (name, "، ".join(missing)))
+        # المفسّرُ المشحون: لا يذكره package.json فلا يراه فحصُ
+        # referenced_paths — وهو فرقُ «أفتح ملفَ ألف فيعمل» و«أفتحه فيُلوَّن».
+        expected_bin = staged_binary(src)
+        if expected_bin:
+            bin_name, bin_size = expected_bin
+            arrived = os.path.join(dst, "bin", bin_name)
+            if not os.path.isfile(arrived):
+                failed += 1
+                lines.append("❌ %s: مفسّرٌ مُجهَّزٌ ولم يصل الحزمة (bin/%s)" % (name, bin_name))
+            elif os.path.getsize(arrived) != bin_size:
+                failed += 1
+                lines.append("❌ %s: المفسّرُ وصل مبتورًا: %d بايت ≠ %d المُجهَّز"
+                             % (name, os.path.getsize(arrived), bin_size))
+            elif os.name != "nt" and not os.access(arrived, os.X_OK):
+                # حزمُ gulp والنسخُ قد تُسقِط بتَّ التنفيذ، فيصل ملفٌّ موجودٌ لا يعمل.
+                failed += 1
+                lines.append("❌ %s: المفسّرُ وصل بلا بتِّ تنفيذ: bin/%s" % (name, bin_name))
         if not failed:
-            lines.append("✅ %s %s وصلت الحزمة كاملةً" % (name, got.get("version", "")))
+            detail = " ومعها المفسّر" if expected_bin else ""
+            lines.append("✅ %s %s وصلت الحزمة كاملةً%s" % (name, got.get("version", ""), detail))
     return (1 if failed else 0), lines
 
 
