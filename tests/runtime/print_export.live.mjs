@@ -48,8 +48,35 @@ const BROWSERS = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
 ];
-const browser = BROWSERS.find(existsSync);
-if (!browser) { console.log("mode=skipped — لا متصفّحَ Chromium للطباعة (هذا ليس نجاحًا: لم يُطبَع شيء)"); process.exit(2); }
+// **الوجودُ ليس قدرة.** كان الاختيارُ `BROWSERS.find(existsSync)` — أوّلُ موجودٍ يفوز.
+// وقِيس على هذا الجهاز أنّ Edge موجودٌ ويخرج بالرمز **صفر** ولا يكتب PDF: طباعةٌ صامتةٌ
+// فاشلة. فكان المِجَسُّ يسقط بالرمز 2 («خطأٌ تشغيليّ») وكروم بجانبه يعمل — أي أنّ
+// تغطيةَ PR-01 كانت مفقودةً على كلّ جهازٍ فيه Edge، وهو كلُّ جهاز ويندوز.
+//
+// فالاختيارُ بالقياس: تُطبَع صفحةٌ تافهةٌ بكلّ مرشَّحٍ ويفوز أوّلُ من **أنتج ملفًّا**.
+// والمرشَّحُ الواحدُ يُستعمَل للذراعين معًا — ذراعان بمحرّكَي طباعةٍ مختلفَين لا تُقارَنان.
+function probeBrowser() {
+  const probeDir = mkdtempSync(join(tmpdir(), "mihrab-probe-"));
+  const h = join(probeDir, "p.html");
+  writeFileSync(h, "<html><body><p>p</p></body></html>", "utf8");
+  const tried = [];
+  for (const b of BROWSERS.filter(existsSync)) {
+    const p = join(probeDir, `p-${tried.length}.pdf`);
+    spawnSync(b, ["--headless=new", "--disable-gpu", "--no-sandbox", `--print-to-pdf=${p}`, h],
+      { encoding: "utf8", timeout: 60_000, windowsHide: true });
+    if (existsSync(p)) return { browser: b, tried };
+    tried.push(b);
+  }
+  return { browser: null, tried };
+}
+const { browser, tried: mute } = probeBrowser();
+if (!browser) {
+  console.log(mute.length
+    ? `mode=skipped — لا متصفّحَ Chromium **يطبع**: ${mute.length} موجودًا وكلُّها صامتة (${mute.join(", ")})`
+    : "mode=skipped — لا متصفّحَ Chromium للطباعة (هذا ليس نجاحًا: لم يُطبَع شيء)");
+  process.exit(2);
+}
+if (mute.length) console.log(`  ℹ️  تُخُطِّي ${mute.length} متصفّحًا لا يكتب PDF (خرجَ صفرًا صامتًا): ${mute.join(", ")}`);
 
 const { buildPrintHtml } = require_(join(EXT, "print-export.js"));
 const { loadFontDataUri } = require_(join(EXT, "bundled-font.js"));

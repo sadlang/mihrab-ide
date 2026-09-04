@@ -540,6 +540,47 @@ def _arabic_font_shipped():
         f"لا ملفَّ خطٍّ صالحًا بجانب CSS المشحون: {side} [م-٢٥]")
 
 
+@check("بصماتُ النزاهة في المشحون تصف ما شُحن فعلًا [PK-01]")
+def _integrity_checksums_match():
+    """المنبعُ يبصم عشرةَ ملفّاتٍ ويتحقّق منها **عند كلّ إقلاع**.
+
+    فإن اختلفت واحدةٌ عرض «يبدو أن تثبيت Mihrab تالف. يرجى إعادة التثبيت» — إشعارٌ
+    يراه كلُّ مستخدمٍ في كلّ مرّة، ويقول له إنّ نسختَه معطوبةٌ وهي سليمة.
+
+    **وقد وقع.** خطوةُ (ط-0أ3) تعيد كتابةَ `workbench.desktop.main.css` بعد التحزيم
+    لتصلَ الخطَّ العربيَّ بملفٍّ مجاور، والبصمةُ محسوبةٌ قبلها. قِيس على ‎1.121.05937‎:
+    تسعٌ مطابقةٌ وواحدةٌ بائتة — الورقةُ بعينها.
+
+    ولم يمسكه شيء: بقيّةُ مِجَسّات L2 تسأل «أوصلَت الشيفرةُ إلى الحزمة؟» لا «أهي
+    النسخةُ التي بُصِمت؟»، ومِجَسُّ L3 يقرأ الإشعاراتِ بـ`some()` فلا يسقط لإشعارٍ
+    زائد. وهذا الفحصُ هو الحارسُ الوحيد.
+
+    ويُشغَّل الحسابَ نفسَه الذي يُصلحه `build/refresh_checksums.py` — لا نسخةً
+    ثانيةً منه: حارسٌ يعيد كتابةَ ما يحرسه يقيس نفسَه.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "build"))
+    import refresh_checksums as R  # noqa: E402
+
+    pj = os.path.join(APP, "product.json")
+    if not os.path.isfile(pj):
+        print("  ⏭️  لا product.json مشحون — تخطٍّ.")
+        return
+    with open(pj, encoding="utf-8-sig") as f:
+        recorded = json.load(f).get("checksums") or {}
+    assert recorded, "لا مفاتيحَ `checksums` في product.json المشحون — الآليّةُ غائبةٌ لا سليمة"
+    stale = []
+    for key, want in sorted(recorded.items()):
+        f = os.path.join(APP, "out", key)
+        assert os.path.isfile(f), f"ملفٌّ مبصومٌ مفقودٌ من المشحون: out/{key}"
+        got = R._digest(f)
+        if got != want:
+            stale.append(f"out/{key} (مسجَّلة {want} · فعليّة {got})")
+    assert not stale, (
+        "بصماتٌ بائتةٌ في المشحون ⇒ «يبدو أن تثبيت Mihrab تالف» عند كلّ إقلاع: "
+        + " · ".join(stale)
+        + " — خطوةُ ما بعد بناءٍ كتبت في out/ بعد (ط-0ج)، أو سقط refresh_checksums.py")
+
+
 @check("product.json المبنيّ: عربيّ افتراضيّ (defaultLocale=ar)")
 def _built_locale():
     pj = os.path.join(APP, "product.json")
