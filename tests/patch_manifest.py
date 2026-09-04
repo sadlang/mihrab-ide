@@ -47,6 +47,10 @@ PATCHERS = [
     # عناوين لوحة الإعدادات: مشتقّةٌ حسابيًّا من اسم المفتاح وقت التشغيل، فلا مدخلَ لها
     # في NLS ولا يبلغها خبزُ العربيّة. تُعرَّب بإلحاق استدعاءٍ بمخرَج wordifyKey.
     ("patch_settings_labels.py", "root", None),
+    # بياناتُ نسخةِ ويندوز في الثنائيّات المشحونة: المنبعُ يكتب ناشرَه في أربعة
+    # مواضعَ (‏حزمةُ Electron · rcedit للوحدات الأصليّة · بناءُ الخادم · مواردُ CLI)،
+    # فكان المشحونُ ينسب نفسَه إلى VSCodium وإلى Microsoft Corporation.
+    ("patch_win_metadata.py", "root", None),
 ]
 
 # رُقَع «الجذر» تشتقّ ملفّاتها من قائمة FILES داخلها. لا تُسرَد هنا يدويًّا: نسخةٌ
@@ -54,6 +58,7 @@ PATCHERS = [
 ROOT_PATCHER_FILES_ATTR = {
     "patch_config_folder.py": "FILES",
     "patch_settings_labels.py": "FILES",
+    "patch_win_metadata.py": "FILES",
 }
 
 # مرقِّعات بناء لا تُطبَّق على مصدر vscode مباشرةً (تُستثنى من فحص المراسي L1، لكنّها

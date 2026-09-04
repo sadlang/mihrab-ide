@@ -15,6 +15,8 @@ import filecmp
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import urllib.parse
 
@@ -320,6 +322,91 @@ def check(name):
 @check("Mihrab.exe منتَج")
 def _exe():
     assert os.path.isfile(EXE), f"لا exe: {EXE}"
+
+
+# الثنائيّاتُ التي تحمل اسمَ منتَجِنا: يجب أن تحمل ناشرَنا معه.
+_VERSIONED_BINARIES = [
+    "Mihrab.exe",
+    os.path.join("bin", "mihrab-tunnel.exe"),
+    os.path.join("resources", "app", "node_modules", "@vscode", "ripgrep-universal",
+                 "bin", "win32-x64", "rg.exe"),
+]
+_EXPECTED_COMPANY = "Sad Language"
+
+
+def _version_fields(path):
+    """‏CompanyName/ProductName/LegalCopyright من VS_VERSION_INFO، أو None إن تعذّر.
+
+    **عبر PowerShell لا بقارئٍ محلّيّ الصنع.** جُرِّب قارئُ بايتٍ يبحث عن المفتاح
+    بترميز UTF-16LE ثمّ يقرأ ما بعده: نجح على `rg.exe` و`mihrab-tunnel.exe` وأعاد على
+    `Mihrab.exe` قيمةَ مفتاحٍ مجاور (`CompanyShortName`) واسمَ منتَجٍ مشوَّشًا — لأنّ
+    قسمَ موارد Electron أكبرُ وبنيتُه لا تُقرَأ بالجوار. وحارسٌ يعيد قيمةً خاطئةً
+    أسوأُ من حارسٍ لا يعمل. فـ`.VersionInfo` في .NET هو القارئُ الذي يقرأ ما يقرؤه
+    ويندوز نفسُه — وهو المرجعُ الذي نحرسه أصلًا.
+    """
+    ps = shutil.which("powershell") or shutil.which("pwsh")
+    if not ps:
+        return None
+    script = (
+        "$v=(Get-Item -LiteralPath $env:MIHRAB_VI_PATH).VersionInfo;"
+        "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+        "Write-Output $v.CompanyName; Write-Output $v.ProductName;"
+        "Write-Output $v.LegalCopyright"
+    )
+    env = dict(os.environ, MIHRAB_VI_PATH=path)
+    try:
+        r = subprocess.run([ps, "-NoProfile", "-NonInteractive", "-Command", script],
+                           capture_output=True, env=env, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    lines = r.stdout.decode("utf-8", "replace").replace("\r", "").split("\n")
+    while len(lines) < 3:
+        lines.append("")
+    return {"CompanyName": lines[0].strip(), "ProductName": lines[1].strip(),
+            "LegalCopyright": lines[2].strip()}
+
+
+@check("ناشرُ الثنائيّات المشحونة هو ناشرُنا [BR-04]")
+def _binary_publisher():
+    """‏`CompanyName` هو ما يعرضه ويندوز ناشرًا، وما تقرؤه أدواتُ الجرد وسياساتُ AppLocker.
+
+    **وقد قِيس في المشحون** (‏1.126.05942): `Mihrab.exe` و`rg.exe` يقولان «VSCodium»،
+    و`bin/mihrab-tunnel.exe` يقول «**Microsoft Corporation**» — ملفٌّ باسمنا واسمُ منتَجِنا
+    فيه (محراب) ينسب نفسَه إلى جهةٍ حقيقيّةٍ ليست ناشرَه.
+
+    ولم يمسكه حارسٌ لأنّ حرّاسَ الهويّة يسألون `product.json` والنصَّ المُصيَّر، وهما
+    صحيحان تمامًا. أمّا `VERSIONINFO` فمَورِدُه مصادرُ البناء لا المنتَج (أربعةُ مواضعَ:
+    حزمةُ Electron · rcedit · بناءُ الخادم · مواردُ CLI) ولم يكن في نطاق أيّ فحص.
+
+    ويزداد وزنُه مع التوقيع: التوقيعُ يقول «الناشر: لغة ص» والملفُّ يقول غيرَه، فيعرض
+    ويندوز المتناقضَين في النافذة نفسِها — وشروطُ التوقيع للمشاريع المفتوحة تشترط
+    بياناتِ منتَجٍ صحيحةً على كلّ ما يُوقَّع.
+    """
+    probed = 0
+    for rel in _VERSIONED_BINARIES:
+        path = os.path.join(DIST, rel)
+        if not os.path.isfile(path):
+            continue
+        fields = _version_fields(path)
+        if fields is None:
+            print("  ⏭️  لا PowerShell لقراءة VERSIONINFO — تخطٍّ.")
+            return
+        probed += 1
+        co = fields["CompanyName"]
+        assert co == _EXPECTED_COMPANY, (
+            f"{rel}: CompanyName = {co!r} لا {_EXPECTED_COMPANY!r} — "
+            "الملفُّ ينسب نفسَه إلى ناشرٍ ليس ناشرَه")
+        cp = fields["LegalCopyright"]
+        assert "VSCodium" not in cp and "Microsoft" not in cp, (
+            f"{rel}: LegalCopyright ما زال يذكر جهةً أخرى: {cp!r}")
+        assert "All rights reserved" not in cp, (
+            f"{rel}: LegalCopyright يقول «All rights reserved» ومحرابٌ تحت MIT: {cp!r}")
+    # شاهدُ تفعيلٍ موجَب: لا ملفَّ يُقاس ⇒ الفحصُ يمرّ على العمى.
+    assert probed, ("لم يُقَس أيُّ ثنائيّ — لا حزمةَ أو تغيّرت المسارات "
+                    "(‏_VERSIONED_BINARIES)")
+    print(f"  ↳ {probed} ثنائيًّا: CompanyName={_EXPECTED_COMPANY}")
 
 
 @check("هوية بصريّة: كلّ أصول win32 في الحزمة = مصدر محراب (بايتيًّا)")

@@ -236,17 +236,27 @@ def _check_files_shape(patcher):
     for entry in files:
         assert len(entry) == 3, f"إدخال FILES ليس ثلاثيًّا: {entry[:1]}"
         relpath, mark, edits = entry
-        assert isinstance(relpath, str) and relpath.startswith("src/"), f"مسار غير صالح: {relpath}"
+        # ‏`src/` ليست الجذرَ الوحيد: بياناتُ نسخةِ ويندوز تُكتَب في سكربتات البناء
+        # (`build/lib/electron.ts`) وفي مواردِ Rust (`cli/build.rs`)، لا في مصدر المحرّر.
+        # وحصرُ المسار في `src/` كان سيمنع رقعةً صحيحةً بحجّةٍ شكليّة.
+        assert isinstance(relpath, str) and relpath.startswith(("src/", "build/", "cli/")),             f"مسار غير صالح: {relpath}"
         assert isinstance(mark, str) and mark, f"وسم غير صالح لـ{relpath}"
         marks.append(mark)
         assert edits, f"لا تعديلات لـ{relpath}"
         for e in edits:
             assert len(e) == 3, f"تعديل ليس ثلاثيًّا في {relpath}"
             old, new, count = e
-            assert isinstance(old, str) and old, f"مرساة فارغة في {relpath}"
+            # **والمرساةُ قد تكون صورًا لا صورةً واحدة.** مرقِّعٌ يعمل على شجرتين
+            # (نظيفةٍ من مايكروسوفت في L1 وdev_sync · ومعالَجةٍ بـVSCodium في البناء)
+            # يحتاج صورتين للنصّ نفسِه. تُفحَص كلُّ صورةٍ بالشروط نفسِها — فالتعميمُ
+            # يوسّع ما يُقبَل شكلًا ولا يُرخي شيئًا ممّا يُفحَص.
+            forms = old if isinstance(old, (tuple, list)) else (old,)
+            assert forms, f"مرساة فارغة في {relpath}"
+            for form in forms:
+                assert isinstance(form, str) and form, f"مرساة فارغة في {relpath}"
+                assert form != new, f"مرساة == استبدال في {relpath} (لا عمل)"
             assert isinstance(new, str) and new, f"استبدال فارغ في {relpath}"
             assert isinstance(count, int) and count > 0, f"عدّ غير موجب في {relpath}"
-            assert old != new, f"مرساة == استبدال في {relpath} (لا عمل)"
     # لا نُلزِم «الاستبدالُ يحوي المرساةَ أو الوسم»: مرقِّعاتُ الجذر تختلف في آليّة
     # الـidempotency (وسمٌ في الملفّ · ثابتٌ مستورَد · استبدالٌ كامل)، وL1 يبرهنها فعليًّا
     # بإعادة تشغيل المرقِّع والتأكّد أنّ شيئًا لم يتغيّر — وهو برهانٌ لا ادّعاء.
@@ -272,6 +282,21 @@ def _core_patch_version_embedded():
     spec.loader.exec_module(mod)
     assert mod.VERSION_MARK in mod.INJECT, (
         f"«{mod.VERSION_MARK}» غير موجود في INJECT — حدّث التعليق داخل الكتلة مع رفع الإصدار.")
+
+    # **والاتّجاهُ المعاكس — وهو الذي وقع.** الفحصُ أعلاه يمسك «رُفِع الإصدارُ ونُسِي
+    # التعليق». أمّا «وُسِّعت الكتلةُ ونُسِي الإصدارُ» فكان يمرّ صامتًا: يرى المرقِّعُ
+    # وسمَه الحاليَّ في `build.sh` المُرقَّع من بناءٍ سابق فيتخطّى، ولا يُستعاد الملفُّ
+    # نظيفًا، ولا تُحقَن الرقعةُ الجديدة. البناءُ ينجح والرقعةُ غائبة.
+    #
+    # قِيس يوم 2026-09-04: أُضيفت رقعةُ بيانات نسخةِ ويندوز إلى INJECT بلا رفعِ الإصدار،
+    # فبُني ‎1.126.05942‎ كاملًا والثنائيّاتُ ما زالت تقول «VSCodium» و«Microsoft
+    # Corporation». وما كشفه إلّا حارسُ L2 الذي كُتب للرقعة نفسِها.
+    import hashlib
+    body = mod.INJECT.replace(mod.VERSION_MARK, "")
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+    assert digest == mod.INJECT_DIGEST, (
+        f"محتوى INJECT تغيّر ({digest} ≠ {mod.INJECT_DIGEST}) — ارفع CORE_PATCH_VERSION "
+        "وحدّث INJECT_DIGEST معًا، وإلّا تخطّى المرقِّعُ حقنَك صامتًا على build.sh مُرقَّعٍ سلفًا.")
 
 
 # ───────── L0-2ب: قائمة الجولات المُسقَطة (لا تبتلع محتوى الوصول) ─────────

@@ -469,6 +469,9 @@ fi
 # تعريب عناوين لوحة الإعدادات (تُشتَقّ حسابيًّا فلا تصلها ترجمةُ NLS). ينسخ معه وحدةَ
 # TS واحدة عبر .mihrab-core أدناه.
 [[ -f "$ROOT/build/patch_settings_labels.py" ]] && cp -f "$ROOT/build/patch_settings_labels.py" "$UP/.mihrab-patch-settings-labels.py"
+# بياناتُ نسخةِ ويندوز في الثنائيّات (‏CompanyName/LegalCopyright). قِيس على المشحون:
+# ‏Mihrab.exe كان ينسب نفسَه إلى VSCodium، وmihrab-tunnel.exe إلى Microsoft Corporation.
+[[ -f "$ROOT/build/patch_win_metadata.py" ]] && cp -f "$ROOT/build/patch_win_metadata.py" "$UP/.mihrab-patch-win-metadata.py"
 [[ -d "$ROOT/patches/core" ]] && { rm -rf "$UP/.mihrab-core"; cp -rf "$ROOT/patches/core" "$UP/.mihrab-core"; }
 # ورقتا الأنماط [VA-05]: الاتّجاه والهويّة. **كلتاهما إلزاميّةٌ وغيابُها يُفشِل هنا**.
 #
