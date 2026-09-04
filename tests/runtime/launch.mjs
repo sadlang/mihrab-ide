@@ -22,7 +22,20 @@ import { CDP, sleep } from "./harness.mjs";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..");
 const UP = join(ROOT, ".upstream", "vscode");
-const TOOLCHAIN = join(ROOT, "build", ".toolchain", "node-v22.22.1-win-x64");
+// مسارُ سلسلةِ الأدوات **يُشتَقّ من `upstream.json`** لا يُكتب هنا. كان مثبَّتًا حرفيًّا
+// (`node-v22.22.1-win-x64`)، وترقيةُ المنبع إلى 1.126 نقلت الرقمَ إلى 24.15.0 فصار
+// المسارُ يشير إلى مجلّدٍ غيرِ موجود — و`envWithToolchain` تتجاهله بصمتٍ حينها
+// (`existsSync` كاذبة)، فيرثُ الطفلُ Node النظامِ بلا كلمة. وNode أقدمُ من أن يصرّف
+// ‏`.ts` يُفشِل التصريفَ برسالةٍ لا تذكر Node. نفسُ العطبِ الذي كان في `build.sh`.
+const NODE_VERSION = (() => {
+  try {
+    const up = JSON.parse(readFileSync(join(ROOT, "upstream.json"), "utf8"));
+    return up?.toolchain?.node;
+  } catch { return null; }
+})();
+const TOOLCHAIN = NODE_VERSION
+  ? join(ROOT, "build", ".toolchain", `node-v${NODE_VERSION}-win-x64`)
+  : "";
 const ARTIFACTS = join(HERE, "artifacts");
 const FIXTURE = join(HERE, "fixtures", "rtl_fixture.ص");
 
@@ -75,8 +88,20 @@ function electronBinary() {
 }
 
 function compile() {
-  log("تصريف شجرة المصدر (npm run compile) — قد يطول عند أوّل مرّة…");
-  const r = spawnSync("npm.cmd", ["run", "compile"], {
+  // ‏`compile` **ليس** ما نريد على شجرة VSCodium. صار في 1.126:
+  //     compile = npm-run-all2 -lp compile-client compile-copilot
+  // و`compile-copilot` يشتغل في `extensions/copilot` — وVSCodium **يحذف** ذلك الامتداد.
+  // فالأمرُ يسقط بـENOENT قبل أن يبلغ الطبقةَ التي نقيسها، ورسالتُه عن `package.json`
+  // مفقودٍ لا عن شيءٍ يخصّنا. وقِيس على ترقية 1.121 ⇐ 1.126: كان `compile` مرادفًا
+  // لـ`compile-client` فمرّ، وصار مركَّبًا فسقط.
+  //
+  // و`compile-client` هو المقصودُ أصلًا: كلُّ مِجَسّات L3 تقرأ المحرّرَ ومنضدةَ العمل،
+  // ولا مِجَسَّ يمسّ امتدادَ copilot. فيُختار صراحةً حين يغيب الامتداد، ويبقى `compile`
+  // حين يوجد كي لا نُنقِص شيئًا على شجرةٍ كاملة.
+  const hasCopilot = existsSync(join(UP, "extensions", "copilot", "package.json"));
+  const task = hasCopilot ? "compile" : "compile-client";
+  log(`تصريف شجرة المصدر (npm run ${task}) — قد يطول عند أوّل مرّة…`);
+  const r = spawnSync("npm.cmd", ["run", task], {
     cwd: UP, env: envWithToolchain(), stdio: "inherit", shell: false,
   });
   if (r.status !== 0) fail(`فشل التصريف (رمز ${r.status})`);

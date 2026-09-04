@@ -3,22 +3,24 @@
   "base": "vscodium",
   "vscodium": {
     "repo": "https://github.com/VSCodium/vscodium",
-    "tag": "1.121.03429",
-    "published": "2026-05-22",
-    "_note": "أحدث إصدار مستقرّ وقت تأسيس م0 (2026-06-30). الصيغة: <إصدار-vscode>.<بناء>."
+    "tag": "1.126.04524",
+    "published": "2026-07-07",
+    "_note": "أحدث إصدار مستقرّ من VSCodium (وهو «latest» في مستودعهم يوم الترقية). الصيغة: <إصدار-vscode>.<بناء>."
   },
   "vscode": {
     "repo": "https://github.com/microsoft/vscode",
-    "version": "1.121"
+    "version": "1.126",
+    "commit": "7e7950df89d055b5a378379db9ee14290772148a",
+    "_note": "المذكور في upstream/stable.json داخل وسم VSCodium المثبَّت — هو ما يستنسخه get_repo.sh فعلًا."
   },
-  "_builtReleaseVersion": "1.121.04352 (= RELEASE_VERSION المشتقّ من stable.json داخل وسم VSCodium المثبَّت؛ يختلف رقمه عن وسم الإصدار 1.121.03429 لكنّه محدَّد بثبات للوسم نفسه)",
+  "_builtReleaseVersion": "لا قيمةَ ثابتةً له: get_repo.sh يشتقّ RELEASE_VERSION من MS_TAG زائدَ ختمٍ زمنيّ — TIME_PATCH = يومُ السنة × 24 + الساعة. فالبناءُ على وسمٍ واحد يعطي رقمًا مختلفًا كلّ ساعة (1.121.04352 بُني 2026-06-30، و1.121.05937 بُني 2026-09-04 — والوسمُ واحد). وكان هذا الحقلُ يصفه سابقًا بأنّه «محدَّد بثبات للوسم»، وهو وصفٌ خاطئ.",
   "toolchain": {
-    "_note": "سلسلة أدوات معزولة يجهّزها build/build.sh في build/.toolchain (مُتجاهَلة). طابِق node مع vscode/.nvmrc للمنبع المثبَّت.",
-    "node": "22.22.1",
+    "_note": "سلسلة أدوات معزولة يجهّزها build/build.sh في build/.toolchain (مُتجاهَلة). node يُقرأ من هنا في build.sh، وقيمتُه = vscode/.nvmrc للمنبع المثبَّت.",
+    "node": "24.15.0",
     "jq": "1.7.1",
     "nodeGyp": "13.0.0",
     "python": "3.12"
   },
-  "pinnedAt": "2026-06-30",
-  "milestone": "م0"
+  "pinnedAt": "2026-09-04",
+  "milestone": "م5"
 }

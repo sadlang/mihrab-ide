@@ -2229,17 +2229,26 @@ def _editor_direction_defaults_to_ltr():
     ext_dir = os.path.join(up, "extensions")
     if os.path.isdir(ext_dir):
         shipped = set()
-        for name in os.listdir(ext_dir):
-            pkg = os.path.join(ext_dir, name, "package.json")
-            if not os.path.isfile(pkg):
+        # **ومن مصدرَين لا مصدرٍ واحد.** كان المسحُ يقرأ امتداداتِ المنبع وحدَها، و`sad`
+        # لغةُ امتدادٍ من امتداداتنا نحن — لا يظهر هناك إلّا بعد أن ينسخه البناء إلى
+        # شجرة المنبع. فالحارسُ كان يقيس **حالةَ بناءٍ سابق** لا حقيقةَ الشحن: يحمرّ على
+        # شجرةٍ نظيفةٍ أو أثناء بناءٍ يجري، ويخضرّ لأنّ بناءً قديمًا خلّف نسخةً — والاثنان
+        # لا علاقةَ لهما بصحّة القائمة. وامتداداتُ محرابٍ **مشحونةٌ بالتعريف**: تُقرأ من
+        # مصدرها في المستودع. (رُصد عند ترقية المنبع إلى 1.126، على شجرةٍ أُعيد ضبطُها.)
+        for base in (ext_dir, os.path.join(ROOT, "extensions")):
+            if not os.path.isdir(base):
                 continue
-            try:
-                data = json.load(open(pkg, encoding="utf-8"))
-            except (ValueError, OSError):
-                continue
-            for lang in (data.get("contributes") or {}).get("languages") or []:
-                if lang.get("id"):
-                    shipped.add(lang["id"])
+            for name in os.listdir(base):
+                pkg = os.path.join(base, name, "package.json")
+                if not os.path.isfile(pkg):
+                    continue
+                try:
+                    data = json.load(open(pkg, encoding="utf-8"))
+                except (ValueError, OSError):
+                    continue
+                for lang in (data.get("contributes") or {}).get("languages") or []:
+                    if lang.get("id"):
+                        shipped.add(lang["id"])
         builtins = {
             "plaintext": os.path.join(
                 up, "src", "vs", "editor", "common", "languages", "modesRegistry.ts"),
@@ -3641,20 +3650,27 @@ def _settings_lexicon_sound():
     # الصيغةُ الأولى من هذا الفحص كانت تقرأ نصَّ المرقِّع وتزعم أنّها تفحص المنبع —
     # فحصٌ يُطمئن ولا يكشف شيئًا (رصدته المراجعة الهندسيّة). هنا نقرأ ملفَّ المنبع
     # نفسَه، فينكشف انجرافُ `wordifyKey` عند ترقية المنبع لا بعد ساعةِ بناءٍ ضائعة.
-    upstream = os.path.join(ROOT, ".upstream", "vscode", "src", "vs", "workbench",
-                            "contrib", "preferences", "common", "preferences.ts")
-    if os.path.isfile(upstream):
+    # **وكلُّ مرساةٍ تُقاس في ملفِّها هي.** كانت هذه الحلقةُ تقرأ `preferences.ts` وحدَه
+    # ثمّ تفحص فيه مراسيَ **كلِّ** ملفّات المرقِّع — ومنها مرساةٌ تخصّ
+    # ‏`preferencesModels.ts`. فبقيت خضراءَ على 1.121 بمصادفةِ ورودِ النصّ في الملفّين،
+    # واحمرّت عند الترقية إلى 1.126 على انجرافٍ **لم يقع**: المرساةُ في مكانها من ملفّها،
+    # والمرقِّعُ يطبّق (L1 أخضر). وحارسٌ يسمّي عطبًا غيرَ واقعٍ يُرسِل القارئَ إلى إصلاح
+    # ما ليس مكسورًا — وهو أسوأُ من صمته.
+    spec = importlib.util.spec_from_file_location("_mihrab_settings_labels", patcher)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    for _rel, _mark, edits in mod.FILES:
+        upstream = os.path.join(ROOT, ".upstream", "vscode", *_rel.split("/"))
+        if not os.path.isfile(upstream):
+            continue
         text = _read(upstream)
-        if MARKED not in text:
-            spec = importlib.util.spec_from_file_location("_mihrab_settings_labels", patcher)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            for _rel, _mark, edits in mod.FILES:
-                for old, _new, count in edits:
-                    found = text.count(old.replace("\n", "\r\n")) + text.count(old)
-                    assert found >= count, (
-                        f"مرساةٌ مفقودة من منبع preferences.ts (وُجدت {found}/{count}): "
-                        f"{old.splitlines()[0][:80]} — انجرف wordifyKey؟")
+        if MARKED in text:      # مُرقَّعٌ سلفًا — المراسي استُهلكت
+            continue
+        for old, _new, count in edits:
+            found = text.count(old.replace("\n", "\r\n")) + text.count(old)
+            assert found >= count, (
+                f"مرساةٌ مفقودة من منبع {_rel} (وُجدت {found}/{count}): "
+                f"{old.splitlines()[0][:80]} — انجرف المنبع؟")
 
 
 @check("جالبُ أدوات ص يطابق كلَّ صيغِ تسمية الأصول")
