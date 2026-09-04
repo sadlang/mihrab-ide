@@ -3811,10 +3811,24 @@ def _unicode_script_mixing_patch_behaves():
             "كلّ ألفٍ وهاءٍ في معرّفات ص خارجَ `[sad]` (‏622 مرسومًا في مفردات.yaml) [AR-05]")
     body = _read(patch)
 
-    # (أ) المِرساةُ المنبعيّة: الرقعةُ تمسّ السطرَ المقصودَ بعينه لا سطرًا يشبهه.
-    assert "-\t\t\t\thasBasicASCIICharacters = hasBasicASCIICharacters || isBasicASCII;" in body, (
-        "الرقعةُ لا تحذف سطرَ `hasBasicASCIICharacters || isBasicASCII` — انجرف المنبعُ أو "
-        "رُقِّع موضعٌ آخر، فما يلي من محاكاةٍ يقيس شيئًا لا يقع [AR-05]")
+    # (أ) المِرساةُ المنبعيّة **وشرطُ عدم الإضعاف معًا**. كانت الرقعةُ تحذف عدّادَ المنبع
+    #     `hasBasicASCIICharacters` حذفًا، وكان هذا التوكيدُ يشترط الحذف — أي أنّه كان
+    #     يحرس تصميمًا **أضعف**: العدّادُ نفسُه يبوّب فحصَ المحارف الخفيّة (دفاعُ
+    #     Trojan Source)، فحذفُه يُرخي البوّابتَين معًا وإحداهما ليست من شأن الشكوى.
+    #
+    #     وصُحّح في جولة microsoft/vscode: العدّادُ **يبقى** للمحارف الخفيّة، ويُضاف
+    #     `hasBasicASCIILetters` وحدَه لفحص الالتباس. فالتوكيدُ اليومَ من طرفَين: السطرُ
+    #     المنبعيُّ حاضرٌ **سياقًا** (فالرقعةُ ترسو على الموضع المقصود)، و**غيرُ محذوف**
+    #     (فالدفاعُ الآخرُ لم يُمَسّ). ومُصابٌ يحذفه يسقط هنا صوتًا لا صمتًا.
+    _UPSTREAM_COUNTER = ("				hasBasicASCIICharacters = "
+                         "hasBasicASCIICharacters || isBasicASCII;")
+    assert (" " + _UPSTREAM_COUNTER) in body, (
+        "سطرُ `hasBasicASCIICharacters || isBasicASCII` ليس سياقًا في الرقعة — انجرف "
+        "المنبعُ أو رُقِّع موضعٌ آخر، فما يلي من محاكاةٍ يقيس شيئًا لا يقع [AR-05]")
+    assert ("-" + _UPSTREAM_COUNTER) not in body, (
+        "الرقعةُ تحذف عدّادَ `hasBasicASCIICharacters` — وهو يبوّب فحصَ المحارف الخفيّة "
+        "لا فحصَ الالتباس. حذفُه يُرخي دفاعَ Trojan Source بلا داعٍ: الشكوى في الالتباس "
+        "وحدَه، وله عدّادُه `hasBasicASCIILetters` [AR-05]")
 
     # (ب) انتزاعُ المُسنَد من الأسطر المضافة — لا يُكتَب هنا فيُقاس نفسَه.
     m = re.search(r"\+\s*hasBasicASCIILetters = hasBasicASCIILetters(.*?);",

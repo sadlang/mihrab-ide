@@ -1,38 +1,75 @@
 diff --git a/src/vs/editor/common/services/unicodeTextModelHighlighter.ts b/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
-index d9e86c3e..2c93087e 100644
+index d9e86c3e..8af1c3a8 100644
 --- a/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
 +++ b/src/vs/editor/common/services/unicodeTextModelHighlighter.ts
-@@ -195,13 +195,22 @@ class CodePointHighlighter {
+@@ -195,13 +195,23 @@ class CodePointHighlighter {
  			return SimpleHighlightReason.NonBasicASCII;
  		}
  
--		let hasBasicASCIICharacters = false;
++		// Two notions of "this word also contains ASCII" are needed below, because the two
++		// checks this function performs have different stakes. `hasBasicASCIICharacters` is
++		// upstream's and gates the invisible-character check, which is an impersonation
++		// defence. `hasBasicASCIILetters` gates the ambiguous-character check only: digits,
++		// `_`, `-` and the rest of ASCII punctuation are script-neutral, since every script
++		// uses them as identifier glue, so they must not make a word look script-mixed.
+ 		let hasBasicASCIICharacters = false;
 +		let hasBasicASCIILetters = false;
  		let hasNonConfusableNonBasicAsciiCharacter = false;
  		if (wordContext) {
  			for (const char of wordContext) {
  				const codePoint = char.codePointAt(0)!;
  				const isBasicASCII = strings.isBasicASCII(char);
--				hasBasicASCIICharacters = hasBasicASCIICharacters || isBasicASCII;
-+				// Only ASCII *letters* make a word script-mixed. Digits, `_`, `-` and the
-+				// rest of ASCII punctuation are script-neutral: every script uses them as
-+				// identifier glue. Counting them made a single-script identifier such as
-+				// `حقل_اسم` look like Latin mixed with Arabic, so every confusable letter
-+				// in it was highlighted - 622 highlights in one 71 KB file, none of them a
-+				// real impersonation. Words that genuinely mix scripts (`exampاe`, `faiا`,
-+				// `pcb_ديناميّ`) still contain ASCII letters and are still highlighted.
+ 				hasBasicASCIICharacters = hasBasicASCIICharacters || isBasicASCII;
 +				hasBasicASCIILetters = hasBasicASCIILetters
 +					|| strings.isLowerAsciiLetter(codePoint)
 +					|| strings.isUpperAsciiLetter(codePoint);
  
  				if (
  					!isBasicASCII &&
-@@ -214,7 +223,7 @@ class CodePointHighlighter {
+@@ -228,6 +238,12 @@ class CodePointHighlighter {
  		}
  
- 		if (
--			/* Don't allow mixing weird looking characters with ASCII */ !hasBasicASCIICharacters &&
-+			/* Don't allow mixing weird looking characters with ASCII letters */ !hasBasicASCIILetters &&
- 			/* Is there an obviously weird looking character? */ hasNonConfusableNonBasicAsciiCharacter
- 		) {
- 			return SimpleHighlightReason.None;
+ 		if (this.options.ambiguousCharacters) {
++			if (
++				/* Only ASCII letters make a word script-mixed - see above */ !hasBasicASCIILetters &&
++				/* Is there an obviously weird looking character? */ hasNonConfusableNonBasicAsciiCharacter
++			) {
++				return SimpleHighlightReason.None;
++			}
+ 			if (this.ambiguousCharacters.isAmbiguous(codePoint)) {
+ 				return SimpleHighlightReason.Ambiguous;
+ 			}
+diff --git a/src/vs/editor/test/common/services/unicodeTextModelHighlighter.test.ts b/src/vs/editor/test/common/services/unicodeTextModelHighlighter.test.ts
+index 3b4b550c..40b6dda2 100644
+--- a/src/vs/editor/test/common/services/unicodeTextModelHighlighter.test.ts
++++ b/src/vs/editor/test/common/services/unicodeTextModelHighlighter.test.ts
+@@ -50,4 +50,29 @@ suite('UnicodeTextModelHighlighter', () => {
+ 			}
+ 		);
+ 	});
++
++	test('script-neutral ASCII does not make a word script-mixed', () => {
++		const options: UnicodeHighlighterOptions = {
++			allowedCodePoints: [],
++			allowedLocales: [],
++			ambiguousCharacters: true,
++			invisibleCharacters: true,
++			includeComments: true,
++			includeStrings: true,
++			nonBasicASCII: false
++		};
++
++		// `_` and the digit are identifier glue, not Latin: the word is single-script and
++		// none of its letters impersonate a Latin one.
++		assert.strictEqual((t('متغير_1', options) as { ambiguousCharacterCount: number }).ambiguousCharacterCount, 0);
++
++		// An ASCII *letter* next to a non-Latin one is genuine script mixing and is still
++		// reported: the Cyrillic `а` here is a homoglyph of `a`.
++		assert.strictEqual((t('examplа', options) as { ambiguousCharacterCount: number }).ambiguousCharacterCount, 1);
++
++		// The relaxation is confined to the ambiguous-character check. A bidi override in a
++		// word whose only ASCII is a digit is still reported - this is the Trojan Source
++		// defence, and it does not depend on the word's script.
++		assert.strictEqual((t('اسم‮1', options) as { invisibleCharacterCount: number }).invisibleCharacterCount, 1);
++	});
+ });

@@ -1,61 +1,151 @@
+diff --git a/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/codeBlockPart.ts b/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/codeBlockPart.ts
+index 31951d24..d7b3dd31 100644
+--- a/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/codeBlockPart.ts
++++ b/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/codeBlockPart.ts
+@@ -183,7 +183,8 @@ export class CodeBlockPart extends Disposable {
+ 		const scopedInstantiationService = this._register(instantiationService.createChild(new ServiceCollection([IContextKeyService, this.contextKeyService])));
+ 		const editorElement = dom.append(this.element, $('.interactive-result-editor'));
+ 		this.editor = this.createEditor(scopedInstantiationService, editorElement, {
+-			...getSimpleEditorOptions(this.configurationService),
++			// A rendered code block, not prose: no language scope for prose settings.
++			...getSimpleEditorOptions(this.configurationService, null),
+ 			readOnly: true,
+ 			lineNumbers: 'off',
+ 			selectOnLineNumbers: true,
+@@ -755,7 +756,8 @@ export class CodeCompareBlockPart extends Disposable {
+ 		const editorHeader = this.editorHeader = dom.append(this.element, $('.interactive-result-header.show-file-icons'));
+ 		const editorElement = dom.append(this.element, $('.interactive-result-editor'));
+ 		this.diffEditor = this.createDiffEditor(scopedInstantiationService, editorElement, {
+-			...getSimpleEditorOptions(this.configurationService),
++			// A rendered code block, not prose: no language scope for prose settings.
++			...getSimpleEditorOptions(this.configurationService, null),
+ 			lineNumbers: 'on',
+ 			selectOnLineNumbers: true,
+ 			scrollBeyondLastLine: false,
 diff --git a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
-index 88d469a..2e13f3e 100644
+index 88d469aa..f97cbbaf 100644
 --- a/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
 +++ b/src/vs/workbench/contrib/codeEditor/browser/simpleEditorOptions.ts
-@@ -17,7 +17,23 @@ import { registerThemingParticipant } from '../../../../platform/theme/common/th
+@@ -17,7 +17,17 @@ import { registerThemingParticipant } from '../../../../platform/theme/common/th
  import { IDisposable } from '../../../../base/common/lifecycle.js';
  import { selectionBackground, inputBackground, inputForeground, editorSelectionBackground } from '../../../../platform/theme/common/colorRegistry.js';
  
 -export function getSimpleEditorOptions(configurationService: IConfigurationService): IEditorOptions {
-+// Simple editors read `editor.*` settings straight off the configuration service, which
-+// means they read the *global* value and miss every language-scoped `[langId]` override.
-+// That is wrong in both directions for a setting like `editor.textDirection`:
++// Settings read here reach a dozen different widgets, and a language-scoped `[langId]` value
++// should follow what each of them actually hosts. `overrideIdentifier` says which:
 +//
-+//  - These widgets have no document language to scope by. A commit message, a chat prompt
-+//    and an accessible-view buffer are prose typed by the user, so the sensible scope is
-+//    the one plain text already has — hence the `plaintext` default below, which keeps
-+//    today's behaviour for every existing call site.
-+//  - The one widget that does have a language identifier of its own is the SCM input box.
-+//    `scmInput.ts` already reads `editor.rulers` and `editor.wordWrap` with
-+//    `{ overrideIdentifier: 'scminput' }`; it could not do the same for this setting,
-+//    because this setting arrives from here. Without the identifier, a `[scminput]`
-+//    block in the user's settings is silently inert.
-+//
-+// Callers that host *code* rather than prose (chat code blocks, notebook cell inputs) can
-+// pass the language they render, or `''` for the global value.
-+export function getSimpleEditorOptions(configurationService: IConfigurationService, overrideIdentifier: string = 'plaintext'): IEditorOptions {
++//  - `plaintext`, the default, for the prose surfaces - a commit message, a chat prompt, an
++//    accessible-view buffer. It is the scope plain text already has, so every call site that
++//    does not pass anything keeps behaving as it does today.
++//  - The widget's own language identifier where it has one. The SCM input box is `scminput`,
++//    and a notebook cell input is the language of the cell.
++//  - `null` for surfaces that host code rather than prose, which reads the global value with
++//    no language scope at all.
++export function getSimpleEditorOptions(configurationService: IConfigurationService, overrideIdentifier: string | null = 'plaintext'): IEditorOptions {
  	return {
  		wordWrap: 'on',
  		overviewRulerLanes: 0,
-@@ -46,6 +62,26 @@ export function getSimpleEditorOptions(configurationService: IConfigurationServi
+@@ -46,6 +56,17 @@ export function getSimpleEditorOptions(configurationService: IConfigurationServi
  			indentation: false
  		},
  		wordSegmenterLocales: configurationService.getValue<string | string[]>('editor.wordSegmenterLocales'),
-+		// Simple editors are text entry surfaces — commit messages, debug console input,
-+		// breakpoint conditions, chat input. They are not code viewers, and users type prose
-+		// in them in whatever script they write in.
-+		//
-+		// Two editor settings therefore have to reach them, and neither did:
-+		//
-+		// `editor.textDirection` — without it every simple editor is a left-to-right
-+		// paragraph. Someone writing a commit message in Arabic, Hebrew, Persian or Urdu
-+		// gets the caret on the wrong side, the text flush against the wrong edge, and
-+		// trailing punctuation and digits resolved to the wrong end of the line. The main
-+		// editor honours this setting; these boxes sit in the same window and do not.
-+		//
-+		// `editor.fontLigatures` — this maps to `font-feature-settings`, and turning it off
-+		// disables `calt` (contextual alternates) along with `liga`. In Latin text that only
-+		// costs a typographic nicety. In Arabic, Syriac and N'Ko, `calt` is how a font
-+		// selects initial/medial/final letter forms: with it off the script stops joining and
-+		// renders as disconnected letters. The setting is opt-in, so a user who enables it
-+		// for the editor is silently denied it exactly where they type the most prose.
-+		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl'>('editor.textDirection', { overrideIdentifier }),
++		// `editor.fontLigatures` maps to `font-feature-settings`, and turning it off disables
++		// `calt` (contextual alternates) along with `liga`. In Arabic, Syriac and N'Ko, `calt`
++		// is how a font selects the initial, medial and final form of a letter, so without it
++		// the script stops joining and renders as disconnected letters.
 +		fontLigatures: configurationService.getValue<boolean | string>('editor.fontLigatures'),
++		// Without this, every simple editor is a left-to-right paragraph. Someone writing a
++		// commit message in Arabic, Hebrew, Persian or Urdu gets the caret on the wrong side,
++		// the text flush against the wrong edge, and trailing punctuation and digits resolved
++		// to the wrong end of the line. The main editor honours this setting; these boxes sit
++		// in the same window and did not.
++		textDirection: configurationService.getValue<'auto' | 'ltr' | 'rtl' | 'uiLanguage'>('editor.textDirection', { overrideIdentifier }),
  		accessibilitySupport: configurationService.getValue<'auto' | 'off' | 'on'>('editor.accessibilitySupport'),
  		cursorBlinking: configurationService.getValue<'blink' | 'smooth' | 'phase' | 'expand' | 'solid'>('editor.cursorBlinking'),
  		editContext: configurationService.getValue<boolean>('editor.editContext'),
+diff --git a/src/vs/workbench/contrib/debug/browser/breakpointWidget.ts b/src/vs/workbench/contrib/debug/browser/breakpointWidget.ts
+index 82e2e558..27439cd5 100644
+--- a/src/vs/workbench/contrib/debug/browser/breakpointWidget.ts
++++ b/src/vs/workbench/contrib/debug/browser/breakpointWidget.ts
+@@ -191,10 +191,17 @@ export class BreakpointWidget extends ZoneWidget implements IPrivateBreakpointWi
+ 		}
+ 	}
+ 
++	private getInputLanguageId(): string | undefined {
++		if (!this.editor.hasModel()) {
++			return undefined;
++		}
++		// Use plaintext language for log messages, otherwise respect underlying editor language #125619
++		return this.context === Context.LOG_MESSAGE ? PLAINTEXT_LANGUAGE_ID : this.editor.getModel().getLanguageId();
++	}
++
+ 	private setInputMode(): void {
+-		if (this.editor.hasModel()) {
+-			// Use plaintext language for log messages, otherwise respect underlying editor language #125619
+-			const languageId = this.context === Context.LOG_MESSAGE ? PLAINTEXT_LANGUAGE_ID : this.editor.getModel().getLanguageId();
++		const languageId = this.getInputLanguageId();
++		if (languageId !== undefined) {
+ 			this.input.getModel().setLanguage(languageId);
+ 		}
+ 	}
+@@ -461,7 +468,9 @@ export class BreakpointWidget extends ZoneWidget implements IPrivateBreakpointWi
+ 
+ 	private createEditorOptions(): IEditorOptions {
+ 		const editorConfig = this._configurationService.getValue<IEditorOptions>('editor');
+-		const options = getSimpleEditorOptions(this._configurationService);
++		// Same language the input model is set to: a log message is prose, a condition and a hit
++		// count are expressions, and language-scoped settings should follow that distinction.
++		const options = getSimpleEditorOptions(this._configurationService, this.getInputLanguageId() ?? null);
+ 		options.fontSize = editorConfig.fontSize;
+ 		options.fontFamily = editorConfig.fontFamily;
+ 		options.lineHeight = editorConfig.lineHeight;
+diff --git a/src/vs/workbench/contrib/debug/browser/repl.ts b/src/vs/workbench/contrib/debug/browser/repl.ts
+index 71605edd..2fb16ed4 100644
+--- a/src/vs/workbench/contrib/debug/browser/repl.ts
++++ b/src/vs/workbench/contrib/debug/browser/repl.ts
+@@ -740,7 +740,9 @@ export class Repl extends FilterViewPane implements IHistoryNavigationWidget {
+ 		CONTEXT_IN_DEBUG_REPL.bindTo(this.scopedContextKeyService).set(true);
+ 
+ 		this.scopedInstantiationService = this._register(this.instantiationService.createChild(new ServiceCollection([IContextKeyService, this.scopedContextKeyService])));
+-		const options = getSimpleEditorOptions(this.configurationService);
++		// The REPL input hosts expressions in the language being debugged - which is only known once
++		// a session is active - so it takes the unscoped value rather than the one for prose.
++		const options = getSimpleEditorOptions(this.configurationService, null);
+ 		options.readOnly = true;
+ 		options.suggest = { showStatusBar: true };
+ 		const config = this.configurationService.getValue<IDebugConfiguration>('debug');
+diff --git a/src/vs/workbench/contrib/interactive/browser/interactiveEditor.ts b/src/vs/workbench/contrib/interactive/browser/interactiveEditor.ts
+index 1bbdfe21..19c14604 100644
+--- a/src/vs/workbench/contrib/interactive/browser/interactiveEditor.ts
++++ b/src/vs/workbench/contrib/interactive/browser/interactiveEditor.ts
+@@ -285,7 +285,9 @@ export class InteractiveEditor extends EditorPane implements IEditorPaneWithScro
+ 			overrideIdentifier = this._codeEditorWidget.getModel()?.getLanguageId();
+ 		}
+ 		const editorOptions = deepClone(this._configurationService.getValue<IEditorOptions>('editor', { overrideIdentifier }));
+-		const editorOptionsOverride = getSimpleEditorOptions(this._configurationService);
++		// Spread over `editorOptions` below, so it has to read at the same scope: with the default
++		// it would overwrite the cell language's own values with those for prose.
++		const editorOptionsOverride = getSimpleEditorOptions(this._configurationService, overrideIdentifier ?? null);
+ 		const computed = Object.freeze({
+ 			...editorOptions,
+ 			...editorOptionsOverride,
+diff --git a/src/vs/workbench/contrib/replNotebook/browser/replEditor.ts b/src/vs/workbench/contrib/replNotebook/browser/replEditor.ts
+index 3e658909..90f72e26 100644
+--- a/src/vs/workbench/contrib/replNotebook/browser/replEditor.ts
++++ b/src/vs/workbench/contrib/replNotebook/browser/replEditor.ts
+@@ -276,7 +276,9 @@ export class ReplEditor extends EditorPane implements IEditorPaneWithScrolling {
+ 			overrideIdentifier = this._codeEditorWidget.getModel()?.getLanguageId();
+ 		}
+ 		const editorOptions = deepClone(this._configurationService.getValue<IEditorOptions>('editor', { overrideIdentifier }));
+-		const editorOptionsOverride = getSimpleEditorOptions(this._configurationService);
++		// Spread over `editorOptions` below, so it has to read at the same scope: with the default
++		// it would overwrite the cell language's own values with those for prose.
++		const editorOptionsOverride = getSimpleEditorOptions(this._configurationService, overrideIdentifier ?? null);
+ 		const computed = Object.freeze({
+ 			...editorOptions,
+ 			...editorOptionsOverride,
 diff --git a/src/vs/workbench/contrib/scm/browser/scmInput.ts b/src/vs/workbench/contrib/scm/browser/scmInput.ts
-index 6adf03c..99440ff 100644
+index 6adf03c6..d3df283c 100644
 --- a/src/vs/workbench/contrib/scm/browser/scmInput.ts
 +++ b/src/vs/workbench/contrib/scm/browser/scmInput.ts
 @@ -54,6 +54,7 @@ import { InlineCompletionsController } from '../../../../editor/contrib/inlineCo
@@ -75,22 +165,26 @@ index 6adf03c..99440ff 100644
  			...this.getEditorOptions(),
  			dragAndDrop: true,
  			dropIntoEditor: { enabled: true },
-@@ -341,6 +342,20 @@ class SCMInputWidgetEditorOptions {
+@@ -341,6 +342,24 @@ class SCMInputWidgetEditorOptions {
  	}
  
  	private _getEditorLineHeight(fontSize: number): number {
-+		// `editor.lineHeight` is honoured here, with the same convention the main editor uses:
-+		// `0` means "derive from the font size", a value below `MINIMUM_LINE_HEIGHT` is a
-+		// multiplier, and anything larger is a pixel amount.
++		// `editor.lineHeight` is honoured here with the multiplier/pixel convention the main
++		// editor uses: a value below `MINIMUM_LINE_HEIGHT` is a multiplier of the font size,
++		// anything larger is a pixel amount. `0` and unset keep the `1.5` ratio below, so the
++		// box renders exactly as it does today unless the setting is set.
 +		//
-+		// The fixed `1.5` ratio below is a Latin assumption. Scripts that stack marks above
-+		// and below the baseline need more: fully vocalised Arabic reaches roughly `1.9em` of
-+		// ink, so at the shipped default the top of a fatha and the tail of a kasra are
-+		// clipped. Users can already raise `editor.lineHeight` for the editor; this box was
-+		// the one place that ignored them, and it is where they write the most prose.
++		// That `1.5` is a Latin assumption. Scripts that stack marks above and below the
++		// baseline need more, so at the default the top of a fatha and the tail of a kasra are
++		// clipped. Users can already raise `editor.lineHeight` for the editor; this box was the
++		// one place that ignored them, and it is where they write the most prose.
 +		const lineHeight = this.configurationService.getValue<number>('editor.lineHeight');
 +		if (typeof lineHeight === 'number' && lineHeight > 0) {
-+			return Math.round(lineHeight < MINIMUM_LINE_HEIGHT ? fontSize * lineHeight : lineHeight);
++			const resolved = Math.round(lineHeight < MINIMUM_LINE_HEIGHT ? fontSize * lineHeight : lineHeight);
++			// The result is handed to `BareFontInfo`, which applies the same convention again:
++			// without this floor a small multiplier such as `0.5` resolves to 7px here and is
++			// then re-read there as a 7em multiplier. `fontInfo.ts` clamps for the same reason.
++			return Math.max(MINIMUM_LINE_HEIGHT, resolved);
 +		}
 +
  		return Math.round(fontSize * 1.5);

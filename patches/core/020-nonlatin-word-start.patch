@@ -59,7 +59,7 @@ index d7f1680a..57284667 100644
  
  	//
 diff --git a/src/vs/base/test/common/filters.test.ts b/src/vs/base/test/common/filters.test.ts
-index 26b63a5a..21534863 100644
+index 26b63a5a..8c8180a7 100644
 --- a/src/vs/base/test/common/filters.test.ts
 +++ b/src/vs/base/test/common/filters.test.ts
 @@ -297,6 +297,19 @@ suite('Filters', () => {
@@ -74,7 +74,7 @@ index 26b63a5a..21534863 100644
 +		assertMatches('زكاة', 'حساب_الزكاة', 'حساب_ال^ز^ك^ا^ة', fuzzyScore);
 +		assertMatches('الفضة', 'نصاب_الفضة', 'نصاب_^ا^ل^ف^ض^ة', fuzzyScore);
 +		// ...but only where the article itself starts a segment: the trailing `ال` of
-+		// `مالك` is part of the stem, so `لك` remains a weak match.
++		// `مالك` is part of the stem, so `لك` does not match at all.
 +		assertMatches('لك', 'مالك', undefined, fuzzyScore);
 +		assertMatches('حساب', 'حساب_الزكاة', '^ح^س^ا^ب_الزكاة', fuzzyScore);
 +	});
