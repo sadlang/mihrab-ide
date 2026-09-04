@@ -331,7 +331,7 @@ _VERSIONED_BINARIES = [
     os.path.join("resources", "app", "node_modules", "@vscode", "ripgrep-universal",
                  "bin", "win32-x64", "rg.exe"),
 ]
-_EXPECTED_COMPANY = "Sad Language"
+_EXPECTED_COMPANY = "Mihrab"
 
 
 def _version_fields(path):
